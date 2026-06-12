@@ -1,0 +1,28 @@
+# secrets
+.env
+client_secret.json
+
+# environments / caches
+venv/
+__pycache__/
+*.pyc
+
+# runtime data (clips, renders, caches, tokens)
+data/
+
+# training datasets (large; regenerable via twitch_clips collect mode)
+twitch_clips/data/
+
+# generated music (rebuild with: python -m pipeline.gen_music)
+assets/music/bg.mp3
+
+# archived pre-pivot code (local only)
+_archive/
+
+# local notes
+MORNING_NOTES.md
+
+# local Claude Code permissions (machine-specific)
+.claude/settings.local.json
+
+client_secret.json

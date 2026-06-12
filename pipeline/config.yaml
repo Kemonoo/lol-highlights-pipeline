@@ -1,0 +1,125 @@
+# Pipeline configuration. ${VARS} are expanded from environment / .env.
+
+twitch:
+  game_id: "21779"            # League of Legends
+  mode: top_clips             # top_clips | broadcasters
+  broadcasters: []            # twitch logins (challenger list) — used when mode: broadcasters
+  fetch_count: 220            # clips to consider per day (start point)
+  expand_step: 150            # extra clips fetched per round when the video is short
+  max_fetch: 220              # = fetch_count -> expansion disabled (no stretching by
+                              # digging deeper; ~20 clips from the normal pool is plenty)
+  expand_keep_step: 25        # prefilter keep-cap raise per expansion round
+  window_hours: 24
+  timezone: Europe/Amsterdam
+
+prefilter:                    # thresholds from twitch_clips training
+  enabled: true
+  audio_exclude: 0.22
+  audio_pass: 0.52
+  motion_exclude: 0.015
+  max_keep: 40                # best N clips proceed to VLM stage
+
+vlm_filter:
+  enabled: true
+  provider: ollama            # ollama (local, free) | gemini (API)
+  ollama_url: http://localhost:11434
+  ollama_model: auto          # auto = best available from preference list (see vlm_filter.py)
+  gemini_api_key: ${GEMINI_API_KEY}
+  gemini_model: gemini-2.5-flash
+  max_keep: 18                # clips passed to the API judge
+  # ── stepwise judgment (see vlm_filter.py docstring) ──
+  gameplay_frames: 3          # frames for the binary gameplay majority vote
+  killfeed_every_s: 5         # seconds between kill-feed crop checks
+  kill_audio_min: 0.30        # kills >= 1 AND audio >= this -> KEEP
+  hype_only_min: 0.55         # no kills but audio >= this -> KEEP (funny/hype clips)
+  save_crops: true            # save kill-feed/banner crops for region calibration
+  japanese_needs_kills: true  # JP-title clips can't pass on audio hype alone
+  regions:                    # frame fractions [x1, y1, x2, y2] — measured from a real
+    killfeed: [0.82, 0.08, 1.0, 0.45]   # 1080p screenshot; CALIBRATE via crops/
+    banner: [0.35, 0.05, 0.65, 0.22]    # center multikill announcement
+    eventlog: [0.0, 0.75, 0.30, 1.0]    # bottom-left "has slain ..." text
+
+api_judge:                    # Gemini full-video quality judge on local survivors
+  enabled: true               # auto-skips when GEMINI_API_KEY is not set in .env
+  model: gemini-2.0-flash
+  api_key: ${GEMINI_API_KEY}
+  max_mb: 19                  # inline API limit; clips are shrunk to 480p first
+  min_entertainment: 6        # keep gameplay clips at or above this
+  min_entertainment_reaction: 7  # reaction-focus clips need a higher bar
+  min_play_quality: 7         # or any clip with play this impressive
+  filler_min_entertainment: 4 # when the video is short, fill with decent (ent>=4) clips
+
+feedback:                     # stage 0: read comments on recent uploads each run
+  enabled: true
+  videos_to_check: 5          # how many recent uploads to scan
+  min_agreement: 2            # comments that must agree before a signal is ACTIONABLE
+
+auto_update:                  # optional: Claude Code applies config-level proposals
+  enabled: false              # needs `claude` CLI installed + authenticated
+  command: claude
+
+blacklist:
+  # Seeded from your 2026-06-09 labels: JP event/custom-tournament channels whose clips
+  # you marked bad/pro-play. Edit freely — remove any you want back in.
+  broadcasters:
+    - kokujintv
+    - k4sen
+    - らいじん
+    - revol87
+    - デイワン
+
+match_linker:
+  enabled: false              # Phase 2
+  provider: riot              # riot | opgg | ugg
+  riot_api_key: ${RIOT_API_KEY}
+  riot_region: euw1
+  # broadcaster twitch login -> list of summoner "Name#TAG"
+  summoner_map: {}
+
+commentary:
+  provider: auto              # auto = gemini if key set, else ollama
+  gemini_model: gemini-2.0-flash-lite  # separate free-tier quota bucket from the judge's flash
+  ollama_url: http://localhost:11434
+  model: qwen2.5:7b           # local fallback when Gemini quota is exhausted (ollama pull qwen2.5:7b)
+  style: hype_caster          # hype_caster | analyst | chill
+  max_sentences: 2
+
+tts:
+  enabled: true               # false = silent videos (no voiceover)
+  voice: male-us              # see pipeline/tts.py VOICES
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+  preset: veryfast            # x264 encode speed/quality tradeoff
+  font: null                  # null = auto (Arial Bold on Windows, CJK fallback for JP/KR/CN names)
+  intro_enabled: true
+  intro_title: DAILY LEAGUE HIGHLIGHTS
+  lower_third_seconds: 5.5    # how long the streamer card stays on screen
+  countdown_enabled: true     # clips play worst->best with a #N badge (retention format)
+  replay_enabled: false       # off: the judge's best_moment_s timestamp lands after the
+                              # play too often — needs frame-accurate detection (future)
+  replay_min_score: 7         # clips ranked this high get a slow-mo best-moment replay
+  replay_seconds: 6           # source seconds around the best moment (plays at 0.5x)
+  outro_enabled: true
+  target_minutes_min: 5
+  target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
+  target_minutes_max: 10
+  music_path: assets/music/bg.mp3   # generated copyright-free bed (pipeline/gen_music.py);
+                                    # swap for a licensed track anytime (assets/music/README.md)
+  music_volume_db: -14        # the generated bed is already quiet (RMS -25); tune to taste
+  music_attribution: ""       # generated in-house -> no attribution needed
+  voiceover_duck_db: -10      # how much clip audio ducks under voiceover
+
+upload:
+  enabled: true               # OAuth set up — first upload opens a browser once
+  privacy: public           # exactly one of: private | unlisted | public
+  category_id: "20"           # Gaming
+  title_template: "{hook} — Daily League Highlights {date}"
+
+permissions:
+  require_permission: false   # when true, only broadcasters approved in state.json are used
+
+paths:
+  data: data                  # relative to repo root

@@ -1,0 +1,19 @@
+# Core pipeline
+requests
+pyyaml
+yt-dlp
+edge-tts
+tzdata
+
+# Pre-filter scoring (audio hype / motion)
+librosa
+numpy
+opencv-python
+
+# YouTube upload (stage 10)
+google-api-python-client
+google-auth-oauthlib
+
+# ffmpeg + ffprobe must be on PATH
+# Local VLM filtering needs Ollama (https://ollama.com) with a vision model,
+# e.g.:  ollama pull qwen3-vl:4b
