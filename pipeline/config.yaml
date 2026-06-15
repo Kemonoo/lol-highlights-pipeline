@@ -120,6 +120,11 @@ upload:
   category_id: "20"           # Gaming
   title_template: "{hook} | League of Legends clip highlights {date}"
 
+thumbnail:
+  enabled: true               # generate a cinematic 1280×720 thumbnail per video
+  # Champion splash art + champion name list are cached in data/cache/ after first download.
+  # YouTube requires channel phone verification for custom thumbnail uploads.
+
 shorts:
   enabled: true
   count: 3                    # how many shorts to post per day (top clips by rank score)

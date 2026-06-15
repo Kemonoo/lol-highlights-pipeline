@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import api_judge, assemble, cleanup, commentary, credits, feedback, fetch, hud_ocr, match_linker, prefilter, shorts, tts, upload, vlm_filter
+from . import api_judge, assemble, cleanup, commentary, credits, feedback, fetch, hud_ocr, match_linker, prefilter, shorts, thumbnail, tts, upload, vlm_filter
 from .config import load_config
 from .state import State
 
@@ -37,6 +37,7 @@ STAGES = [
     ("tts", tts.run),
     ("assemble", assemble.run),
     ("credits", credits.run),
+    ("thumbnail", thumbnail.run),
     ("upload", upload.run),
     ("shorts", shorts.run),    # vertical clips for YouTube Shorts (runs after main upload)
     ("cleanup", cleanup.run),  # delete old raw MP4s to free disk space
@@ -89,6 +90,7 @@ def _stage_outputs(cfg: dict, d: str) -> dict:
         "tts": work / "vo" / "timings.json",
         "assemble": data / "output" / f"{d}.mp4",
         "credits": data / "output" / f"{d}.meta.json",
+        "thumbnail": work / "thumbnail.jpg",
         "shorts": work / "shorts" / "done.json",
     }
 

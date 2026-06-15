@@ -10,6 +10,9 @@ librosa
 numpy
 opencv-python
 
+# Thumbnail compositing
+Pillow
+
 # YouTube upload (stage 10)
 google-api-python-client
 google-auth-oauthlib
