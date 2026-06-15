@@ -80,13 +80,15 @@ commentary:
   provider: auto              # auto = gemini if key set, else ollama
   gemini_model: gemini-2.0-flash-lite  # separate free-tier quota bucket from the judge's flash
   ollama_url: http://localhost:11434
-  model: qwen2.5:7b           # local fallback when Gemini quota is exhausted (ollama pull qwen2.5:7b)
-  style: hype_caster          # hype_caster | analyst | chill
+  model: qwen3:8b             # local fallback when Gemini quota is exhausted (ollama pull qwen3:8b)
+  style: hype_caster          # hype_caster | analyst | chill  (base style; rotated when vary_style: true)
+  vary_style: true            # cycle hype_caster/chill/analyst across clips to avoid monotony
   max_sentences: 2
 
 tts:
   enabled: true               # false = silent videos (no voiceover)
-  voice: male-us              # see pipeline/tts.py VOICES
+  provider: kokoro            # edge-tts (Microsoft Neural, needs internet) | kokoro (local, best free quality)
+  voice: male-us              # kokoro: am_adam / am_michael / af_heart — or use key from KOKORO_VOICES
 
 video:
   width: 1920
@@ -116,7 +118,18 @@ upload:
   enabled: true               # OAuth set up — first upload opens a browser once
   privacy: public           # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
-  title_template: "{hook} — Daily League Highlights {date}"
+  title_template: "{hook} | League of Legends clip highlights {date}"
+
+shorts:
+  enabled: true
+  count: 3                    # how many shorts to post per day (top clips by rank score)
+  upload: true                # auto-upload after render; shares the main upload OAuth token
+  privacy: public             # private | unlisted | public
+  detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
+
+cleanup:
+  enabled: true
+  keep_raw_days: 1            # keep raw MP4s for this many days back (for feedback reprocessing)
 
 permissions:
   require_permission: false   # when true, only broadcasters approved in state.json are used

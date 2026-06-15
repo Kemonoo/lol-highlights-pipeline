@@ -14,6 +14,10 @@ opencv-python
 google-api-python-client
 google-auth-oauthlib
 
+# Shorts speech captions (streamer voice, auto-translated to English)
+# GPU-accelerated on RTX 3050 when torch+CUDA is installed; falls back to CPU.
+openai-whisper
+
 # ffmpeg + ffprobe must be on PATH
 # Local VLM filtering needs Ollama (https://ollama.com) with a vision model,
 # e.g.:  ollama pull qwen3-vl:4b

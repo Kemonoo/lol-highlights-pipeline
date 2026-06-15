@@ -1,4 +1,10 @@
-"""Stage 7 — TTS via edge-tts (ported from _archive/clip_intel/export/tts.py).
+"""Stage 7 — TTS with provider selection.
+
+Providers (config tts.provider):
+  edge-tts  (default) — free Microsoft Neural voices, needs internet, no GPU
+  kokoro    — local Kokoro TTS (350M params, best free quality); install once:
+              pip install kokoro soundfile
+              First run downloads ~350MB model from HuggingFace automatically.
 
 synthesize() returns word-level timestamps (used later for captions on derived Shorts).
 run() generates one MP3 per clip from commentary.json → data/work/<date>/vo/<clip_id>.mp3
@@ -6,11 +12,14 @@ run() generates one MP3 per clip from commentary.json → data/work/<date>/vo/<c
 import asyncio
 import json
 import logging
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List
 
 log = logging.getLogger("pipeline.tts")
 
+# edge-tts voice IDs
 VOICES = {
     "male-us":   "en-US-GuyNeural",
     "female-us": "en-US-AriaNeural",
@@ -18,11 +27,59 @@ VOICES = {
     "female-uk": "en-GB-SoniaNeural",
 }
 
+# Kokoro voice IDs  (pip install kokoro)
+KOKORO_VOICES = {
+    "male-us":   "am_adam",
+    "male-us-2": "am_michael",
+    "female-us": "af_heart",
+    "male-uk":   "bm_daniel",
+    "female-uk": "bf_emma",
+}
 
-def synthesize(text: str, output_path: Path, voice: str = "male-us") -> List[Dict]:
-    """Synthesize text to MP3; return [{"word", "start", "end"}] in seconds."""
+
+# ── Kokoro provider ───────────────────────────────────────────────────────────
+
+def _synthesize_kokoro(text: str, output_path: Path, voice: str) -> List[Dict]:
+    try:
+        import numpy as np
+        import soundfile as sf
+        from kokoro import KPipeline
+    except ImportError as e:
+        raise RuntimeError(
+            f"Kokoro not installed ({e}). Run: pip install kokoro soundfile"
+        ) from e
+
+    voice_id = KOKORO_VOICES.get(voice, "am_adam")
+    pipeline = KPipeline(lang_code="a")   # 'a' = American English
+
+    chunks = []
+    for _, _, audio in pipeline(text, voice=voice_id, speed=1.0):
+        chunks.append(audio)
+
+    if not chunks:
+        return []
+
+    audio = np.concatenate(chunks)
+    duration = len(audio) / 24000
+
+    tmp = Path(tempfile.mktemp(suffix=".wav"))
+    sf.write(str(tmp), audio, 24000)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(tmp), "-b:a", "128k", str(output_path)],
+        capture_output=True, check=True,
+    )
+    tmp.unlink(missing_ok=True)
+
+    return _uniform_distribution(text, duration)
+
+
+# ── edge-tts provider ─────────────────────────────────────────────────────────
+
+def _synthesize_edge(text: str, output_path: Path, voice: str) -> List[Dict]:
     voice_id = VOICES.get(voice, voice)
-    word_events, sent_events, audio_dur = asyncio.run(_run(text, output_path, voice_id))
+    word_events, sent_events, audio_dur = asyncio.run(
+        _edge_run(text, output_path, voice_id)
+    )
     if word_events:
         return word_events
     if sent_events:
@@ -30,9 +87,8 @@ def synthesize(text: str, output_path: Path, voice: str = "male-us") -> List[Dic
     return _uniform_distribution(text, audio_dur)
 
 
-async def _run(text: str, output_path: Path, voice_id: str):
+async def _edge_run(text: str, output_path: Path, voice_id: str):
     import edge_tts
-
     communicate = edge_tts.Communicate(text, voice_id)
     word_events, sent_events, total_bytes = [], [], 0
     with open(output_path, "wb") as f:
@@ -55,6 +111,8 @@ async def _run(text: str, output_path: Path, voice_id: str):
                 })
     return word_events, sent_events, total_bytes * 8 / 128_000
 
+
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 def _distribute_words(sentences: List[Dict]) -> List[Dict]:
     words = []
@@ -82,11 +140,27 @@ def _uniform_distribution(text: str, total_duration: float) -> List[Dict]:
             for i, w in enumerate(raw)]
 
 
+# ── public API ────────────────────────────────────────────────────────────────
+
+def synthesize(text: str, output_path: Path, voice: str = "male-us",
+               provider: str = "edge-tts") -> List[Dict]:
+    """Synthesize text to MP3; return [{"word", "start", "end"}] in seconds."""
+    if provider == "kokoro":
+        return _synthesize_kokoro(text, output_path, voice)
+    return _synthesize_edge(text, output_path, voice)
+
+
 def run(cfg: dict, state, date_label: str) -> Path:
     work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
-    if not cfg.get("tts", {}).get("enabled", True):
+    tts = cfg.get("tts", {})
+    if not tts.get("enabled", True):
         log.info("tts disabled — videos will have no voiceover")
         return work
+
+    provider = tts.get("provider", "edge-tts")
+    voice = tts.get("voice", "male-us")
+    log.info("TTS provider: %s  voice: %s", provider, voice)
+
     lines = json.loads((work / "commentary.json").read_text(encoding="utf-8"))
     vo_dir = work / "vo"
     vo_dir.mkdir(exist_ok=True)
@@ -94,7 +168,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     timings = {}
     for item in lines:
         mp3 = vo_dir / f"{item['clip_id']}.mp3"
-        words = synthesize(item["text"], mp3, cfg["tts"]["voice"])
+        words = synthesize(item["text"], mp3, voice, provider=provider)
         timings[item["clip_id"]] = words
         log.info("TTS %s (%.1fs)", item["clip_id"], words[-1]["end"] if words else 0)
 

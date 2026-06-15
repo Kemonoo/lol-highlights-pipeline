@@ -19,10 +19,8 @@ assets/music/bg.mp3
 # archived pre-pivot code (local only)
 _archive/
 
-# local notes
-MORNING_NOTES.md
-
 # local Claude Code permissions (machine-specific)
 .claude/settings.local.json
 
-client_secret.json
+# one-off batch scripts (not part of the distributed setup)
+run_days.bat

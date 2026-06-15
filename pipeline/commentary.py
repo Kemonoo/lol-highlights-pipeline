@@ -22,10 +22,14 @@ import requests
 log = logging.getLogger("pipeline.commentary")
 
 STYLES = {
-    "hype_caster": ("an esports caster with a sharp sense of humor — energetic, ironic, "
-                    "relatable gamer humor, never mean-spirited"),
+    "hype_caster": ("an esports caster with sharp wit and gen Z energy — energetic, ironic, "
+                    "relatable; uses casual phrases like 'bro', 'no way', 'actually insane', "
+                    "'ngl', 'cooked', 'W moment' when they fit naturally; never forced or cringe"),
     "analyst": "a calm analytical caster explaining what makes the play good",
     "chill": "a relaxed streamer-style commentator, casual and a bit funny",
+    "gen_z_short": ("a gen Z gaming TikTok creator — ONE punchy sentence max 12 words, "
+                    "self-aware and ironic; uses 'bro', 'fr', 'ngl', 'W', 'L', 'cooked', "
+                    "'not him' naturally; make it quotable or funny"),
 }
 
 LINE_PROMPT = """You write short voiceover lines for a daily "League of Legends best moments" YouTube video.
@@ -45,6 +49,8 @@ Rules: mention the streamer's name; reference what actually happens; be funny wh
 clip allows it — irony and relatable gamer humor land best (if something absurd happens
 around the play, like a slap right after a kill, joke about it: that slap was clearly
 the reward). Never mean-spirited. No greetings, no hashtags, no "in this clip".
+If "What happens" mentions "kills detected", "kill feed", "not detected", or similar
+technical phrases — ignore them entirely; write only what a viewer watching the clip sees.
 Answer ONLY JSON: {{"line": "..."}}"""
 
 INTRO_PROMPT = """You write the cold-open voiceover for a daily "League of Legends best moments" YouTube video.
@@ -52,7 +58,16 @@ Persona: {style}.
 Today's video has {n} clips featuring these streamers: {streamers}.
 Write 1-2 short sentences welcoming viewers and teasing the content (you may hint at
 the best moment: {teaser}). No hashtags, no "subscribe", just a punchy open.
+If the teaser mentions "kills detected", "kill feed", "not detected" or similar — ignore those phrases.
 Answer ONLY JSON: {{"line": "..."}}"""
+
+
+def _ascii_name(c: dict) -> str:
+    """Use broadcaster_login (always ASCII) when display name contains CJK chars."""
+    name = c.get("broadcaster_name", "")
+    if name.isascii():
+        return name or "the streamer"
+    return c.get("broadcaster_login", "") or "the streamer"
 
 
 def _mood(audio: float) -> str:
@@ -163,7 +178,7 @@ FALLBACK_TEMPLATES = [
 
 
 def _fallback_line(clip: dict, idx: int) -> str:
-    name = clip.get("broadcaster_name", "a streamer")
+    name = _ascii_name(clip)
     summary = (clip.get("vlm_summary") or "").strip()
     fact = ""
     if len(summary) > 40 and "no kills detected" not in summary:
@@ -175,7 +190,7 @@ def _fallback_line(clip: dict, idx: int) -> str:
 def write_line(clip: dict, cm: dict, writer, previous: list[str]) -> str:
     prompt = LINE_PROMPT.format(
         style=STYLES.get(cm.get("style", "hype_caster"), STYLES["hype_caster"]),
-        streamer=clip.get("broadcaster_name", "the streamer"),
+        streamer=_ascii_name(clip),
         summary=clip.get("vlm_summary") or "unknown — describe nothing specific",
         title=clip.get("title", ""),
         mood=_mood(clip.get("audio_score", 0.0)),
@@ -192,7 +207,7 @@ def write_line(clip: dict, cm: dict, writer, previous: list[str]) -> str:
 
 
 def write_intro(clips: list[dict], cm: dict, writer) -> str:
-    streamers = ", ".join(dict.fromkeys(c.get("broadcaster_name", "?") for c in clips))
+    streamers = ", ".join(dict.fromkeys(_ascii_name(c) for c in clips))
     teaser = (clips[0].get("vlm_summary", "")[:120] if clips else "")
     prompt = INTRO_PROMPT.format(
         style=STYLES.get(cm.get("style", "hype_caster"), STYLES["hype_caster"]),
@@ -222,12 +237,21 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     out = [{"clip_id": "_intro", "text": write_intro(clips, cm, writer)}]
     log.info("_intro -> %s", out[0]["text"][:80])
+
+    # Cycle styles across clips so the video doesn't feel monotonous.
+    # hype_caster appears twice to stay dominant; analyst and chill add variety.
+    _style_cycle = ["hype_caster", "chill", "hype_caster", "analyst"]
+    vary = cm.get("vary_style", True)
+
     previous: list[str] = []
-    for c in clips:
-        text = write_line(c, cm, writer, previous)
+    for i, c in enumerate(clips):
+        cm_clip = dict(cm)
+        if vary:
+            cm_clip["style"] = _style_cycle[i % len(_style_cycle)]
+        text = write_line(c, cm_clip, writer, previous)
         previous.append(text)
         out.append({"clip_id": c["id"], "text": text})
-        log.info("%s -> %s", c["id"][:20], text[:80])
+        log.info("%s [%s] -> %s", c["id"][:20], cm_clip.get("style", ""), text[:80])
 
     (work / "commentary.json").write_text(
         json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")

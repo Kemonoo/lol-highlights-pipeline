@@ -6,14 +6,14 @@ REM     schtasks /delete /tn "LoL Daily Highlights" /f
 
 schtasks /create ^
   /tn "LoL Daily Highlights" ^
-  /tr "\"%~dp0run_daily_auto.bat\"" ^
+  /tr "cmd.exe /c \"\"%~dp0run_daily_auto.bat\"\"" ^
   /sc daily ^
   /st 03:00 ^
   /ru "%USERNAME%" ^
-  /waketorun ^
   /f
 
 if %ERRORLEVEL% EQU 0 (
+    powershell -NoProfile -Command "$t = Get-ScheduledTask -TaskName 'LoL Daily Highlights'; $t.Settings.WakeToRun = $true; $t.Settings.Hidden = $true; Set-ScheduledTask -InputObject $t" >NUL 2>&1
     echo.
     echo Scheduled: every day at 03:00 -^> run_daily_auto.bat
     echo Test it right now with:  schtasks /run /tn "LoL Daily Highlights"
