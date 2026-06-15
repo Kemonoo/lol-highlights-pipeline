@@ -18,7 +18,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .config import load_config
+from ..config import load_config
 
 HTML = """<!doctype html><html><head><meta charset="utf-8"><title>Clip labeling</title>
 <style>

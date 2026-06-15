@@ -50,9 +50,9 @@ machine (RTX 3050 4GB). Entry point: `python -m pipeline.run_daily [--date YYYY-
 
 Support: `config.py` (YAML + ${ENV} expansion + .env loader; resolves music_path),
 `state.py` (data/state.json: processed clip ids, permissions, uploaded videos),
-`label_clips.py` (browser labeling UI, stdlib HTTP server, keys G/O/B →
-work/<date>/labels.json), `eval_filter.py` (precision/recall vs labels),
-`gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3).
+`tools/label_clips.py` (browser labeling UI, stdlib HTTP server, keys G/O/B →
+work/<date>/labels.json), `tools/eval_filter.py` (precision/recall vs labels),
+`tools/gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3).
 
 ### Data flow / layout
 ```

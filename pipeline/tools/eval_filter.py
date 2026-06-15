@@ -11,7 +11,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import load_config
+from ..config import load_config
 
 
 def main():

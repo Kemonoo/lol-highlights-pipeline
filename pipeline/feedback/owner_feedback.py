@@ -222,7 +222,7 @@ def _state_videos(data: Path) -> list:
 
 
 def main():
-    from .config import load_config
+    from ..config import load_config
     cfg = load_config()
     data = Path(cfg["paths"]["data_abs"])
     fb_dir = data / "feedback"

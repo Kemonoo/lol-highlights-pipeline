@@ -90,7 +90,7 @@ def _gemini_text(prompt: str, cm: dict) -> dict | None:
     """Gemini text call with retry/backoff — free-tier rate limits (429) are common
     when writing 20+ lines right after the api_judge calls."""
     import time
-    from .vlm_filter import _parse_json
+    from ..filtering.vlm_filter import _parse_json
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{cm.get('gemini_model', 'gemini-2.5-flash')}:generateContent"
            f"?key={cm['gemini_api_key']}")
@@ -116,7 +116,7 @@ def _gemini_text(prompt: str, cm: dict) -> dict | None:
 
 
 def _ollama_text(prompt: str, cm: dict) -> dict | None:
-    from .vlm_filter import _parse_json
+    from ..filtering.vlm_filter import _parse_json
     resp = requests.post(
         f"{cm['ollama_url']}/api/generate",
         json={"model": cm["model"], "prompt": prompt, "stream": False,

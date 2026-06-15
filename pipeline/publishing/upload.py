@@ -79,7 +79,7 @@ def run(cfg: dict, state, date_label: str) -> None:
         raise RuntimeError(
             "pip install google-api-python-client google-auth-oauthlib")
 
-    from .config import ROOT
+    from ..config import ROOT
     data = Path(cfg["paths"]["data_abs"])
     video = data / "output" / f"{date_label}.mp4"
     meta_f = data / "output" / f"{date_label}.meta.json"

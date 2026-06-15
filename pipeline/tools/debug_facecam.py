@@ -48,7 +48,7 @@ def detect_and_annotate(mp4: Path, duration: float) -> tuple[np.ndarray | None, 
     Green rect = largest detected face in this frame
     Red rect   = final crop (shown on all frames if vote succeeded)
     """
-    from pipeline.shorts import _faces_in_strip
+    from pipeline.publishing.shorts import _faces_in_strip
 
     cas_frontal = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -174,7 +174,7 @@ def detect_and_annotate(mp4: Path, duration: float) -> tuple[np.ndarray | None, 
 
 
 def main():
-    from .config import load_config
+    from ..config import load_config
     cfg     = load_config()
     data    = Path(cfg["paths"]["data_abs"])
     work_root = data / "work"

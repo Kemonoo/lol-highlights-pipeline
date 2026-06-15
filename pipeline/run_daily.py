@@ -19,7 +19,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import api_judge, assemble, cleanup, commentary, credits, feedback, fetch, hud_ocr, match_linker, prefilter, shorts, thumbnail, tts, upload, vlm_filter
+from .ingestion import fetch
+from .filtering import prefilter, vlm_filter, api_judge
+from .enrichment import match_linker, hud_ocr
+from .production import commentary, tts, assemble, credits, thumbnail
+from .publishing import upload, shorts, cleanup
+from .feedback import feedback
 from .config import load_config
 from .state import State
 

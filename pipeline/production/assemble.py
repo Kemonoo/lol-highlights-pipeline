@@ -276,7 +276,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if lp:
                 mp4 = Path(lp)
         if not mp4.exists():                      # selected clip must be full quality
-            from .fetch import download_clip
+            from ..ingestion.fetch import download_clip
             hq = raw_dir / f"{c['id']}.mp4"
             if download_clip(c.get("url", ""), hq):
                 mp4 = hq

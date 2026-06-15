@@ -148,7 +148,7 @@ def _best_face_frame(mp4: Path, duration: float) -> tuple[Optional["Image"], Opt
     except ImportError:
         return None, None
 
-    from pipeline.shorts import _faces_in_strip
+    from ..publishing.shorts import _faces_in_strip
 
     cas_f = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml")

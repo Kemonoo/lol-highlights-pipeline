@@ -292,7 +292,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
 
-    from .fetch import download_clip
+    from ..ingestion.fetch import download_clip
     raw_dir = data / "raw" / date_label
     ask = None
     scored = []

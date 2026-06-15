@@ -401,7 +401,7 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
 # ── Gemini helper ─────────────────────────────────────────────────────────────
 
 def _gemini_call(prompt: str, cm: dict, key: str) -> str:
-    from .commentary import _gemini_text
+    from ..production.commentary import _gemini_text
     try:
         r = _gemini_text(prompt, cm)
         return (r or {}).get(key, "") or ""
@@ -418,7 +418,7 @@ def _upload(mp4: Path, title: str, description: str, tags: list,
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
         from .upload import _credentials
-        from .config import ROOT
+        from ..config import ROOT
         yt   = build("youtube", "v3", credentials=_credentials(ROOT, data))
         body = {
             "snippet": {
@@ -530,7 +530,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         # 4. TTS synthesis -> MP3 (words no longer used for captions)
         vo_path: Path | None = None
         if vo_line:
-            from .tts import synthesize
+            from ..production.tts import synthesize
             vo_mp3 = out_dir / f"{clip_id}_vo.mp3"
             try:
                 synthesize(vo_line, vo_mp3, tts_voice, provider=tts_provider)

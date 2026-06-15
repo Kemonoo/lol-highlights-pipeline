@@ -41,7 +41,7 @@ fetches deeper into that day's clips until the video is long enough.
    TWITCH_CLIENT_SECRET=...
    GEMINI_API_KEY=...          # aistudio.google.com (free tier is plenty)
    ```
-5. **Music**: `python -m pipeline.gen_music` generates a copyright-free bed, or drop any
+5. **Music**: `python -m pipeline.tools.gen_music` generates a copyright-free bed, or drop any
    licensed track at `assets/music/bg.mp3` (see `assets/music/README.md`)
 6. **YouTube upload** (optional): follow the 5-step OAuth setup in `pipeline/upload.py`,
    then set `upload.enabled: true` in `pipeline/config.yaml`
@@ -58,8 +58,8 @@ python -m pipeline.run_daily --only assemble --force   # redo one stage
 Review tools:
 
 ```bash
-python -m pipeline.label_clips    # browser UI: label clips good/ok/bad (G/O/B keys)
-python -m pipeline.eval_filter    # precision/recall of the filter vs your labels
+python -m pipeline.tools.label_clips    # browser UI: label clips good/ok/bad (G/O/B keys)
+python -m pipeline.tools.eval_filter    # precision/recall of the filter vs your labels
 ```
 
 Every run writes `data/work/<date>/report.html` — a visual breakdown of every keep/reject

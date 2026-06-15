@@ -27,7 +27,7 @@ from twitch_clips.twitch_top_clips import (  # noqa: E402
     is_tournament,
 )
 
-from .fetch import download_clip  # noqa: E402
+from ..ingestion.fetch import download_clip  # noqa: E402
 
 
 def _extract_audio(mp4: Path) -> str:

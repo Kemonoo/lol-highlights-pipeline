@@ -44,7 +44,7 @@ Answer ONLY JSON, one entry per comment, same order:
 
 def _classify(comments: list[str], cfg: dict) -> list[dict]:
     """One batched Gemini call; [] on any failure."""
-    from .commentary import _gemini_text
+    from ..production.commentary import _gemini_text
     cm = {"gemini_model": cfg.get("commentary", {}).get("gemini_model", "gemini-2.0-flash-lite"),
           "gemini_api_key": cfg.get("api_judge", {}).get("api_key", "")}
     if not cm["gemini_api_key"]:
@@ -109,7 +109,7 @@ def run(cfg: dict, state, date_label: str) -> None:
 
 
 def _run(cfg: dict, state, fb: dict) -> None:
-    from .config import ROOT
+    from ..config import ROOT
     data = Path(cfg["paths"]["data_abs"])
     fb_dir = data / "feedback"
     fb_dir.mkdir(exist_ok=True)
@@ -131,7 +131,7 @@ def _run(cfg: dict, state, fb: dict) -> None:
         log.info("feedback: no uploaded videos yet")
     else:
         try:
-            from .upload import _credentials
+            from ..publishing.upload import _credentials
             from googleapiclient.discovery import build
             yt = build("youtube", "v3", credentials=_credentials(ROOT, data))
             for v in videos[-fb.get("videos_to_check", 5):]:

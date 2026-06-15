@@ -4,7 +4,7 @@
 Intended as a quiet bed at music_volume_db (-24 dB); replace with a licensed track in
 assets/music/bg.mp3 whenever you prefer (see assets/music/README.md).
 
-    python -m pipeline.gen_music [out.mp3] [--minutes 1.5]
+    python -m pipeline.tools.gen_music [out.mp3] [--minutes 1.5]
 """
 import subprocess
 import sys
