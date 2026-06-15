@@ -10,8 +10,8 @@ __pycache__/
 # runtime data (clips, renders, caches, tokens)
 data/
 
-# training datasets (large; regenerable via twitch_clips collect mode)
-twitch_clips/data/
+# training datasets (large; regenerable via pipeline.tools.collect_training_data)
+data/training/
 
 # generated music (rebuild with: python -m pipeline.gen_music)
 assets/music/bg.mp3

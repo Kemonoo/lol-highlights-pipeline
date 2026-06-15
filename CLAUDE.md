@@ -18,8 +18,8 @@ machine (RTX 3050 4GB). Entry point: `python -m pipeline.run_daily [--date YYYY-
    copies (`raw/<date>/lq/`) for scoring; vlm_filter downloads full quality for its
    survivors only; api_judge reuses the LQ copy instead of re-encoding
 2. `prefilter.py` — free local scoring: title keywords / tournament exclude / audio-hype
-   / motion (functions imported from `twitch_clips/twitch_top_clips.py` — trained
-   thresholds live there) + broadcaster blacklist → `work/<date>/prefiltered.json`
+   / motion (functions from `pipeline/filtering/scoring.py`) + broadcaster blacklist
+   → `work/<date>/prefiltered.json`
 3. `vlm_filter.py` + `kill_detect.py` — local Ollama VLM, STEPWISE (one simple question
    per image — small models fail multi-question prompts): gameplay vote (3 frames),
    pro-play check, kill-feed/banner/event-log crop analysis. Detection cached
@@ -52,7 +52,10 @@ Support: `config.py` (YAML + ${ENV} expansion + .env loader; resolves music_path
 `state.py` (data/state.json: processed clip ids, permissions, uploaded videos),
 `tools/label_clips.py` (browser labeling UI, stdlib HTTP server, keys G/O/B →
 work/<date>/labels.json), `tools/eval_filter.py` (precision/recall vs labels),
-`tools/gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3).
+`tools/gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3),
+`tools/collect_training_data.py` (standalone Twitch fetch + feature extraction →
+data/training/dataset_*.json), `tools/review_clips.py` (Tkinter labeling UI for
+training data), `tools/train_classifier.py` (logistic regression on labeled clips).
 
 ### Data flow / layout
 ```
@@ -60,8 +63,8 @@ data/raw/<date>/        clips.json + downloaded mp4s
 data/work/<date>/       prefiltered.json → vlm_scored/vlm_filtered.json → commentary.json
                         → vo/*.mp3 → segments/*.mp4 → chapters.json; caches; report.html
 data/output/            <date>.mp4 + <date>.meta.json
+data/training/          dataset_*.json (gitignored) — classifier training data
 _archive/               pre-pivot code (shorts app, long-video experiment) — do not touch
-twitch_clips/           legacy fetcher + trained audio/motion scoring (prefilter imports it)
 ```
 
 ### Non-obvious decisions (do not re-litigate without instruction)
@@ -141,8 +144,8 @@ Use the cheapest model that can handle the task reliably:
   (.gitignore covers them).
 - `pipeline/config.yaml` is the single tuning surface — new behavior gets a config key
   with a comment, defaults preserving current behavior.
-- Don't touch `_archive/` (reference only) or `twitch_clips/` scoring internals
-  (trained thresholds) — prefilter depends on its function signatures.
+- Don't touch `_archive/` (reference only). Scoring functions live in
+  `pipeline/filtering/scoring.py` — prefilter depends on their signatures.
 - Windows is the production target: paths must work on Windows; fonts via _font();
   batch files for user-facing entry points.
 - Upload stays `privacy: private` and `enabled: false` by default.

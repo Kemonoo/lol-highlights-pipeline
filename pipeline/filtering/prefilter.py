@@ -1,7 +1,7 @@
 """Stage 2 — Cheap local pre-filter (no API costs).
 
-Reuses the trained scoring from twitch_clips/twitch_top_clips.py:
-  keyword pass / tournament exclude / audio-hype score / motion score.
+Uses keyword / tournament / audio-hype / motion scoring from
+pipeline/filtering/scoring.py (functions originally trained on labeled clips).
 Operates on the already-downloaded MP4s (extracts audio via ffmpeg).
 Also applies the broadcaster blacklist (co-streamers, watch parties).
 
@@ -10,24 +10,13 @@ Writes data/work/<date>/prefiltered.json with surviving clips, best-first.
 import json
 import logging
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
+from .scoring import compute_audio_score, compute_motion_score, has_positive_keyword, is_tournament
+from ..ingestion.fetch import download_clip
+
 log = logging.getLogger("pipeline.prefilter")
-
-# Make twitch_clips importable from repo root
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from twitch_clips.twitch_top_clips import (  # noqa: E402
-    compute_audio_score,
-    compute_motion_score,
-    has_positive_keyword,
-    is_tournament,
-)
-
-from ..ingestion.fetch import download_clip  # noqa: E402
 
 
 def _extract_audio(mp4: Path) -> str:
