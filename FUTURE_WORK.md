@@ -6,6 +6,29 @@ Ideas and improvements to explore. Ordered roughly by expected impact.
 
 ## High impact
 
+### Funny outro (shelved 2026-06-19 — findings)
+Goal: end each video on genuinely funny streamer clips (Synapse-style: singing, bits,
+absurd moments, funny fails), drawn from a reused pool of evergreen favourites.
+Prototyped in `pipeline/tools/find_funny.py` (since removed). What we learned:
+- **Detection works**: Gemini watching the clip reliably *rates* funniness with good
+  reasons (caught a 9/10 scatting/singing bit; correctly gave a "calmly takes a drink"
+  clip 0/10).
+- **But it conflated hype with comedy** — pentakill screams / drake shouts scored high.
+  The prompt rewarded "shock/rage/laugh" (loud gameplay reactions), not actual jokes.
+- **Window localization failed**: Gemini's video timestamps were mostly degenerate
+  (`0.2-0.2s`). It knows *what's* funny, not *when*.
+- **Wrong candidate pool**: it scanned the play-prefiltered set, which is selected for
+  gameplay — pure-comedy clips are filtered out before it looks.
+
+Proper approach when revisited:
+1. Separate funny-candidate prefilter: scan a BROADER fetch, score on funny clip TITLES
+   (keywords / 😂💀🤣 emoji / joke phrasing), not on kills/motion.
+2. Comedy-specific prompt that distinguishes genuine comedy from loud hype.
+3. Window: don't trust Gemini timestamps — use the whole short clip, or an audio-energy
+   peak, to bound the funny moment.
+4. Rolling vetted pool (keep funny≥8) + dedupe so a clip isn't reused within N days.
+5. Crop/zoom the facecam for the outro montage so the reaction is the focus.
+
 ### Match linker (Phase 2 — planned)
 Connect each clip to the actual Riot match being played at that timestamp.
 `pipeline/enrichment/match_linker.py` has the full implementation plan in its docstring.

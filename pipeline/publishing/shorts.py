@@ -451,6 +451,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     detect_face  = sh.get("detect_facecam", True)
     target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
     pre_roll     = float(sh.get("pre_roll_s", 7))                          # build-up before the heat
+    cap_margin   = int(sh.get("caption_margin_v", 160))                    # px above the bottom edge
 
     done: dict = {}
     done_f = out_dir / "done.json"
@@ -533,7 +534,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         ass_path: Path | None = None
         if speech_words:
             ass_path = out_dir / f"{clip_id}.ass"
-            _write_tiktok_ass(speech_words, ass_path, margin_v=80)
+            _write_tiktok_ass(speech_words, ass_path, margin_v=cap_margin)
             log.info("  captions: %d words", len(speech_words))
 
         # 7. Meme text overlay

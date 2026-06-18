@@ -44,7 +44,7 @@ vlm_filter:
 
 api_judge:                    # Gemini full-video quality judge on local survivors
   enabled: true               # auto-skips when GEMINI_API_KEY is not set in .env
-  model: gemini-2.0-flash
+  model: gemini-2.5-flash     # NB: gemini-2.0-flash was retired (404 on generateContent)
   api_key: ${GEMINI_API_KEY}
   max_mb: 19                  # inline API limit; clips are shrunk to 480p first
   min_entertainment: 6        # keep gameplay clips at or above this
@@ -95,7 +95,7 @@ commentary:
   enabled: false              # LEAN MODE: no AI voiceover script (Synapse-style: clips speak
                               # for themselves). Set true to bring back narrated commentary.
   provider: auto              # auto = gemini if key set, else ollama
-  gemini_model: gemini-2.0-flash-lite  # separate free-tier quota bucket from the judge's flash
+  gemini_model: gemini-2.5-flash-lite  # cheap/fast bucket separate from the judge's flash
   ollama_url: http://localhost:11434
   model: qwen2.5:7b           # local fallback when Gemini quota is exhausted; MUST be an
                               # installed Ollama model (`ollama list`). qwen3:30b-a3b is
@@ -219,6 +219,7 @@ shorts:
   detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
   target_seconds: 32          # punchy length — 20-35s wins on Shorts (retention drops past ~45s)
   pre_roll_s: 7               # seconds of build-up before the best moment (lead with the heat)
+  caption_margin_v: 160       # px the captions sit above the bottom (raised clear of the Shorts UI)
 
 cleanup:
   enabled: true
