@@ -1,50 +1,60 @@
-# LoL Daily Highlights — automated Twitch → YouTube pipeline
+# KEMONO — automated LoL Twitch → YouTube pipeline
 
-A fully automated pipeline that turns each day's top League of Legends Twitch clips into
-a polished, monetizable long-form YouTube video — with AI clip selection, generated
-commentary, text-to-speech voiceover, countdown editing, slow-mo replays, music, and
-auto-upload.
+A fully automated pipeline that turns each day's top League of Legends Twitch clips into a
+polished daily YouTube video — AI clip selection, an animated brand intro, countdown
+editing, an AI-composited thumbnail, and auto-upload — plus derived vertical Shorts.
 
-One command in, one ~8-minute video out:
+One command in, one ~9-minute video out:
 
 ```
 venv\Scripts\python.exe -m pipeline.run_daily
 ```
 
+## Two modes
+
+- **Lean (default)** — Synapse-style: curated **English** clips + transitions + the KEMONO
+  brand intro, the clips' own audio, no voiceover/music. Clean and fast.
+- **Produced** — flip on AI commentary + neural voiceover + a music bed (all config
+  toggles; the machinery is intact). Useful if you want a narrated, more "transformed"
+  cut for monetization.
+
 ## How it works
 
 | Stage | What it does | Cost |
 |---|---|---|
-| 1. fetch | Pulls the day's top LoL clips from the Twitch Helix API, downloads MP4s | free |
-| 2. prefilter | Cheap local scoring: title keywords, audio-hype, motion, broadcaster blacklist | free |
-| 3. vlm_filter | Local vision model (Ollama) judges each clip stepwise: real gameplay? esports broadcast? kills in the kill feed / event log? Rule-based keep/reject | free (your GPU) |
-| 3.5 api_judge | Gemini watches each surviving clip *as video* and scores play quality + entertainment; selection fills toward the target length and orders clips as a countdown | ~1¢/day |
-| 4. commentary | LLM writes grounded, ironic caster lines per clip + a cold open (only from verified facts — no hallucinated plays) | ~0¢ |
-| 5. tts | Free neural voiceover — local Kokoro (edge-tts fallback) with word timestamps | free |
-| 6. assemble | FFmpeg: intro card, #N countdown badges, animated streamer lower-thirds, voiceover ducking, slow-mo REPLAY of the best moment, outro, music bed, loudness mastering | free |
-| 7. credits | YouTube title with a content hook, chapters, per-streamer credit links | free |
-| 8. upload | Resumable upload via YouTube Data API (private by default) | free |
+| fetch | Pulls the day's top LoL clips from the Twitch Helix API (metadata; lazy MP4 downloads) | free |
+| prefilter | Cheap local scoring: title keywords, audio-hype, motion, blacklist, language allowlist | free |
+| vlm_filter | Local vision model (Ollama) judges each clip stepwise: real gameplay? esports? kills in the feed? | free (GPU) |
+| api_judge | Gemini watches each survivor *as video*, scores play/entertainment, orders a countdown | ~1¢/day |
+| transcribe | faster-whisper detects the spoken language and translates speech → English (off in lean mode) | free (GPU) |
+| commentary · tts | *(produced mode only)* grounded caster lines + neural voiceover | ~free |
+| assemble | FFmpeg: KEMONO brand intro, #N countdown badges, animated streamer nameplates, fades, optional slow-mo replay, outro, loudness mastering | free |
+| credits | Clickbait title + date marker, chapters, per-streamer credit links | free |
+| thumbnail | Gemini 2.5 Flash Image ("Nano Banana") composite: real reaction face + gameplay + gold announcement (local PIL fallback) | ~4¢/img |
+| upload | Resumable upload via YouTube Data API (private by default) | free |
+| shorts | Vertical Shorts from the top clips: facecam split, English captions, top hook text | free |
 
-Every stage is cached and resumable — interrupt anything, re-run, it continues.
-If a day's selection is shorter than `target_minutes_ideal`, the pipeline automatically
-fetches deeper into that day's clips until the video is long enough.
+Every stage is cached and resumable. If a day's selection is shorter than
+`target_minutes_ideal`, the pipeline fetches deeper into that day's clips until it's long
+enough.
 
 ## Setup
 
 1. **Python**: `python -m venv venv && venv\Scripts\pip install -r requirements.txt`
 2. **FFmpeg**: install and put `ffmpeg`/`ffprobe` on PATH
 3. **Ollama** (free local vision filtering): install from ollama.com, then
-   `ollama pull qwen3-vl:4b` (4GB VRAM) or a larger vision model if you have one
+   `ollama pull qwen3-vl:4b` (4GB VRAM) or a larger vision model
 4. **Keys** — create `.env` in the repo root:
    ```
    TWITCH_CLIENT_ID=...        # dev.twitch.tv -> register an app
    TWITCH_CLIENT_SECRET=...
-   GEMINI_API_KEY=...          # aistudio.google.com (free tier is plenty)
+   GEMINI_API_KEY=...          # aistudio.google.com — needs BILLING for AI thumbnails
    ```
-5. **Music**: `python -m pipeline.tools.gen_music` generates a copyright-free bed, or drop any
-   licensed track at `assets/music/bg.mp3` (see `assets/music/README.md`)
-6. **YouTube upload** (optional): follow the 5-step OAuth setup in `pipeline/publishing/upload.py`,
-   then set `upload.enabled: true` in `pipeline/config.yaml`
+   The AI thumbnail model (`gemini-2.5-flash-image`) is **not** on the free tier; enable
+   pay-as-you-go billing on the API project, or set `thumbnail.provider: local`.
+5. **Music** *(produced mode)*: see `assets/music/README.md` (tracks are local-only).
+6. **YouTube upload** (optional): follow the OAuth setup in `pipeline/publishing/upload.py`,
+   then set `upload.enabled: true` in `pipeline/config.yaml`.
 
 ## Usage
 
@@ -55,41 +65,35 @@ python -m pipeline.run_daily --stop-after vlm_filter   # partial run
 python -m pipeline.run_daily --only assemble --force   # redo one stage
 ```
 
-Review tools:
-
-```bash
-python -m pipeline.tools.label_clips    # browser UI: label clips good/ok/bad (G/O/B keys)
-python -m pipeline.tools.eval_filter    # precision/recall of the filter vs your labels
-```
-
 Every run writes `data/work/<date>/report.html` — a visual breakdown of every keep/reject
 decision with thumbnails, scores, and reasons.
 
 ## Tuning (pipeline/config.yaml)
 
-The interesting knobs: `video.target_minutes_ideal` (default 8), `blacklist.broadcasters`
-(channels to always skip), `api_judge.min_entertainment` (quality bar), `commentary.style`
-(hype_caster / analyst / chill), `tts.voice` and `tts.enabled`, `video.countdown_enabled`,
-`video.replay_min_score`, `video.music_volume_db`. Decision rules recompute from cache,
-so re-tuning costs seconds, not GPU time.
+Lean/produced: `commentary.enabled`, `tts.enabled`, `video.music_enabled`,
+`transcribe.enabled`. Selection: `prefilter.include_languages` (`[en]`),
+`video.target_minutes_ideal`, `blacklist.broadcasters`, `api_judge.min_entertainment`.
+Packaging: `upload.title_styles` + `title_date`, `thumbnail.provider` (gemini/local),
+`video.brand` (KEMONO intro / God Fist Lee Sin splash). Shorts: `shorts.target_seconds`,
+`shorts.pre_roll_s`. Decision rules recompute from cache, so re-tuning costs seconds.
 
 ## Design notes
 
-The filter is a cost cascade: free local checks discard ~90% of clips, the paid video-AI
-judge only ever sees the handful of survivors. Local models get *decomposed* questions
-(one simple question per cropped image — kill feed, announcement banner, event log)
-because small VLMs fail at open-ended judgment but are reliable at "count the kill
-banners in this crop". Taste — "is this play actually good?" — is delegated to Gemini
-watching the full clip. Commentary is grounded: the writer model only sees facts the
-judge verified on screen, which keeps the voiceover accurate (a YouTube monetization
-requirement: significant original commentary, not templated filler).
+The filter is a **cost cascade**: free local checks discard ~90% of clips; the paid video
+judge only sees the survivors. Small local VLMs get *decomposed* questions (one cropped
+image — kill feed, banner, event log) because they fail at open-ended judgment but are
+reliable at "count the kill banners here"; taste ("is this play actually good?") is
+delegated to Gemini watching the full clip. Multilingual handling: faster-whisper
+translates streamer speech to English so nothing we publish is in another language.
 
-Per-streamer credit links and chapters are generated for every video. Clips remain the
-property of their creators; use `permissions.require_permission` to restrict the pipeline
-to broadcasters who have approved use, and respect takedown requests.
+**Monetization note:** lean mode is a thin "transformation" of reused content, which is a
+risk for YouTube Partner Program eligibility. Grow first; add an originality layer (the
+produced-mode commentary, a sharper niche, or per-language channels — the real automation
+moat) before relying on ad revenue. Per-streamer credit links + chapters are always
+generated; clips remain their creators' property (`permissions.require_permission` gates
+to approved broadcasters; respect takedowns).
 
 ## Credits
 
-This project was vibe-coded with [Claude](https://claude.com) (Anthropic) — architecture,
-research, code, and iteration loops were AI-driven with human creative direction and
-quality labeling.
+Vibe-coded with [Claude](https://claude.com) (Anthropic) — architecture, research, code,
+and iteration loops AI-driven with human creative direction.
