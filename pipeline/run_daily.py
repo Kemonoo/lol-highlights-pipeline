@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 from .ingestion import fetch
 from .filtering import prefilter, vlm_filter, api_judge
-from .enrichment import match_linker, hud_ocr
+from .enrichment import transcribe, match_linker, hud_ocr
 from .production import commentary, tts, assemble, credits, thumbnail
 from .publishing import upload, shorts, cleanup
 from .feedback import feedback
@@ -36,6 +36,7 @@ STAGES = [
     ("prefilter", prefilter.run),
     ("vlm_filter", vlm_filter.run),
     ("api_judge", api_judge.run),
+    ("transcribe", transcribe.run),   # streamer speech -> English (commentary + shorts captions)
     ("match_linker", match_linker.run),
     ("hud_ocr", hud_ocr.run),
     ("commentary", commentary.run),
@@ -91,6 +92,7 @@ def _stage_outputs(cfg: dict, d: str) -> dict:
         "prefilter": work / "prefiltered.json",
         "vlm_filter": work / "vlm_filtered.json",
         "api_judge": work / "api_scored.json",
+        "transcribe": work / "transcripts.json",
         "commentary": work / "commentary.json",
         "tts": work / "vo" / "timings.json",
         "assemble": data / "output" / f"{d}.mp4",

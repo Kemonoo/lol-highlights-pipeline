@@ -314,7 +314,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
         intro = seg_dir / "_intro.mp4"
         ivo = vo_dir / "_intro.mp3"
         if not intro.exists() or stale(intro, ivo):
-            render_intro(intro, date_label, ivo, v)
+            if v.get("brand", {}).get("enabled"):
+                from . import brand
+                brand.build_intro(cfg, intro)        # KEMONO logo sting
+            else:
+                render_intro(intro, date_label, ivo, v)
             mark(intro, ivo)
         t += _duration(intro)
         segments.append(intro)

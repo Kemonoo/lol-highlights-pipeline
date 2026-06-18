@@ -18,7 +18,9 @@ prefilter:                    # thresholds from twitch_clips training
   audio_pass: 0.52
   motion_exclude: 0.015
   max_keep: 40                # best N clips proceed to VLM stage
-  exclude_languages: [ja, zh] # Twitch clip language codes to drop outright (Korean kept)
+  include_languages: [en]     # English-first channel: keep only English-broadcaster clips
+                              # (allowlist wins over exclude_languages). [] = disable allowlist.
+  exclude_languages: [ja, zh] # used only when include_languages is empty
 
 vlm_filter:
   enabled: true
@@ -55,6 +57,13 @@ api_judge:                    # Gemini full-video quality judge on local survivo
   fallback_audio_min: 0.72
   fallback_motion_min: 0.11
 
+transcribe:                   # multilingual streamer speech -> English (faster-whisper)
+  enabled: false              # LEAN MODE: only commentary consumes the stage output, and that's
+                              # off — so skip it (shorts still transcribes its own clips directly).
+                              # Set true when commentary.enabled is true.
+  model: small                # tiny|base|small|medium — small fits the RTX 3050 4GB well
+  max_seconds: 60             # ignore speech past this point in a clip (cost bound)
+
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true
   videos_to_check: 5          # how many recent uploads to scan
@@ -83,6 +92,8 @@ match_linker:
   summoner_map: {}
 
 commentary:
+  enabled: false              # LEAN MODE: no AI voiceover script (Synapse-style: clips speak
+                              # for themselves). Set true to bring back narrated commentary.
   provider: auto              # auto = gemini if key set, else ollama
   gemini_model: gemini-2.0-flash-lite  # separate free-tier quota bucket from the judge's flash
   ollama_url: http://localhost:11434
@@ -94,7 +105,7 @@ commentary:
   max_sentences: 2
 
 tts:
-  enabled: true               # false = silent videos (no voiceover)
+  enabled: false              # LEAN MODE: no voiceover. true = narrated (needs commentary.enabled)
   provider: kokoro            # edge-tts (Microsoft Neural, needs internet) | kokoro (local, best free quality)
   voice: af_bella             # friendly key (male-us -> am_michael) OR a raw Kokoro id.
                               # best Kokoro voices: am_michael / am_fenrir / am_puck (male),
@@ -108,7 +119,14 @@ video:
   preset: veryfast            # x264 encode speed/quality tradeoff
   font: null                  # null = auto (Arial Bold on Windows, CJK fallback for JP/KR/CN names)
   intro_enabled: true
-  intro_title: DAILY LEAGUE HIGHLIGHTS
+  intro_title: DAILY LEAGUE HIGHLIGHTS   # used only when brand.enabled is false
+  brand:                        # KEMONO channel identity (God Fist Lee Sin)
+    enabled: true               # animated logo sting as the intro (replaces the text card)
+    name: KEMONO
+    tagline: DAILY LEAGUE OF LEGENDS
+    splash_skin: 11             # Data Dragon LeeSin_11 = God Fist Lee Sin
+    splash_path: ""             # optional: path to your EDITED splash (overrides the download)
+    intro_seconds: 2.8
   lower_third_seconds: 5.5    # how long the streamer card stays on screen
   countdown_enabled: true     # clips play worst->best with a #N badge (retention format)
   replay_enabled: false       # off: the judge's best_moment_s timestamp lands after the
@@ -119,6 +137,8 @@ video:
   target_minutes_min: 5
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10
+  music_enabled: false         # LEAN MODE: no background music (Synapse-style — the clip's own
+                               # crowd/streamer audio carries it). true = loop a music_track bed.
   music_path: ""               # overridden by random pick from music_tracks; set directly to
                                # bypass the list (e.g. assets/music/bg.mp3 for the generated bed)
   music_tracks:                # one track is randomly selected per run
@@ -163,14 +183,18 @@ upload:
   enabled: true               # OAuth set up — first upload opens a browser once
   privacy: public           # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
-  # curiosity-first titles (no date). Placeholders: {hook} {emoji} {n} {star}.
-  # one is picked per day (rotated); credits.py has built-in defaults if omitted.
+  # clickbait/curiosity titles; a date series-marker is appended → "HOOK | June 17, 2026"
+  # (like daily-clip channels that suffix an episode number). Placeholders: {hook} {emoji}
+  # {n} {star}. One is picked per day (rotated); credits.py has built-in defaults if omitted.
+  title_date: true            # append " | <Month Day, Year>" as the daily-series marker
   title_styles:
     - "{hook}?! {emoji} League of Legends Best Moments"
-    - "The Most INSANE LoL Plays of the Day {emoji} (Top {n})"
-    - "{star} Went CRAZY… {emoji} Best LoL Moments (Top {n})"
-    - "You Won't Believe Clip #1 {emoji} LoL Daily Best Moments"
-    - "{hook} {emoji} Top {n} League of Legends Plays Today"
+    - "He Really Did THAT… {emoji} LoL Plays of the Day"
+    - "Wait Until You See Clip #1 {emoji} LoL Best Moments"
+    - "You Won't Believe These LoL Plays {emoji} (Top {n})"
+    - "How Is This Even Possible?! {emoji} LoL Daily Top {n}"
+    - "{hook} {emoji} The Best League of Legends Moments Today"
+    - "{star} Went CRAZY… {emoji} LoL Best Moments (Top {n})"
 
 thumbnail:
   enabled: true               # generate a cinematic 1280×720 thumbnail per video
@@ -193,6 +217,8 @@ shorts:
   upload: true                # auto-upload after render; shares the main upload OAuth token
   privacy: public             # private | unlisted | public
   detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
+  target_seconds: 32          # punchy length — 20-35s wins on Shorts (retention drops past ~45s)
+  pre_roll_s: 7               # seconds of build-up before the best moment (lead with the heat)
 
 cleanup:
   enabled: true

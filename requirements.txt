@@ -17,9 +17,9 @@ Pillow
 google-api-python-client
 google-auth-oauthlib
 
-# Shorts speech captions (streamer voice, auto-translated to English)
-# GPU-accelerated on RTX 3050 when torch+CUDA is installed; falls back to CPU.
-openai-whisper
+# Multilingual speech -> English (enrichment/transcribe.py: commentary context + shorts
+# captions). GPU-accelerated on the RTX 3050 (int8_float16) when CUDA is present, else CPU.
+faster-whisper
 
 # ffmpeg + ffprobe must be on PATH
 # Local VLM filtering needs Ollama (https://ollama.com) with a vision model,

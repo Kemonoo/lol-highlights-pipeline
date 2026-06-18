@@ -22,14 +22,18 @@ _HOOKS = [
 ]
 _EMOJI = ["😱", "🔥", "💀", "😳", "🤯"]
 
-# curiosity-first title templates (no date — dates make a video look stale and kill
-# evergreen CTR). {hook}=power phrase, {n}=clip count, {star}=top streamer (ASCII).
+# Clickbait/curiosity hooks (a date series-marker is appended → "HOOK | June 17, 2026",
+# like the daily-clip channels that suffix an episode number). The hook is the CLICK
+# driver and need not be literally accurate. {hook}=power phrase, {n}=clip count,
+# {star}=top streamer (ASCII).
 DEFAULT_TITLE_STYLES = [
     "{hook}?! {emoji} League of Legends Best Moments",
-    "The Most INSANE LoL Plays of the Day {emoji} (Top {n})",
-    "{star} Went CRAZY… {emoji} Best LoL Moments (Top {n})",
-    "You Won't Believe Clip #1 {emoji} LoL Daily Best Moments",
-    "{hook} {emoji} Top {n} League of Legends Plays Today",
+    "He Really Did THAT… {emoji} LoL Plays of the Day",
+    "Wait Until You See Clip #1 {emoji} LoL Best Moments",
+    "You Won't Believe These LoL Plays {emoji} (Top {n})",
+    "How Is This Even Possible?! {emoji} LoL Daily Top {n}",
+    "{hook} {emoji} The Best League of Legends Moments Today",
+    "{star} Went CRAZY… {emoji} LoL Best Moments (Top {n})",
 ]
 
 
@@ -62,15 +66,28 @@ def _star(clips: list[dict]) -> str:
     return nm if nm.isascii() else (best.get("broadcaster_login", "") or "")
 
 
+def _nice_date(date_label: str) -> str:
+    """'2026-06-17' -> 'June 17, 2026' (cross-platform, no leading-zero day)."""
+    from datetime import datetime
+    try:
+        dt = datetime.strptime(date_label, "%Y-%m-%d")
+        return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
+    except ValueError:
+        return date_label
+
+
 def _title(cfg: dict, date_label: str, clips: list[dict], n: int) -> str:
-    """Build a curiosity-driven, dateless, rotating title (≤ ~90 chars)."""
+    """Clickbait hook + date series-marker, rotating daily (≤ 100 chars)."""
+    up = cfg.get("upload", {})
     seed = int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16)
     ctx = {"hook": _hook(clips), "n": n or len(clips),
            "star": _star(clips), "emoji": _EMOJI[seed % len(_EMOJI)]}
-    styles = cfg.get("upload", {}).get("title_styles") or DEFAULT_TITLE_STYLES
+    styles = up.get("title_styles") or DEFAULT_TITLE_STYLES
     usable = [s for s in styles if not ("{star}" in s and not ctx["star"])] or DEFAULT_TITLE_STYLES[:2]
-    title = usable[seed % len(usable)].format(**ctx)
-    return re.sub(r"\s{2,}", " ", title).strip()[:90]
+    head = re.sub(r"\s{2,}", " ", usable[seed % len(usable)].format(**ctx)).strip()
+    if up.get("title_date", True):
+        return f"{head[:72]} | {_nice_date(date_label)}".strip()[:100]
+    return head[:100]
 
 
 def build_metadata(cfg: dict, date_label: str, chapters: list[dict],

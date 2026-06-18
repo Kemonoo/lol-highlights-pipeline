@@ -34,14 +34,18 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
    from vlm_scored.json — idempotent)
-5. `enrichment/match_linker.py`, `enrichment/hud_ocr.py` — Phase-2 stubs (Riot API match
-   data; HUD OCR). Docstrings contain the implementation plans. Riot API > scraping
-   op.gg/u.gg (no public APIs there)
+5. `enrichment/transcribe.py` — multilingual streamer speech → English (faster-whisper,
+   task=translate): detects language, translates, word timestamps → `work/<date>/
+   transcripts.json` {clip_id: {lang, text, words}}. Cached per clip; feeds commentary
+   (reliable context) + shorts (English captions). `enrichment/match_linker.py`,
+   `enrichment/hud_ocr.py` — Phase-2 stubs (Riot API match data; HUD OCR). Docstrings
+   contain the implementation plans. Riot API > scraping op.gg/u.gg (no public APIs there)
 6. `production/commentary.py` — montage-caster lines (hype the player/moment; never
    invents facts; sees previous lines to avoid repetition) + `_intro` cold-open line.
    Provider auto: Gemini if key, else Ollama → `commentary.json` [{clip_id, text}].
-   Treats the per-clip summary as an UNRELIABLE hint until video analysis improves —
-   hypes the player generally rather than narrating mechanics it isn't sure of.
+   Treats the per-clip summary as an UNRELIABLE hint, but now ALSO sees the English speech
+   transcript (transcripts.json) as a RELIABLE signal — reacts to what the streamer
+   actually said; still never invents champions/numbers; English only.
 7. `production/tts.py` — Kokoro local (default, voice `af_bella`; the model is built once
    per run as a module-level singleton) / edge-tts fallback. Word timestamps; `_intro`
    handled like any line; per-clip failures are skipped, not fatal; timings flushed
@@ -69,7 +73,10 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
 11. `publishing/upload.py` — YouTube Data API v3 resumable upload, OAuth desktop flow
     (client_secret.json in root, token cached at data/yt_token.json)
 12. `publishing/shorts.py` — derives vertical Shorts from top clips (facecam detection +
-    split-screen layout, captions); shares the main upload OAuth → `work/<date>/shorts/`
+    split-screen layout). Everything is English: speech captions + VO/title use
+    `enrichment.transcribe`; the title is generated in English from the summary + speech
+    (NEVER the raw, often-native Twitch clip title). Shares the main upload OAuth →
+    `work/<date>/shorts/`
 13. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days` to free disk
 
 Support: `config.py` (YAML + ${ENV} expansion + .env loader; picks a random `music_track`
@@ -146,10 +153,14 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   (min_agreement). Auto-update (when enabled) may touch config.yaml/blacklist/prompt
   strings ONLY — never code structure. kill_detect short-circuits once kills are
   confirmed; don't remove that without measuring runtime.
-- **Legal posture** (PLAN.md): YouTube "inauthentic content" policy requires real
-  per-clip commentary; per-streamer credits always generated; uploads private by
-  default; music is royalty-free NCS (producer attribution auto-added to the
-  description, see `video.music_tracks`) or the in-house generated bed.
+- **LEAN MODE (current default)**: chasing the Synapse model (curated English clips +
+  transitions + brand, no narration). `commentary.enabled: false`, `tts.enabled: false`,
+  `video.music_enabled: false`, `prefilter.include_languages: [en]`. The VO/commentary/
+  music machinery is intact behind those switches — don't delete it. Trade-off: dropping
+  commentary weakens the YouTube "reused content"/YPP monetization hedge (was the original
+  reason commentary existed). Strategy is grow-first; revisit an originality layer (light
+  commentary or a niche/heavy editing) before applying for monetization. Per-streamer
+  credits are still always generated; uploads private by default.
 
 ## Token efficiency
 - Read only files relevant to the task. Module docstrings are accurate and current —

@@ -88,16 +88,25 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if len(clips) < len(raw["clips"]):
         log.info("Blacklist removed %d clips", len(raw["clips"]) - len(clips))
 
-    # drop whole-language exclusions (e.g. ja/zh) before any download/scoring —
-    # the English VO can't sensibly narrate them. Korean (ko) is kept on purpose.
+    # Language gating on the Twitch broadcaster language, before any download.
+    # include_languages (allowlist) wins when set — e.g. ["en"] for an English-only
+    # channel; otherwise exclude_languages drops specific ones (ja/zh). Twitch tags are
+    # imperfect, so the expansion loop backfills if this thins the pool, and transcribe.py
+    # later detects the *actual* spoken language.
+    include_langs = {l.lower() for l in pf.get("include_languages", [])}
     exclude_langs = {l.lower() for l in pf.get("exclude_languages", [])}
-    if exclude_langs:
+    if include_langs or exclude_langs:
         before = len(clips)
-        clips = [c for c in clips
-                 if (c.get("language", "") or "").lower() not in exclude_langs]
+
+        def _keep(c: dict) -> bool:
+            lang = (c.get("language", "") or "").lower()
+            return lang in include_langs if include_langs else lang not in exclude_langs
+
+        clips = [c for c in clips if _keep(c)]
         if len(clips) < before:
-            log.info("Language filter (%s) removed %d clips",
-                     ",".join(sorted(exclude_langs)), before - len(clips))
+            rule = (f"only {','.join(sorted(include_langs))}" if include_langs
+                    else f"exclude {','.join(sorted(exclude_langs))}")
+            log.info("Language filter (%s) removed %d clips", rule, before - len(clips))
 
     work = data / "work" / date_label
     work.mkdir(parents=True, exist_ok=True)

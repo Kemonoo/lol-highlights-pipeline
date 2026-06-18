@@ -4,11 +4,13 @@ Per clip:
   1. Trim to ≤55 s (centered on api_best_moment_s when the clip is longer).
   2. Face cam detection (9 frames, majority vote, CLAHE + frontal + profile cascades).
   3. One-pass ffmpeg render at 1080×1920 (blur-bg or split layout).
-  4. Informative VO line synthesised by the same TTS provider as the main video.
-  5. Streamer-speech captions (Whisper small, auto-translated to English, word-level
-     timestamps, TikTok style, positioned at the BOTTOM of the frame so they do not
-     overlap LoL HUD ability icons). Requires: pip install openai-whisper
-  6. Upload as YouTube Short (#Shorts tag).
+  4. Streamer speech → English via the shared enrichment.transcribe (faster-whisper):
+     drives both the English captions and the VO/title context.
+  5. Informative English VO line synthesised by the same TTS provider as the main video.
+  6. English speech captions (word-level, TikTok style, positioned at the BOTTOM of the
+     frame so they do not overlap LoL HUD ability icons).
+  7. Upload as a YouTube Short — English title generated from the summary + speech
+     (never the raw, often-native Twitch clip title).
 
 Output:  data/work/<date>/shorts/<clip_id>.mp4
 Sentinel: data/work/<date>/shorts/done.json
@@ -33,7 +35,8 @@ Good examples (do NOT copy verbatim, vary the structure):
   "{streamer} going full send — let's see if the read was right."
   "No flash, one HP, three enemies. This is going to be interesting."
 Keep under 15 words. Reference what actually happens. No hype words like "insane".
-Clip: {streamer} — {summary}
+English only. Clip: {streamer} — {summary}
+What the streamer said (English, may be empty): {speech}
 Answer ONLY JSON: {{"line": "..."}}"""
 
 _OVERLAY_PROMPT = """Write 2-4 words of punchy on-screen caption text for this League of Legends clip.
@@ -42,6 +45,14 @@ Examples: NOT LOOKING GOOD, SOMEHOW WORKED, THE AUDACITY, CALCULATED, CLASSIC
 No emoji. No punctuation beyond ellipsis (...). Capital letters OK.
 Clip: {streamer} — {summary}
 Answer ONLY JSON: {{"text": "..."}}"""
+
+_TITLE_PROMPT = """Write a punchy ENGLISH YouTube Shorts title for a League of Legends clip.
+<= 70 characters. English ONLY (never the streamer's native language). Clickbait but honest,
+references what happens. No hashtags, no quotes, no emoji.
+Streamer: {streamer}
+What happens (English): {summary}
+What the streamer said (English, may be empty): {speech}
+Answer ONLY JSON: {{"title": "..."}}"""
 
 
 # ── name helper ───────────────────────────────────────────────────────────────
@@ -199,51 +210,19 @@ def _detect_facecam(mp4: Path, duration: float) -> tuple | None:
 
 # ── clip trimming ─────────────────────────────────────────────────────────────
 
-def _trim_clip(mp4: Path, out: Path, duration: float, best_s: float) -> Path:
-    """Stream-copy trim to MAX_SHORT_S seconds, centering on best_s."""
-    start = max(0.0, best_s - MAX_SHORT_S / 3)
-    end   = min(duration, start + MAX_SHORT_S)
-    start = max(0.0, end - MAX_SHORT_S)           # re-anchor when near the end
+def _trim_clip(mp4: Path, out: Path, duration: float, best_s: float,
+               length: float, pre_roll: float) -> Path:
+    """Stream-copy trim to `length` seconds with only `pre_roll` s of build-up before the
+    best moment — Shorts live or die in the first ~2 s, so lead with the heat, not the lull."""
+    start = max(0.0, best_s - pre_roll)
+    end   = min(duration, start + length)
+    start = max(0.0, end - length)                # re-anchor when near the end
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{start:.3f}", "-i", str(mp4),
          "-t", f"{end - start:.3f}", "-c", "copy", str(out)],
         capture_output=True, check=True,
     )
     return out
-
-
-# ── Whisper transcription ─────────────────────────────────────────────────────
-
-def _transcribe_clip(mp4: Path, max_s: float) -> list[dict]:
-    """Transcribe the streamer's speech to English word timestamps via Whisper.
-
-    Uses task="translate" so JP/KR/CN speech is automatically translated.
-    Requires: pip install openai-whisper  (torch is pulled in automatically)
-    Returns list of {"word", "start", "end"} or [] when unavailable/failed.
-    """
-    try:
-        import whisper
-    except ImportError:
-        log.warning("openai-whisper not installed — no speech captions. "
-                    "Fix: pip install openai-whisper")
-        return []
-    try:
-        model = whisper.load_model("small")
-        result = model.transcribe(str(mp4), task="translate", word_timestamps=True)
-        words = []
-        for seg in result.get("segments", []):
-            for w in seg.get("words", []):
-                if float(w["end"]) > max_s + 0.5:
-                    break
-                words.append({
-                    "word":  w["word"].strip(),
-                    "start": float(w["start"]),
-                    "end":   float(w["end"]),
-                })
-        return words
-    except Exception as e:
-        log.warning("Whisper transcription failed: %s", e)
-        return []
 
 
 # ── TikTok-style ASS captions ─────────────────────────────────────────────────
@@ -344,20 +323,19 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
         parts.append(f"[{cur}]ass='{_ass_esc(ass)}'[{nxt}]")
         cur = nxt
 
-    # ── meme text drawtext ──────────────────────────────────────────
+    # ── meme/hook text drawtext ─────────────────────────────────────
     if overlay_text:
         safe = _clean_overlay(overlay_text)
         if safe:
-            # Split layout: text sits at the split boundary (between panels).
-            # Blur-bg layout: text sits above the captions (~78% down the frame).
-            y_expr = f"{game_h - 52}" if facecam else "h*0.78"
+            # TOP third — sound-off hook readable in the first frame, clear of YouTube's
+            # top UI and of the bottom speech captions (research: hook text, top third).
             nxt = "ovr"
             parts.append(
                 f"[{cur}]drawtext=text='{safe}'"
-                f":fontsize=60:fontcolor=white"
-                f":bordercolor=black:borderw=5"
-                f":box=1:boxcolor=black@0.35:boxborderw=12"
-                f":x=(w-text_w)/2:y={y_expr}[{nxt}]"
+                f":fontsize=66:fontcolor=white"
+                f":bordercolor=black:borderw=6"
+                f":box=1:boxcolor=black@0.40:boxborderw=14"
+                f":x=(w-text_w)/2:y=h*0.12[{nxt}]"
             )
             cur = nxt
 
@@ -471,6 +449,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     tts_voice    = tts_cfg.get("voice", "male-us")
     privacy      = sh.get("privacy", "public")
     detect_face  = sh.get("detect_facecam", True)
+    target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
+    pre_roll     = float(sh.get("pre_roll_s", 7))                          # build-up before the heat
 
     done: dict = {}
     done_f = out_dir / "done.json"
@@ -497,36 +477,47 @@ def run(cfg: dict, state, date_label: str) -> Path:
         summary   = c.get("vlm_summary") or c.get("title", "")
         log.info("short: %s — %s (%.0f s)", clip_id, streamer, duration)
 
-        # 1. Pre-trim if the clip is longer than MAX_SHORT_S
+        # 1. Trim to a punchy length, leading close to the action (Short retention)
         clip_src = mp4
         trim_tmp: Path | None = None
-        if duration > MAX_SHORT_S:
+        if duration > target_s:
             trim_tmp = out_dir / f"{clip_id}_trim.mp4"
             best_s   = float(c.get("api_best_moment_s") or duration / 2)
             try:
-                clip_src = _trim_clip(mp4, trim_tmp, duration, best_s)
-                log.info("  trimmed %.0f s -> %.0f s (best moment %.1f s)",
-                         duration, MAX_SHORT_S, best_s)
+                clip_src = _trim_clip(mp4, trim_tmp, duration, best_s, target_s, pre_roll)
+                log.info("  trimmed %.0f s -> %.0f s (best moment %.1f s, pre-roll %.0f s)",
+                         duration, target_s, best_s, pre_roll)
             except subprocess.CalledProcessError as e:
                 log.warning("  trim failed — using full clip: %s", e)
                 trim_tmp = None
 
         # 2. Face cam detection (bottom corners only)
-        facecam = _detect_facecam(clip_src, min(duration, MAX_SHORT_S)) if detect_face else None
+        facecam = _detect_facecam(clip_src, min(duration, target_s)) if detect_face else None
         game_h  = int(TARGET_H * 0.60) if facecam else TARGET_H
         face_h  = TARGET_H - game_h
 
-        # 3. Informative VO line (Gemini → simple fallback so captions always exist)
+        # 3. Streamer speech → English (shared faster-whisper): drives captions + context
+        short_s = min(duration, target_s)
+        speech_words, speech_text = [], ""
+        try:
+            from ..enrichment.transcribe import transcribe as _transcribe
+            tr = _transcribe(clip_src, cfg.get("transcribe", {}).get("model", "small"), short_s)
+            speech_words, speech_text = tr["words"], tr["text"]
+            if speech_text:
+                log.info("  speech [%s]: %s", tr["lang"], speech_text[:80])
+        except Exception as e:
+            log.warning("  transcription failed: %s", e)
+
+        # 4. Informative English VO line (Gemini → simple fallback so captions always exist)
         vo_line = ""
         if cm["gemini_api_key"]:
             vo_line = _gemini_call(
-                _VO_PROMPT.format(streamer=streamer, summary=summary[:120]),
-                cm, "line")
+                _VO_PROMPT.format(streamer=streamer, summary=summary[:120],
+                                  speech=speech_text[:200] or "(none)"), cm, "line")
         if not vo_line:
-            # Gemini failed or no key — synthesize a basic line so we always get captions
             vo_line = f"Here's {streamer} — let's see how this plays out."
 
-        # 4. TTS synthesis -> MP3 (words no longer used for captions)
+        # 5. TTS synthesis -> MP3
         vo_path: Path | None = None
         if vo_line:
             from ..production.tts import synthesize
@@ -538,17 +529,14 @@ def run(cfg: dict, state, date_label: str) -> Path:
             except Exception as e:
                 log.warning("  short TTS failed: %s — no VO for this clip", e)
 
-        # 5. Whisper speech-to-text captions (streamer's actual words, translated to English)
-        #    Positioned at the BOTTOM (margin_v=80) so they never overlap LoL HUD icons.
+        # 6. English captions from the translated speech (bottom — never over the HUD)
         ass_path: Path | None = None
-        short_s = min(duration, MAX_SHORT_S)
-        speech_words = _transcribe_clip(clip_src, short_s)
         if speech_words:
             ass_path = out_dir / f"{clip_id}.ass"
             _write_tiktok_ass(speech_words, ass_path, margin_v=80)
-            log.info("  captions: %d words from Whisper", len(speech_words))
+            log.info("  captions: %d words", len(speech_words))
 
-        # 6. Meme text overlay
+        # 7. Meme text overlay
         overlay_text = ""
         if cm["gemini_api_key"]:
             raw = _gemini_call(
@@ -556,7 +544,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 cm, "text")
             overlay_text = _clean_overlay(raw)
 
-        # 7. Single-pass render
+        # 8. Single-pass render
         v_final = out_dir / f"{clip_id}.mp4"
         try:
             _render_short(clip_src, v_final, facecam, vo_path,
@@ -574,10 +562,20 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
         log.info("  rendered -> %s", v_final.name)
 
-        # 8. Upload
+        # 9. Upload
         if sh.get("upload", True):
             broadcaster_url = f"https://twitch.tv/{streamer.lower()}"
-            title = f"{(c.get('title') or streamer)[:65]} #Shorts"
+            # English title generated from the (English) summary + translated speech —
+            # NEVER the raw Twitch clip title, which is often the streamer's own language.
+            title_en = ""
+            if cm["gemini_api_key"]:
+                title_en = _gemini_call(
+                    _TITLE_PROMPT.format(streamer=streamer, summary=summary[:120],
+                                         speech=speech_text[:200] or "(none)"), cm, "title")
+            title_en = re.sub(r"[^\x00-\x7F]", "", title_en).strip().strip('"')
+            if not title_en:
+                title_en = f"{streamer} had to make this work"
+            title = f"{title_en[:80]} #Shorts"
             description = (
                 f"{vo_line or summary}\n\n"
                 f"Clip by: {streamer} — {broadcaster_url}\n"

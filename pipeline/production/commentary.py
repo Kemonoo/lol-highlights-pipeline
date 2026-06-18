@@ -64,6 +64,8 @@ What you know about the next clip:
 - Crowd/streamer energy: {mood}
 - Clip title a viewer gave it (often a joke, may be misleading): "{title}"
 - Rough hint at what happens (UNRELIABLE — may be vague or wrong): {summary}
+- What {streamer} actually said in the clip (auto-translated to English; may be empty,
+  partial, or just noise): "{speech}"
 
 Lines already used in this video (do NOT reuse their structure or opening words):
 {previous}
@@ -72,6 +74,8 @@ Write AT MOST {max_sentences} short sentences hyping this moment, montage-traile
 Rules:
 - Build up the STREAMER and the moment — make the viewer want to watch ("this is why
   {streamer} is feared", "{streamer} doesn't miss", "watch this fall apart for them").
+- If the streamer's own words are given, you may react to their energy or play off what
+  they said — that part is reliable. Never quote a foreign language; English only.
 - Lean on the energy/title vibe. Only mention a specific play detail if the hint clearly
   supports it — when in doubt, hype the player generally instead of narrating mechanics.
 - NEVER invent champions, names, numbers, or events. A vague hype line beats a wrong one.
@@ -209,13 +213,16 @@ def _fallback_line(clip: dict, idx: int) -> str:
         name=_ascii_name(clip)).strip()
 
 
-def write_line(clip: dict, cm: dict, writer, previous: list[str]) -> str:
+def write_line(clip: dict, cm: dict, writer, previous: list[str],
+               speech: str = "") -> str:
+    speech = re.sub(r'\s+', ' ', (speech or "").replace('"', "")).strip()[:220]
     prompt = LINE_PROMPT.format(
         style=STYLES.get(cm.get("style", "hype_caster"), STYLES["hype_caster"]),
         streamer=_ascii_name(clip),
         summary=clip.get("vlm_summary") or "unknown — describe nothing specific",
         title=clip.get("title", ""),
         mood=_mood(clip.get("audio_score", 0.0)),
+        speech=speech or "(nothing intelligible)",
         previous="\n".join(f"- {p}" for p in previous) or "- (none yet)",
         max_sentences=cm.get("max_sentences", 2),
     )
@@ -248,6 +255,9 @@ def write_intro(clips: list[dict], cm: dict, writer) -> str:
 
 def run(cfg: dict, state, date_label: str) -> Path:
     work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
+    if not cfg.get("commentary", {}).get("enabled", True):
+        log.info("commentary disabled (lean mode) — no voiceover script")
+        return work
     src = work / "vlm_filtered.json"
     if not src.exists():
         src = work / "prefiltered.json"
@@ -256,6 +266,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cm = dict(cfg["commentary"])
     cm.setdefault("gemini_api_key", cfg.get("api_judge", {}).get("api_key", ""))
     writer = make_writer(cm)
+
+    from ..enrichment.transcribe import load as _load_transcripts
+    transcripts = _load_transcripts(work)   # clip_id -> {lang, text, words}
 
     out = [{"clip_id": "_intro", "text": write_intro(clips, cm, writer)}]
     log.info("_intro -> %s", out[0]["text"][:80])
@@ -270,7 +283,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
         cm_clip = dict(cm)
         if vary:
             cm_clip["style"] = _style_cycle[i % len(_style_cycle)]
-        text = write_line(c, cm_clip, writer, previous)
+        speech = transcripts.get(c["id"], {}).get("text", "")
+        text = write_line(c, cm_clip, writer, previous, speech=speech)
         previous.append(text)
         out.append({"clip_id": c["id"], "text": text})
         log.info("%s [%s] -> %s", c["id"][:20], cm_clip.get("style", ""), text[:80])

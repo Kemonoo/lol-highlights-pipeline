@@ -44,6 +44,10 @@ def load_config(path: Path | None = None) -> dict:
     cfg["paths"]["data_abs"] = str(data)
     v = cfg.setdefault("video", {})
     tracks = v.get("music_tracks") or []
+    if not v.get("music_enabled", True):
+        v["music_path"] = ""          # lean mode: no music bed — clip audio carries the video
+        v["music_attribution"] = ""
+        tracks = []
     if tracks:
         pick = random.choice(tracks)
         p = pick.get("path", "")
