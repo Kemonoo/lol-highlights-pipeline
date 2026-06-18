@@ -8,14 +8,14 @@ Ideas and improvements to explore. Ordered roughly by expected impact.
 
 ### Match linker (Phase 2 — planned)
 Connect each clip to the actual Riot match being played at that timestamp.
-`pipeline/match_linker.py` has the full implementation plan in its docstring.
+`pipeline/enrichment/match_linker.py` has the full implementation plan in its docstring.
 - Config: `match_linker.summoner_map` (twitch login → "GameName#TAG")
 - Riot match-v5 API, free dev key (100 req/2 min, enough for daily use)
 - Unlocks: champion names in commentary, real KDA, rank tier, multikill counts
 
 ### HUD OCR event extractor (Phase 2 — planned)
 Read kill feed, scoreboard, multikill banners from sampled frames.
-`pipeline/hud_ocr.py` has the implementation plan.
+`pipeline/enrichment/hud_ocr.py` has the implementation plan.
 - Enables outplay detection as a rule (not a vibe) even without match data
 - Could eventually replace or supplement the audio-hype prefilter
 

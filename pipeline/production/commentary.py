@@ -15,50 +15,77 @@ Output: data/work/<date>/commentary.json  [{clip_id, text}, ...]
 """
 import json
 import logging
+import re
 from pathlib import Path
 
 import requests
 
 log = logging.getLogger("pipeline.commentary")
 
+# keep Latin scripts + common punctuation; drop CJK / Hangul / Cyrillic / etc. so the
+# English TTS never tries to read foreign characters (the "reads Chinese" bug).
+_NON_LATIN = re.compile(r"[^\u0000-\u024F\u2010-\u201F\s]")
+
+
+def _english_only(text: str) -> str:
+    """Strip non-Latin characters; return '' if nothing usable remains."""
+    if not text:
+        return ""
+    t = _NON_LATIN.sub("", text)
+    t = re.sub(r"\s{2,}", " ", t).strip(" -–—,:;\"'").strip()
+    # if stripping foreign text left only a stub, treat as empty (caller falls back)
+    return t if len(t) >= 8 else ""
+
+# All styles are energetic montage-caster variants — the video should feel like a
+# highlight reel narrated by one hype caster, so even when styles rotate the tone stays
+# consistent (the owner wants it to sound like commentary, not a calm analyst).
 STYLES = {
-    "hype_caster": ("an esports caster with sharp wit and gen Z energy — energetic, ironic, "
-                    "relatable; uses casual phrases like 'bro', 'no way', 'actually insane', "
-                    "'ngl', 'cooked', 'W moment' when they fit naturally; never forced or cringe"),
-    "analyst": "a calm analytical caster explaining what makes the play good",
-    "chill": "a relaxed streamer-style commentator, casual and a bit funny",
+    "hype_caster": ("a hype highlight-reel caster — punchy, confident, a little ironic; "
+                    "uses casual gamer phrases ('no way', 'actually insane', 'cooked', "
+                    "'W moment') only when they land naturally"),
+    "analyst": ("a hype caster who big-ups how clean a play is — still energetic, just "
+                "leaning on respect for the mechanics rather than chaos"),
+    "chill": ("a confident, dry-funny montage caster — cocky and quotable, like you've "
+              "seen it all and this still got a reaction out of you"),
     "gen_z_short": ("a gen Z gaming TikTok creator — ONE punchy sentence max 12 words, "
                     "self-aware and ironic; uses 'bro', 'fr', 'ngl', 'W', 'L', 'cooked', "
                     "'not him' naturally; make it quotable or funny"),
 }
 
-LINE_PROMPT = """You write short voiceover lines for a daily "League of Legends best moments" YouTube video.
+# NOTE: until clip context analysis improves, the per-clip "summary" is often vague or
+# wrong, so the prompt treats it as an optional hint and leans on what IS reliable — the
+# streamer and the crowd energy. Hype the PLAYER and the MOMENT; never narrate mechanics
+# we aren't sure of (a made-up play detail is worse than a clean hype line).
+LINE_PROMPT = """You write one short voiceover line for a "League of Legends best moments" highlight montage.
 Persona: {style}.
 
-FACTS about the next clip (this is ALL you know — never invent champions, names or numbers):
+What you know about the next clip:
 - Streamer: {streamer}
-- What happens: {summary}
-- Clip title written by a viewer (may be a joke): "{title}"
-- Crowd/streamer audio mood: {mood}
+- Crowd/streamer energy: {mood}
+- Clip title a viewer gave it (often a joke, may be misleading): "{title}"
+- Rough hint at what happens (UNRELIABLE — may be vague or wrong): {summary}
 
 Lines already used in this video (do NOT reuse their structure or opening words):
 {previous}
 
-Write AT MOST {max_sentences} sentences of voiceover introducing this clip.
-Rules: mention the streamer's name; reference what actually happens; be funny where the
-clip allows it — irony and relatable gamer humor land best (if something absurd happens
-around the play, like a slap right after a kill, joke about it: that slap was clearly
-the reward). Never mean-spirited. No greetings, no hashtags, no "in this clip".
-If "What happens" mentions "kills detected", "kill feed", "not detected", or similar
-technical phrases — ignore them entirely; write only what a viewer watching the clip sees.
+Write AT MOST {max_sentences} short sentences hyping this moment, montage-trailer style.
+Rules:
+- Build up the STREAMER and the moment — make the viewer want to watch ("this is why
+  {streamer} is feared", "{streamer} doesn't miss", "watch this fall apart for them").
+- Lean on the energy/title vibe. Only mention a specific play detail if the hint clearly
+  supports it — when in doubt, hype the player generally instead of narrating mechanics.
+- NEVER invent champions, names, numbers, or events. A vague hype line beats a wrong one.
+- Be confident and a bit funny; never mean-spirited. No greetings, hashtags, or "in this clip".
+- Ignore any technical phrasing in the hint ("kills detected", "kill feed", "not detected").
 Answer ONLY JSON: {{"line": "..."}}"""
 
-INTRO_PROMPT = """You write the cold-open voiceover for a daily "League of Legends best moments" YouTube video.
+INTRO_PROMPT = """You write the cold-open voiceover for a "League of Legends best moments" highlight montage.
 Persona: {style}.
-Today's video has {n} clips featuring these streamers: {streamers}.
-Write 1-2 short sentences welcoming viewers and teasing the content (you may hint at
-the best moment: {teaser}). No hashtags, no "subscribe", just a punchy open.
-If the teaser mentions "kills detected", "kill feed", "not detected" or similar — ignore those phrases.
+Today's reel has {n} clips featuring: {streamers}.
+Write 1-2 short, punchy sentences that hype the reel and make viewers stay — montage-trailer
+energy. You may tease the vibe loosely ({teaser}) but do NOT state specific plays as fact.
+No hashtags, no "subscribe", no greetings beyond a quick hook.
+Ignore any technical phrasing in the teaser ("kills detected", "kill feed", "not detected").
 Answer ONLY JSON: {{"line": "..."}}"""
 
 
@@ -165,26 +192,21 @@ def make_writer(cm: dict):
 
 # ── line generation ───────────────────────────────────────────────────────────
 
-# Fallbacks (LLM unavailable): rotate templates and attach the judge's grounded
-# description when we have one — never the same sentence twice in a row.
+# Fallbacks (LLM unavailable): pure montage-hype lines that need NO clip facts, so they
+# stay clean even when context is unknown. Rotate so we never repeat back-to-back.
 FALLBACK_TEMPLATES = [
-    "Next up — {name}. {fact}",
-    "{name} now, and this one speaks for itself. {fact}",
-    "Over to {name}. {fact}",
-    "Keep your eyes on {name} for this one. {fact}",
-    "{name} had a moment yesterday. See for yourself. {fact}",
-    "This is why people clip {name}. {fact}",
+    "Next up — {name}, and you'll see why this one made the cut.",
+    "This is exactly why people clip {name}.",
+    "Keep your eyes on {name} for this one.",
+    "{name} up next — watch this one closely.",
+    "{name} doesn't miss. See for yourself.",
+    "Over to {name} — this is the good stuff.",
 ]
 
 
 def _fallback_line(clip: dict, idx: int) -> str:
-    name = _ascii_name(clip)
-    summary = (clip.get("vlm_summary") or "").strip()
-    fact = ""
-    if len(summary) > 40 and "no kills detected" not in summary:
-        fact = summary.split(". ")[0].rstrip(".") + "."
     return FALLBACK_TEMPLATES[idx % len(FALLBACK_TEMPLATES)].format(
-        name=name, fact=fact).strip()
+        name=_ascii_name(clip)).strip()
 
 
 def write_line(clip: dict, cm: dict, writer, previous: list[str]) -> str:
@@ -198,7 +220,7 @@ def write_line(clip: dict, cm: dict, writer, previous: list[str]) -> str:
         max_sentences=cm.get("max_sentences", 2),
     )
     try:
-        line = _parse_line(writer(prompt, cm))
+        line = _english_only(_parse_line(writer(prompt, cm)))
         if line:
             return line
     except Exception as e:
@@ -214,7 +236,7 @@ def write_intro(clips: list[dict], cm: dict, writer) -> str:
         n=len(clips), streamers=streamers, teaser=teaser,
     )
     try:
-        line = _parse_line(writer(prompt, cm))
+        line = _english_only(_parse_line(writer(prompt, cm)))
         if line:
             return line
     except Exception as e:

@@ -88,6 +88,17 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if len(clips) < len(raw["clips"]):
         log.info("Blacklist removed %d clips", len(raw["clips"]) - len(clips))
 
+    # drop whole-language exclusions (e.g. ja/zh) before any download/scoring —
+    # the English VO can't sensibly narrate them. Korean (ko) is kept on purpose.
+    exclude_langs = {l.lower() for l in pf.get("exclude_languages", [])}
+    if exclude_langs:
+        before = len(clips)
+        clips = [c for c in clips
+                 if (c.get("language", "") or "").lower() not in exclude_langs]
+        if len(clips) < before:
+            log.info("Language filter (%s) removed %d clips",
+                     ",".join(sorted(exclude_langs)), before - len(clips))
+
     work = data / "work" / date_label
     work.mkdir(parents=True, exist_ok=True)
     partial_path = work / "prefilter_partial.json"

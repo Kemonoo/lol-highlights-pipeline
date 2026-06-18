@@ -20,7 +20,7 @@ venv\Scripts\python.exe -m pipeline.run_daily
 | 3. vlm_filter | Local vision model (Ollama) judges each clip stepwise: real gameplay? esports broadcast? kills in the kill feed / event log? Rule-based keep/reject | free (your GPU) |
 | 3.5 api_judge | Gemini watches each surviving clip *as video* and scores play quality + entertainment; selection fills toward the target length and orders clips as a countdown | ~1¢/day |
 | 4. commentary | LLM writes grounded, ironic caster lines per clip + a cold open (only from verified facts — no hallucinated plays) | ~0¢ |
-| 5. tts | Free neural voiceover (edge-tts) with word timestamps | free |
+| 5. tts | Free neural voiceover — local Kokoro (edge-tts fallback) with word timestamps | free |
 | 6. assemble | FFmpeg: intro card, #N countdown badges, animated streamer lower-thirds, voiceover ducking, slow-mo REPLAY of the best moment, outro, music bed, loudness mastering | free |
 | 7. credits | YouTube title with a content hook, chapters, per-streamer credit links | free |
 | 8. upload | Resumable upload via YouTube Data API (private by default) | free |
@@ -43,7 +43,7 @@ fetches deeper into that day's clips until the video is long enough.
    ```
 5. **Music**: `python -m pipeline.tools.gen_music` generates a copyright-free bed, or drop any
    licensed track at `assets/music/bg.mp3` (see `assets/music/README.md`)
-6. **YouTube upload** (optional): follow the 5-step OAuth setup in `pipeline/upload.py`,
+6. **YouTube upload** (optional): follow the 5-step OAuth setup in `pipeline/publishing/upload.py`,
    then set `upload.enabled: true` in `pipeline/config.yaml`
 
 ## Usage

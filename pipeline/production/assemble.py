@@ -119,7 +119,8 @@ def render_outro(out: Path, streamers: list[str], v: dict) -> None:
 
 # ── per-clip segment (main + optional slow-mo replay) ─────────────────────────
 
-def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict) -> None:
+def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
+               nameplate: Path | None = None, sfx: Path | None = None) -> None:
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = _duration(mp4)
     lt_end = min(v.get("lower_third_seconds", 5.5) + 0.6, max(dur - 1, 2))
@@ -128,7 +129,8 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict) -> No
 
     vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
           f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,fps={fps}")
-    if name:
+    # animated nameplate replaces the plain drawtext lower-third when present
+    if name and nameplate is None:
         fn = _font(name, v)
         slide = "min(1,max(0,(t-0.6)/0.45))"
         fadeout = f"if(lt(t,{lt_end:.2f}),1,max(0,1-(t-{lt_end:.2f})/0.4))"
@@ -149,23 +151,52 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict) -> No
             f"alpha='if(lt(t,0.4),t/0.4,if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'"
         )
     vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
-
     afade = f"afade=t=in:st=0:d=0.3,afade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
+
+    # assign input indices in the order the inputs are appended below
     args = ["-i", str(mp4)]
+    idx = 1
+    vo_i = np_i = sfx_i = None
     if vo is not None and vo.exists():
+        vo_i = idx; idx += 1; args += ["-i", str(vo)]
+    if nameplate is not None:
+        np_i = idx; idx += 1; args += ["-i", str(nameplate)]
+    if sfx is not None:
+        sfx_i = idx; idx += 1; args += ["-i", str(sfx)]
+
+    fc = []
+    # video: base render, then overlay the alpha nameplate for its intro window
+    if np_i is not None:
+        npc = v.get("nameplate", {})
+        np_end = float(npc.get("hold_seconds", 5.0)) + 0.6
+        fc.append(f"[0:v]{vf}[vb]")
+        fc.append(f"[vb][{np_i}:v]overlay=0:0:eof_action=pass:"
+                  f"enable='lte(t,{np_end:.2f})'[v]")
+    else:
+        fc.append(f"[0:v]{vf}[v]")
+
+    # audio: clip (ducked under VO) → mix VO → mix SFX → fade
+    if vo_i is not None:
         vo_d = _duration(vo)
         duck = v.get("voiceover_duck_db", -10)
-        args += ["-i", str(vo), "-filter_complex",
-                 f"[0:v]{vf}[v];"
-                 f"[0:a]aresample=44100,"
-                 f"volume={duck}dB:enable='between(t,0,{vo_d:.2f})'[ducked];"
-                 f"[1:a]aresample=44100[vo];"
-                 f"[ducked][vo]amix=inputs=2:duration=first:normalize=0,{afade}[a]",
-                 "-map", "[v]", "-map", "[a]"]
+        fc.append(f"[0:a]aresample=44100,volume={duck}dB:"
+                  f"enable='between(t,0,{vo_d:.2f})'[ducked]")
+        fc.append(f"[{vo_i}:a]aresample=44100[vov]")
+        fc.append("[ducked][vov]amix=inputs=2:duration=first:normalize=0[am]")
     else:
-        args += ["-filter_complex",
-                 f"[0:v]{vf}[v];[0:a]aresample=44100,{afade}[a]",
-                 "-map", "[v]", "-map", "[a]"]
+        fc.append("[0:a]aresample=44100[am]")
+    if sfx_i is not None:
+        npc = v.get("nameplate", {})
+        delay = int(npc.get("sfx_delay_ms", 120))
+        gain = npc.get("sfx_gain_db", -12)
+        fc.append(f"[{sfx_i}:a]adelay={delay}|{delay},volume={gain}dB[sx]")
+        fc.append("[am][sx]amix=inputs=2:duration=first:normalize=0[asum]")
+        a_in = "[asum]"
+    else:
+        a_in = "[am]"
+    fc.append(f"{a_in}{afade}[a]")
+
+    args += ["-filter_complex", ";".join(fc), "-map", "[v]", "-map", "[a]"]
     args += [*ENC, "-preset", v.get("preset", "veryfast"), str(out)]
     _ff(args)
 
@@ -195,10 +226,11 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
     return True
 
 
-def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict) -> None:
+def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
+                   nameplate: Path | None = None, sfx: Path | None = None) -> None:
     """Main part + optional replay, concatenated into one segment file."""
     main = out.with_suffix(".main.mp4")
-    _main_part(clip, mp4, vo, main, v)
+    _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx)
     want_replay = (v.get("replay_enabled", False)
                    and clip.get("api_rank_score", 0) >= v.get("replay_min_score", 7))
     replay = out.with_suffix(".replay.mp4")
@@ -221,9 +253,17 @@ def master(concat_mp4: Path, out: Path, v: dict) -> None:
     music = v.get("music_path")
     args = ["-i", str(concat_mp4)]
     if music and Path(music).exists():
+        music_db  = v.get("music_volume_db", -14)
+        threshold = v.get("music_duck_threshold", 0.02)
+        ratio     = v.get("music_duck_ratio", 4)
+        attack    = v.get("music_duck_attack_ms", 50)
+        release   = v.get("music_duck_release_ms", 400)
         args += ["-stream_loop", "-1", "-i", str(music), "-filter_complex",
-                 f"[1:a]aresample=44100,volume={v.get('music_volume_db', -8)}dB[m];"
-                 f"[0:a][m]amix=inputs=2:duration=first:normalize=0,"
+                 f"[1:a]aresample=44100,volume={music_db}dB[music];"
+                 f"[0:a]asplit=2[clip_out][sc];"
+                 f"[music][sc]sidechaincompress=threshold={threshold}:ratio={ratio}"
+                 f":attack={attack}:release={release}[music_ducked];"
+                 f"[clip_out][music_ducked]amix=inputs=2:duration=first:normalize=0,"
                  f"loudnorm=I=-16:TP=-1.5:LRA=11[a]",
                  "-map", "0:v", "-map", "[a]"]
     else:
@@ -249,6 +289,16 @@ def run(cfg: dict, state, date_label: str) -> Path:
     seg_dir = work / "segments"
     seg_dir.mkdir(exist_ok=True)
     vo_dir = work / "vo"
+
+    # animated streamer nameplate (per clip) + its synthesized flush-in SFX
+    np_cfg = v.get("nameplate", {}) or {}
+    sfx_path = None
+    if np_cfg.get("enabled", False) and np_cfg.get("sfx_enabled", True):
+        from ..tools.gen_sfx import ensure as _ensure_sfx
+        p = Path(np_cfg.get("sfx_path", "assets/sfx/nameplate.wav"))
+        if not p.is_absolute():
+            p = data.parent / p
+        sfx_path = _ensure_sfx(p)
 
     def stale(seg: Path, vo: Path) -> bool:
         marker = seg.with_suffix(".vo")
@@ -286,8 +336,13 @@ def run(cfg: dict, state, date_label: str) -> Path:
         seg = seg_dir / f"{c['id']}.mp4"
         svo = vo_dir / f"{c['id']}.mp3"
         if not seg.exists() or stale(seg, svo):
+            np_path = None
+            if np_cfg.get("enabled", False):
+                from . import nameplate as _np
+                np_path = _np.build(cfg, c)
             try:
-                render_segment(c, mp4, svo, seg, v)
+                render_segment(c, mp4, svo, seg, v,
+                               nameplate=np_path, sfx=sfx_path if np_path else None)
                 mark(seg, svo)
             except Exception as e:
                 log.warning("segment failed for %s: %s", c["id"], e)

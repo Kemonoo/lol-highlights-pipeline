@@ -101,7 +101,6 @@ def _faces_in_strip(strip_gray: "np.ndarray",
     Profile cascade runs twice (normal + flipped) to catch both orientations.
     """
     import cv2
-    import numpy as np
 
     # Adaptive contrast enhancement: lifts dark webcam feeds
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))

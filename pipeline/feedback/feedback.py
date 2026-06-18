@@ -73,22 +73,6 @@ def _fetch_comments(yt, video_id: str, limit: int = 100) -> list[str]:
     return [c for c in out if c.strip()]
 
 
-def _load_owner_notes(fb_dir: Path, seen: set) -> list[dict]:
-    """Return unprocessed entries from owner_notes.jsonl (written by owner_feedback UI)."""
-    f = fb_dir / "owner_notes.jsonl"
-    if not f.exists():
-        return []
-    out = []
-    for line in f.read_text(encoding="utf-8").splitlines():
-        try:
-            n = json.loads(line)
-            if n.get("note") and n["note"][:300] not in seen:
-                out.append(n)
-        except Exception:
-            pass
-    return out
-
-
 def _chapters_for(data: Path, date: str) -> dict[int, dict]:
     f = data / "work" / date / "chapters.json"
     if not f.exists():
@@ -162,33 +146,8 @@ def _run(cfg: dict, state, fb: dict) -> None:
         except Exception as e:
             log.warning("YouTube comment fetch failed: %s", e)
 
-    # ── Owner notes (owner_feedback UI → always ACTIONABLE) ──────────────────
-    owner_notes = _load_owner_notes(fb_dir, seen)
-    if owner_notes:
-        classified = _classify([n["note"] for n in owner_notes], cfg)
-        if not classified:
-            classified = [{}] * len(owner_notes)
-        for note, res in zip(owner_notes, classified):
-            rec = {
-                "when": note["when"],
-                "video": note.get("youtube_id", ""),
-                "video_date": note.get("video_date", ""),
-                "comment": note["note"][:300],
-                "clip_ref": res.get("clip_ref"),
-                "broadcaster": None, "clip_id": None,
-                "sentiment": res.get("sentiment", "negative"),
-                "topic": res.get("topic", "other"),
-                "summary": res.get("summary", "owner note"),
-                "source": "owner",
-            }
-            with open(log_f, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            signals.append(rec)
-            seen.add(note["note"][:300])
-        log.info("feedback: %d owner note(s) loaded", len(owner_notes))
-
     if not signals:
-        log.info("feedback: no new comments or owner notes")
+        log.info("feedback: no new comments")
         return
 
     # ── Aggregate ─────────────────────────────────────────────────────────────
@@ -201,17 +160,15 @@ def _run(cfg: dict, state, fb: dict) -> None:
         buckets.setdefault(key, []).append(s)
 
     lines = [f"# Feedback proposals — {datetime.now().date()}",
-             f"\n{len(signals)} signal(s) analyzed. Owner notes are always ACTIONABLE; "
-             f"viewer comments require >= {min_agree} agreeing.\n"]
+             f"\n{len(signals)} signal(s) analyzed. A signal is ACTIONABLE when "
+             f">= {min_agree} comments agree.\n"]
     actionable = 0
     for key, group in sorted(buckets.items(), key=lambda kv: -len(kv[1])):
         sentiment, topic, target = key.split("|")
-        has_owner = any(s.get("source") == "owner" for s in group)
-        tag = "ACTIONABLE" if len(group) >= min_agree or has_owner else "noted"
+        tag = "ACTIONABLE" if len(group) >= min_agree else "noted"
         if tag == "ACTIONABLE":
             actionable += 1
-        source_note = " [owner]" if has_owner else ""
-        lines.append(f"## [{tag}]{source_note} {sentiment} about {topic} ({target}) — "
+        lines.append(f"## [{tag}] {sentiment} about {topic} ({target}) — "
                      f"{len(group)} signal(s)")
         for s in group[:5]:
             lines.append(f"- \"{s['comment'][:120]}\" "

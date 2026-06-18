@@ -1,5 +1,6 @@
 """Config loader: YAML + ${ENV} expansion + .env support + data dirs."""
 import os
+import random
 import re
 from pathlib import Path
 
@@ -41,7 +42,17 @@ def load_config(path: Path | None = None) -> dict:
     for sub in ("raw", "work", "output"):
         (data / sub).mkdir(parents=True, exist_ok=True)
     cfg["paths"]["data_abs"] = str(data)
-    mp = cfg.get("video", {}).get("music_path")
-    if mp and not Path(mp).is_absolute():
-        cfg["video"]["music_path"] = str(ROOT / mp)
+    v = cfg.setdefault("video", {})
+    tracks = v.get("music_tracks") or []
+    if tracks:
+        pick = random.choice(tracks)
+        p = pick.get("path", "")
+        v["music_path"] = str(ROOT / p) if p and not Path(p).is_absolute() else p
+        v["music_attribution"] = (
+            f"{pick.get('artist', '')} - {pick.get('title', '')} | NoCopyrightSounds (NCS)"
+        )
+    else:
+        mp = v.get("music_path", "")
+        if mp and not Path(mp).is_absolute():
+            v["music_path"] = str(ROOT / mp)
     return cfg

@@ -18,6 +18,7 @@ prefilter:                    # thresholds from twitch_clips training
   audio_pass: 0.52
   motion_exclude: 0.015
   max_keep: 40                # best N clips proceed to VLM stage
+  exclude_languages: [ja, zh] # Twitch clip language codes to drop outright (Korean kept)
 
 vlm_filter:
   enabled: true
@@ -48,6 +49,11 @@ api_judge:                    # Gemini full-video quality judge on local survivo
   min_entertainment_reaction: 7  # reaction-focus clips need a higher bar
   min_play_quality: 7         # or any clip with play this impressive
   filler_min_entertainment: 4 # when the video is short, fill with decent (ent>=4) clips
+  # when Gemini is unavailable (quota), clips are judged from local signals instead of
+  # fail-open kept. A no-kill clip is only rescued if it's loud AND high-motion (chaos,
+  # not singing/walking). Raise these to be stricter on quota-dead days.
+  fallback_audio_min: 0.72
+  fallback_motion_min: 0.11
 
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true
@@ -80,7 +86,9 @@ commentary:
   provider: auto              # auto = gemini if key set, else ollama
   gemini_model: gemini-2.0-flash-lite  # separate free-tier quota bucket from the judge's flash
   ollama_url: http://localhost:11434
-  model: qwen3:8b             # local fallback when Gemini quota is exhausted (ollama pull qwen3:8b)
+  model: qwen2.5:7b           # local fallback when Gemini quota is exhausted; MUST be an
+                              # installed Ollama model (`ollama list`). qwen3:30b-a3b is
+                              # higher quality if you can spare the load time.
   style: hype_caster          # hype_caster | analyst | chill  (base style; rotated when vary_style: true)
   vary_style: true            # cycle hype_caster/chill/analyst across clips to avoid monotony
   max_sentences: 2
@@ -88,7 +96,10 @@ commentary:
 tts:
   enabled: true               # false = silent videos (no voiceover)
   provider: kokoro            # edge-tts (Microsoft Neural, needs internet) | kokoro (local, best free quality)
-  voice: male-us              # kokoro: am_adam / am_michael / af_heart — or use key from KOKORO_VOICES
+  voice: af_bella             # friendly key (male-us -> am_michael) OR a raw Kokoro id.
+                              # best Kokoro voices: am_michael / am_fenrir / am_puck (male),
+                              # af_heart / af_bella (female). Avoid am_adam (graded F+).
+  speed: 1.0                  # kokoro playback speed; <1.0 = slower/calmer, >1.0 = punchier
 
 video:
   width: 1920
@@ -108,21 +119,72 @@ video:
   target_minutes_min: 5
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10
-  music_path: assets/music/bg.mp3   # generated copyright-free bed (pipeline/gen_music.py);
-                                    # swap for a licensed track anytime (assets/music/README.md)
-  music_volume_db: -14        # the generated bed is already quiet (RMS -25); tune to taste
-  music_attribution: ""       # generated in-house -> no attribution needed
+  music_path: ""               # overridden by random pick from music_tracks; set directly to
+                               # bypass the list (e.g. assets/music/bg.mp3 for the generated bed)
+  music_tracks:                # one track is randomly selected per run
+    - path: assets/music/ncs-why-we-lose.mp3
+      artist: "Cartoon"
+      title: "Why We Lose (feat. Coleman Trapp)"
+    - path: assets/music/ncs-fearless-ii.mp3
+      artist: "Lost Sky"
+      title: "Fearless pt. II (feat. Chris Linton)"
+    - path: assets/music/ncs-on-and-on.mp3
+      artist: "Cartoon"
+      title: "On & On (feat. Daniel Levi)"
+    - path: assets/music/ncs-blank.mp3
+      artist: "Disfigure"
+      title: "Blank"
+    - path: assets/music/ncs-invincible.mp3
+      artist: "DEAF KEV"
+      title: "Invincible"
+    - path: assets/music/ncs-superhero.mp3
+      artist: "Unknown Brain"
+      title: "Superhero (feat. Chris Linton)"
+  music_volume_db: -20        # baseline music level; auto-ducked during clip audio by sidechain
+                              # (-20: lowered from -14 after viewer feedback "music too loud")
+  music_duck_threshold: 0.02  # linear amplitude (~-34 dB) — triggers duck when clip audio is active
+  music_duck_ratio: 4         # 4:1 compression ratio while sidechain is active
+  music_duck_attack_ms: 50    # ms to duck (fast enough to catch speech onset)
+  music_duck_release_ms: 400  # ms to release (slow enough to sound smooth)
+  music_attribution: ""       # auto-set by config.py from selected track (e.g. "Cartoon - Why We Lose | NCS")
   voiceover_duck_db: -10      # how much clip audio ducks under voiceover
+  nameplate:                  # animated PROJECT-style streamer intro (bottom-left)
+    enabled: true             # false = use the plain drawtext lower-third instead
+    hold_seconds: 5.0         # seconds fully visible before it fades out
+    y_frac: 0.33              # vertical centre as a fraction of height (0.33 = a third down)
+    accent: cyan              # cyan | orange | red | white
+    eyebrow: LIVE             # small label shown above the name
+    sfx_enabled: true         # subtle synthesized notification on flush-in
+    sfx_path: assets/sfx/nameplate.wav   # auto-generated if missing (tools/gen_sfx)
+    sfx_gain_db: -12          # how loud the SFX sits under the clip audio
+    sfx_delay_ms: 120         # SFX onset after the clip starts
 
 upload:
   enabled: true               # OAuth set up — first upload opens a browser once
   privacy: public           # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
-  title_template: "{hook} | League of Legends clip highlights {date}"
+  # curiosity-first titles (no date). Placeholders: {hook} {emoji} {n} {star}.
+  # one is picked per day (rotated); credits.py has built-in defaults if omitted.
+  title_styles:
+    - "{hook}?! {emoji} League of Legends Best Moments"
+    - "The Most INSANE LoL Plays of the Day {emoji} (Top {n})"
+    - "{star} Went CRAZY… {emoji} Best LoL Moments (Top {n})"
+    - "You Won't Believe Clip #1 {emoji} LoL Daily Best Moments"
+    - "{hook} {emoji} Top {n} League of Legends Plays Today"
 
 thumbnail:
   enabled: true               # generate a cinematic 1280×720 thumbnail per video
-  # Champion splash art + champion name list are cached in data/cache/ after first download.
+  provider: gemini            # gemini (AI reaction via Nano Banana, paid ~$0.04/img) | local (free PIL)
+  gemini_model: gemini-2.5-flash-image   # Nano Banana — enhances the facecam into a reaction
+  gemini_api_key: ${GEMINI_API_KEY}
+  face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")
+  variants: 3                 # local-provider CTR variants (thumbnail.jpg = primary; rest for A/B)
+  # gemini: enhance the facecam into an over-the-top excited reaction on a green screen,
+  # chroma-key it out, composite over the REAL clip gameplay (slight blur), then overlay a
+  # centred metallic gold announcement (PENTAKILL/QUADRA in Montserrat Bold, assets/fonts),
+  # a highlighted streamer badge, and a radiating red border.
+  # Falls back to local (PIL face-forward design) when no key / no facecam / API error.
+  # local: champion splash + reaction face + big hook phrase. Splash/pfp cached in data/cache/.
   # YouTube requires channel phone verification for custom thumbnail uploads.
 
 shorts:

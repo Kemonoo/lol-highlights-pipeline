@@ -34,6 +34,8 @@ PROMPT = """You are selecting clips for a daily "League of Legends best moments"
 
 Judge it honestly — most clips are boring and should be dropped. A clip is only worth keeping if a highlights viewer would enjoy it without any context: an impressive outplay, a chaotic teamfight, a multikill, a hilarious fail, or a genuinely funny gameplay moment. A streamer getting embarrassingly outplayed, destroyed, or dying in a comical way IS entertaining fail content — score its entertainment accordingly. Streamers talking, reacting to chat, queueing, or ordinary uneventful kills/deaths are NOT highlights.
 
+CRITICAL: if there is NO real combat or meaningful play — the streamer is just walking around the map, sitting in base/fountain, recalling, farming quietly, singing, chatting, or AFK — it is NOT a highlight. Drop it with low play_quality AND low entertainment even when the audio is loud or the title is hype. Loud audio without on-screen action is not entertainment.
+
 Answer ONLY JSON:
 {
  "clip_focus": "gameplay" | "reaction" | "talk" | "other",  // what the clip is actually about
@@ -95,12 +97,39 @@ def judge(mp4: Path, aj: dict) -> dict | None:
     raise last
 
 
+def local_judge(clip: dict, aj: dict) -> None:
+    """Score from free local signals when Gemini judging is unavailable.
+
+    Action is king: confirmed kills / a multikill keep a clip. Loud audio WITHOUT
+    motion is likely talk/singing/walking and does NOT rescue a no-combat clip, so
+    boring clips still get dropped on quota-dead days (instead of fail-open KEEP)."""
+    kills = max(int(clip.get("kills_confirmed") or 0), int(clip.get("kills_max") or 0))
+    multi = bool(clip.get("multikill"))
+    evt = bool(clip.get("eventlog_kill"))
+    audio = float(clip.get("audio_score") or 0.0)
+    motion = float(clip.get("motion_score") or 0.0)
+
+    action = 10 if multi else min(9, kills * 3)
+    if evt and action < 3:
+        action = 3
+    ent = min(10.0, 0.6 * action + 3.0 * audio + 18.0 * motion)
+    clip["api_focus"] = "local"
+    clip["api_what_happens"] = ""
+    clip["api_play_quality"] = int(round(action))
+    clip["api_entertainment"] = int(round(ent))
+    clip["api_rank_score"] = round(0.45 * ent + 0.55 * action, 2)
+    a_min = aj.get("fallback_audio_min", 0.72)
+    m_min = aj.get("fallback_motion_min", 0.11)
+    keep = (multi or kills >= 2 or (kills >= 1 and audio >= 0.5)
+            or (audio >= a_min and motion >= m_min))
+    clip["api_decision"] = "KEEP" if keep else "DROP"
+    clip["api_reason"] = f"local_k{kills}{'m' if multi else ''}_a{audio:.2f}_mo{motion:.3f}"
+
+
 def decide_api(clip: dict, aj: dict) -> None:
     focus = clip.get("api_focus", "other")
-    if focus == "unjudged":   # API failed — benefit of the doubt, retried next run
-        clip["api_rank_score"] = 5.0
-        clip["api_decision"] = "KEEP"
-        clip["api_reason"] = "unjudged_kept"
+    if focus in ("unjudged", "local"):    # not a real Gemini verdict — score locally
+        local_judge(clip, aj)
         return
     ent = clip.get("api_entertainment", 0)
     pq = clip.get("api_play_quality", 0)
@@ -147,9 +176,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     for c in clips:
         if consecutive_fails >= 2:   # daily quota dead — stop hammering the API
             if not cache.get(c["id"]):
-                c.update(api_focus="unjudged", api_entertainment=6,
-                         api_play_quality=5, api_what_happens="")
-                decide_api(c, aj)
+                local_judge(c, aj)
                 judged.append(c)
                 continue
         cached = cache.get(c["id"])
@@ -168,9 +195,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             continue
         if not aj.get("api_key"):
             log.warning("%s not in cache and no GEMINI_API_KEY — keeping unjudged", c["id"])
-            c.update(api_focus="unjudged", api_entertainment=6, api_play_quality=5,
-                     api_what_happens="")
-            decide_api(c, aj)
+            local_judge(c, aj)
             judged.append(c)
             continue
         lq = raw_dir / "lq" / f"{c['id']}.mp4"   # prefilter's low-quality copy
@@ -180,9 +205,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             small = shrink(mp4, tmp / f"{c['id']}.mp4", aj.get("max_mb", 19))
         if small is None:
             log.warning("%s too large even shrunk — keeping without API judgment", c["id"])
-            c.update(api_focus="unjudged", api_entertainment=6, api_play_quality=5,
-                     api_what_happens="")
-            decide_api(c, aj)
+            local_judge(c, aj)
             judged.append(c)
             continue
         try:
@@ -198,9 +221,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 log.warning("API judge failed for %s: %s — keeping clip", c["id"], e)
             r = None
         if r is None:  # failures not cached -> retried next run
-            c.update(api_focus="unjudged", api_entertainment=6, api_play_quality=5,
-                     api_what_happens="")
-            decide_api(c, aj)
+            local_judge(c, aj)
             judged.append(c)
             continue
         c["api_focus"] = str(r.get("clip_focus", "other")).lower()

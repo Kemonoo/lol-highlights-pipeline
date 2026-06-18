@@ -23,7 +23,6 @@ Requirements:
 
 import json
 import os
-import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

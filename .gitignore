@@ -13,8 +13,13 @@ data/
 # training datasets (large; regenerable via pipeline.tools.collect_training_data)
 data/training/
 
-# generated music (rebuild with: python -m pipeline.gen_music)
-assets/music/bg.mp3
+# music tracks are local-only (royalty-free NCS, listed in config video.music_tracks with
+# attribution; bg.mp3 is generated via `python -m pipeline.tools.gen_music`). Not committed
+# (binary size + redistribution). See assets/music/README.md to re-source them.
+assets/music/*.mp3
+
+# generated nameplate SFX (rebuild with: python -m pipeline.tools.gen_sfx)
+assets/sfx/
 
 # archived pre-pivot code (local only)
 _archive/

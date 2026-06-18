@@ -1,22 +1,40 @@
 # Background music
 
-Drop a free-to-use track here as `bg.mp3` (config: video.music_path). It loops under
-the whole video at music_volume_db (-24dB default — a quiet bed, not foreground).
+Music files live here **locally only** — they're gitignored (`assets/music/*.mp3`) to
+avoid committing binaries / redistributing tracks. A fresh clone has no audio until you
+drop the tracks back in. The credits stage auto-appends `video.music_attribution` (set
+per run from the chosen track) to every video description.
 
-Recommended sources (verify the license on the page before use):
+## What the pipeline expects
 
-1. **Kevin MacLeod — incompetech.com** (CC-BY 4.0, free with attribution)
-   Good fits: "Voltaic", "Exhilarate", "Rhinoceros", "Latin Industries".
-   If used, set in config.yaml:
-     music_attribution: 'Music: "<Track>" Kevin MacLeod (incompetech.com), CC BY 4.0'
+`pipeline/config.yaml` → `video.music_tracks` lists the tracks (one is picked at random
+per run, with its attribution). Current set (royalty-free **NCS — NoCopyrightSounds**,
+free on monetized YouTube *with* the per-track attribution the credits stage adds):
 
-2. **Pixabay Music — pixabay.com/music** (Pixabay license: free, NO attribution required,
-   monetized YouTube OK). Search: "gaming background", "electronic upbeat".
+| file | artist | title |
+|------|--------|-------|
+| `ncs-why-we-lose.mp3`  | Cartoon       | Why We Lose (feat. Coleman Trapp) |
+| `ncs-fearless-ii.mp3`  | Lost Sky      | Fearless pt. II (feat. Chris Linton) |
+| `ncs-on-and-on.mp3`    | Cartoon       | On & On (feat. Daniel Levi) |
+| `ncs-blank.mp3`        | Disfigure     | Blank |
+| `ncs-invincible.mp3`   | DEAF KEV      | Invincible |
+| `ncs-superhero.mp3`    | Unknown Brain | Superhero (feat. Chris Linton) |
 
-3. **YouTube Audio Library — studio.youtube.com -> Audio Library** (free for YouTube,
-   filter "Attribution not required"). Safest option for Content ID.
+Re-download from **ncs.io** (search the title) and save with the filename above.
 
-AVOID: NoCopyrightSounds (fine but requires specific attribution per track),
-random "no copyright music" reuploads on YouTube (often false claims -> Content ID strikes).
+## In-house fallback bed
 
-The credits stage automatically appends music_attribution to every video description.
+`bg.mp3` is a numpy-synthesized, copyright-free bed. Rebuild it any time with:
+
+```
+python -m pipeline.tools.gen_music
+```
+
+Set `video.music_path: assets/music/bg.mp3` to force it instead of the NCS list.
+
+## Other royalty-free sources (if you swap tracks)
+
+- **Pixabay Music** (pixabay.com/music) — free, no attribution required, monetization OK.
+- **YouTube Audio Library** (studio.youtube.com → Audio Library, filter "Attribution not
+  required") — safest for Content ID.
+- **Kevin MacLeod** (incompetech.com) — CC-BY 4.0, free with attribution.
