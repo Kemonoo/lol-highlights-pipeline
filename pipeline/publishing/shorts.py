@@ -427,7 +427,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
     detect_face  = sh.get("detect_facecam", True)
     target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
     pre_roll     = float(sh.get("pre_roll_s", 7))                          # build-up before the heat
-    cap_margin   = int(sh.get("caption_margin_v", 160))                    # px above the bottom edge
+    cap_margin   = int(sh.get("caption_margin_v", 430))                    # blur-bg: px above bottom
+    cap_split_gap = int(sh.get("caption_split_gap", 190))                  # split: px above the facecam
+                                                                            # (clears the in-game HUD too)
 
     done: dict = {}
     done_f = out_dir / "done.json"
@@ -493,8 +495,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
         ass_path: Path | None = None
         if speech_words:
             ass_path = out_dir / f"{clip_id}.ass"
-            _write_tiktok_ass(speech_words, ass_path, margin_v=cap_margin)
-            log.info("  captions: %d words", len(speech_words))
+            # split layout: sit just ABOVE the facecam panel (over gameplay, off the face);
+            # blur-bg layout: a high lower-third position.
+            cap_mv = (face_h + cap_split_gap) if facecam else cap_margin
+            _write_tiktok_ass(speech_words, ass_path, margin_v=cap_mv)
+            log.info("  captions: %d words @ %dpx", len(speech_words), cap_mv)
 
         # 4. Single-pass render
         v_final = out_dir / f"{clip_id}.mp4"

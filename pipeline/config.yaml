@@ -224,7 +224,9 @@ shorts:
   detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
   target_seconds: 32          # punchy length — 20-35s wins on Shorts (retention drops past ~45s)
   pre_roll_s: 7               # seconds of build-up before the best moment (lead with the heat)
-  caption_margin_v: 160       # px the captions sit above the bottom (raised clear of the Shorts UI)
+  caption_margin_v: 430       # blur-bg layout: px captions sit above the bottom (lower-third)
+  caption_split_gap: 190      # split layout: px captions sit above the facecam, clearing the in-game
+                              # HUD too (lower third of the gameplay panel)
 
 cleanup:
   enabled: true
