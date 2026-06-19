@@ -63,6 +63,9 @@ transcribe:                   # multilingual streamer speech -> English (faster-
                               # Set true when commentary.enabled is true.
   model: small                # tiny|base|small|medium — small fits the RTX 3050 4GB well
   max_seconds: 60             # ignore speech past this point in a clip (cost bound)
+  device: cpu                 # cpu | cuda — CPU is bulletproof; the unattended GPU session crashed
+                              # in cuDNN ("cudnnGetLibConfig", err 127). Use cuda only once fixed.
+  compute_type: int8          # int8 (cpu) | int8_float16 (cuda)
 
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true
@@ -181,6 +184,8 @@ video:
 
 upload:
   enabled: true               # OAuth set up — first upload opens a browser once
+  allow_reupload: false       # idempotency: skip if this date already uploaded (the bat retries
+                              # on crash; without this a retry made a DUPLICATE video). true = force.
   privacy: public           # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
   # clickbait/curiosity titles; a date series-marker is appended → "HOOK | June 17, 2026"

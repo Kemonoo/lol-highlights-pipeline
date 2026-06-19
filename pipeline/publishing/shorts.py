@@ -4,12 +4,10 @@ Per clip:
   1. Trim to ≤55 s (centered on api_best_moment_s when the clip is longer).
   2. Face cam detection (9 frames, majority vote, CLAHE + frontal + profile cascades).
   3. One-pass ffmpeg render at 1080×1920 (blur-bg or split layout).
-  4. Streamer speech → English via the shared enrichment.transcribe (faster-whisper):
-     drives both the English captions and the VO/title context.
-  5. Informative English VO line synthesised by the same TTS provider as the main video.
-  6. English speech captions (word-level, TikTok style, positioned at the BOTTOM of the
-     frame so they do not overlap LoL HUD ability icons).
-  7. Upload as a YouTube Short — English title generated from the summary + speech
+  4. Streamer speech → English via the shared enrichment.transcribe (faster-whisper),
+     rendered as word-level captions at the BOTTOM of the frame (clear of the HUD + the
+     Shorts UI). NO voiceover, NO AI overlay text — translate the speech and caption it.
+  5. Upload as a YouTube Short — English title generated from the summary + speech
      (never the raw, often-native Twitch clip title).
 
 Output:  data/work/<date>/shorts/<clip_id>.mp4
@@ -26,25 +24,6 @@ log = logging.getLogger("pipeline.shorts")
 
 TARGET_W, TARGET_H = 1080, 1920
 MAX_SHORT_S = 55  # under YouTube's 60 s limit with buffer
-
-_VO_PROMPT = """Write ONE voiceover sentence introducing this League of Legends clip as a YouTube Short.
-Tone: sports commentator — factual, curious, builds anticipation. No Gen Z slang.
-Good examples (do NOT copy verbatim, vary the structure):
-  "Watch {streamer} get caught in a 1v3 — this might actually work though."
-  "Caught out of position, {streamer} has to think fast here."
-  "{streamer} going full send — let's see if the read was right."
-  "No flash, one HP, three enemies. This is going to be interesting."
-Keep under 15 words. Reference what actually happens. No hype words like "insane".
-English only. Clip: {streamer} — {summary}
-What the streamer said (English, may be empty): {speech}
-Answer ONLY JSON: {{"line": "..."}}"""
-
-_OVERLAY_PROMPT = """Write 2-4 words of punchy on-screen caption text for this League of Legends clip.
-React to the moment — like a meme caption that makes someone pause on scroll.
-Examples: NOT LOOKING GOOD, SOMEHOW WORKED, THE AUDACITY, CALCULATED, CLASSIC
-No emoji. No punctuation beyond ellipsis (...). Capital letters OK.
-Clip: {streamer} — {summary}
-Answer ONLY JSON: {{"text": "..."}}"""
 
 _TITLE_PROMPT = """Write a punchy ENGLISH YouTube Shorts title for a League of Legends clip.
 <= 70 characters. English ONLY (never the streamer's native language). Clickbait but honest,
@@ -444,9 +423,6 @@ def run(cfg: dict, state, date_label: str) -> Path:
         "gemini_model":   cfg.get("commentary", {}).get("gemini_model", "gemini-2.0-flash-lite"),
         "gemini_api_key": cfg.get("api_judge",  {}).get("api_key", ""),
     }
-    tts_cfg      = cfg.get("tts", {})
-    tts_provider = tts_cfg.get("provider", "edge-tts")
-    tts_voice    = tts_cfg.get("voice", "male-us")
     privacy      = sh.get("privacy", "public")
     detect_face  = sh.get("detect_facecam", True)
     target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
@@ -497,55 +473,30 @@ def run(cfg: dict, state, date_label: str) -> Path:
         game_h  = int(TARGET_H * 0.60) if facecam else TARGET_H
         face_h  = TARGET_H - game_h
 
-        # 3. Streamer speech → English (shared faster-whisper): drives captions + context
+        # 3. Streamer speech → English captions (faster-whisper). No voiceover, no AI
+        #    overlay text — per direction, we only translate the speech and caption it.
         short_s = min(duration, target_s)
         speech_words, speech_text = [], ""
         try:
             from ..enrichment.transcribe import transcribe as _transcribe
-            tr = _transcribe(clip_src, cfg.get("transcribe", {}).get("model", "small"), short_s)
+            tc = cfg.get("transcribe", {})
+            tr = _transcribe(clip_src, tc.get("model", "small"), short_s,
+                             tc.get("device", "cpu"), tc.get("compute_type", "int8"))
             speech_words, speech_text = tr["words"], tr["text"]
             if speech_text:
                 log.info("  speech [%s]: %s", tr["lang"], speech_text[:80])
         except Exception as e:
             log.warning("  transcription failed: %s", e)
 
-        # 4. Informative English VO line (Gemini → simple fallback so captions always exist)
-        vo_line = ""
-        if cm["gemini_api_key"]:
-            vo_line = _gemini_call(
-                _VO_PROMPT.format(streamer=streamer, summary=summary[:120],
-                                  speech=speech_text[:200] or "(none)"), cm, "line")
-        if not vo_line:
-            vo_line = f"Here's {streamer} — let's see how this plays out."
-
-        # 5. TTS synthesis -> MP3
-        vo_path: Path | None = None
-        if vo_line:
-            from ..production.tts import synthesize
-            vo_mp3 = out_dir / f"{clip_id}_vo.mp3"
-            try:
-                synthesize(vo_line, vo_mp3, tts_voice, provider=tts_provider)
-                vo_path = vo_mp3
-                log.info("  VO: %s", vo_line[:80])
-            except Exception as e:
-                log.warning("  short TTS failed: %s — no VO for this clip", e)
-
-        # 6. English captions from the translated speech (bottom — never over the HUD)
+        vo_path = None        # no voiceover on Shorts
+        overlay_text = ""     # no AI meme caption — captions only
         ass_path: Path | None = None
         if speech_words:
             ass_path = out_dir / f"{clip_id}.ass"
             _write_tiktok_ass(speech_words, ass_path, margin_v=cap_margin)
             log.info("  captions: %d words", len(speech_words))
 
-        # 7. Meme text overlay
-        overlay_text = ""
-        if cm["gemini_api_key"]:
-            raw = _gemini_call(
-                _OVERLAY_PROMPT.format(streamer=streamer, summary=summary[:80]),
-                cm, "text")
-            overlay_text = _clean_overlay(raw)
-
-        # 8. Single-pass render
+        # 4. Single-pass render
         v_final = out_dir / f"{clip_id}.mp4"
         try:
             _render_short(clip_src, v_final, facecam, vo_path,
@@ -563,7 +514,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
         log.info("  rendered -> %s", v_final.name)
 
-        # 9. Upload
+        # 5. Upload
         if sh.get("upload", True):
             broadcaster_url = f"https://twitch.tv/{streamer.lower()}"
             # English title generated from the (English) summary + translated speech —
@@ -578,7 +529,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 title_en = f"{streamer} had to make this work"
             title = f"{title_en[:80]} #Shorts"
             description = (
-                f"{vo_line or summary}\n\n"
+                f"{title_en}\n\n"
                 f"Clip by: {streamer} — {broadcaster_url}\n"
                 f"Full daily highlights on the channel!\n\n"
                 f"#LeagueOfLegends #LoL #Shorts #TwitchClips"

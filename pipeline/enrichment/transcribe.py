@@ -24,38 +24,39 @@ from pathlib import Path
 log = logging.getLogger("pipeline.transcribe")
 
 _model = None
-_model_name = None
+_model_key = None
 
 
-def _get_model(name: str):
-    """Build + cache the faster-whisper model once (GPU int8_float16, CPU int8)."""
-    global _model, _model_name
-    if _model is not None and _model_name == name:
+def _get_model(name: str, device: str = "cpu", compute_type: str = "int8"):
+    """Build + cache the faster-whisper model once.
+
+    Defaults to CPU/int8: the CUDA path needs a matching cuDNN, which the unattended
+    Task Scheduler session was missing ("Could not load symbol cudnnGetLibConfig",
+    error 127) — a hard crash that killed the whole run. CPU is slow-ish but bulletproof
+    and lean mode only transcribes the 3 Shorts clips. Set transcribe.device: cuda to opt
+    back into the GPU once cuDNN is sorted."""
+    global _model, _model_key
+    key = (name, device, compute_type)
+    if _model is not None and _model_key == key:
         return _model
     from faster_whisper import WhisperModel
     try:
-        import torch
-        cuda = torch.cuda.is_available()
-    except Exception:
-        cuda = False
-    device, compute = ("cuda", "int8_float16") if cuda else ("cpu", "int8")
-    try:
-        _model = WhisperModel(name, device=device, compute_type=compute)
+        _model = WhisperModel(name, device=device, compute_type=compute_type)
     except Exception as e:
         log.warning("whisper %s on %s/%s failed (%s) — falling back to cpu/int8",
-                    name, device, compute, e)
+                    name, device, compute_type, e)
         _model = WhisperModel(name, device="cpu", compute_type="int8")
-    _model_name = name
+    _model_key = key
     return _model
 
 
-def transcribe(audio: Path, model_name: str = "small",
-               max_s: float | None = None) -> dict:
+def transcribe(audio: Path, model_name: str = "small", max_s: float | None = None,
+               device: str = "cpu", compute_type: str = "int8") -> dict:
     """Translate any-language speech in `audio` to English with word timestamps.
 
     Returns {"lang", "lang_prob", "text", "words": [{word,start,end}, ...]}.
     """
-    model = _get_model(model_name)
+    model = _get_model(model_name, device, compute_type)
     segments, info = model.transcribe(str(audio), task="translate",
                                       word_timestamps=True)
     text_parts, words = [], []
@@ -114,6 +115,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cache = load(work)
     model_name = tc.get("model", "small")
     max_s = tc.get("max_seconds")
+    device = tc.get("device", "cpu")
+    compute = tc.get("compute_type", "int8")
 
     try:
         for c in clips:
@@ -124,7 +127,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if not mp4:
                 continue
             try:
-                r = transcribe(mp4, model_name, max_s)
+                r = transcribe(mp4, model_name, max_s, device, compute)
             except KeyboardInterrupt:
                 raise
             except Exception as e:                 # one clip's failure isn't fatal

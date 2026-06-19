@@ -72,6 +72,16 @@ def run(cfg: dict, state, date_label: str) -> None:
                  "(enable in config after OAuth setup, see pipeline/upload.py)")
         return
 
+    # Idempotency: never upload the same date twice. The unattended bat retries the whole
+    # run on a non-zero exit (e.g. a later stage crashes after upload), so without this a
+    # retry would create a duplicate YouTube video.
+    if state is not None and not up.get("allow_reupload", False):
+        existing = state.uploaded_id(date_label)
+        if existing:
+            log.info("upload: %s already uploaded as %s — skipping "
+                     "(set upload.allow_reupload to force)", date_label, existing)
+            return
+
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload

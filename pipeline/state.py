@@ -39,6 +39,13 @@ class State:
         self._d["videos"].append(info)
         self.save()
 
+    def uploaded_id(self, date_label: str) -> str | None:
+        """YouTube id already uploaded for this date, if any (upload idempotency)."""
+        for v in self._d.get("videos", []):
+            if v.get("date") == date_label and v.get("youtube_id"):
+                return v["youtube_id"]
+        return None
+
     def save(self) -> None:
         self.path.write_text(
             json.dumps(self._d, indent=2, ensure_ascii=False), encoding="utf-8"
