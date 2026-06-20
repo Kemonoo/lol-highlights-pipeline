@@ -35,9 +35,11 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
    from vlm_scored.json — idempotent)
 5. `enrichment/transcribe.py` — multilingual streamer speech → English (faster-whisper,
-   task=translate): detects language, translates, word timestamps → `work/<date>/
-   transcripts.json` {clip_id: {lang, text, words}}. Cached per clip; feeds commentary
-   (reliable context) + shorts (English captions). `enrichment/match_linker.py`,
+   task=translate; `transcribe.device` defaults to CPU — the scheduled GPU session crashed
+   in cuDNN): detects language, translates, word timestamps → `work/<date>/transcripts.json`
+   {clip_id: {lang, text, words}}. Skips `transcribe.skip_languages` ([en] — already English).
+   Cached per clip; feeds assemble (burns English captions on foreign clips), commentary
+   (reliable context, produced mode) + shorts (English captions). `enrichment/match_linker.py`,
    `enrichment/hud_ocr.py` — Phase-2 stubs (Riot API match data; HUD OCR). Docstrings
    contain the implementation plans. Riot API > scraping op.gg/u.gg (no public APIs there)
 6. `production/commentary.py` — montage-caster lines (hype the player/moment; never
@@ -50,11 +52,14 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
    per run as a module-level singleton) / edge-tts fallback. Word timestamps; `_intro`
    handled like any line; per-clip failures are skipped, not fatal; timings flushed
    incrementally. `tts.enabled` config switch → `work/<date>/vo/<clip_id>.mp3`
-8. `production/assemble.py` — ffmpeg only (no moviepy): intro card → segments (animated
-   PROJECT-style streamer nameplate bottom-left via `production/nameplate.py` when
-   `video.nameplate.enabled`, else the plain drawtext lower-third slide-up; both fall back
-   gracefully), #N countdown badge, VO ducking, 0.3s fades, 0.5x REPLAY part for clips
-   with api_rank_score ≥ replay_min_score using api_best_moment_s) → outro → concat
+8. `production/assemble.py` — ffmpeg only (no moviepy): KEMONO brand intro (or text card)
+   → segments (animated PROJECT-style streamer nameplate bottom-left via
+   `production/nameplate.py` when `video.nameplate.enabled`, else the plain drawtext
+   lower-third; both fall back gracefully), #N countdown badge, drawtext English captions
+   burned on FOREIGN-language clips (from transcripts.json — English clips get none), VO
+   ducking, 0.3s fades, 0.5x REPLAY part for clips with api_rank_score ≥ replay_min_score
+   using api_best_moment_s) → outro (when `video.outro_music`: KEMONO logo over the
+   energy-detected drop of an NCS track, `_find_drop`; else text card) → concat
    demuxer → master (looped music bed, sidechain-ducked under clip audio so music rises
    in quiet gaps + single-pass loudnorm, video stream copied)
 9. `production/credits.py` — title hook from best clip, chapters, per-streamer credit
@@ -71,11 +76,14 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
     champion splash from Data Dragon + reaction face + hook text. Writes
     `work/<date>/thumbnail.jpg`; splash/pfp cached in data/cache/
 11. `publishing/upload.py` — YouTube Data API v3 resumable upload, OAuth desktop flow
-    (client_secret.json in root, token cached at data/yt_token.json)
+    (client_secret.json in root, token cached at data/yt_token.json). IDEMPOTENT: skips a
+    date already in state (`state.uploaded_id`) so the bat's crash-retry can't double-upload
+    (`upload.allow_reupload` to force)
 12. `publishing/shorts.py` — derives vertical Shorts from top clips (facecam detection +
-    split-screen layout). Everything is English: speech captions + VO/title use
-    `enrichment.transcribe`; the title is generated in English from the summary + speech
-    (NEVER the raw, often-native Twitch clip title). Shares the main upload OAuth →
+    split-screen layout, punchy `target_seconds` trim). NO voiceover/music: just the clip
+    audio + English speech captions (drawtext, `_caption_filters`, layout-aware height via
+    `caption_split_gap`/`caption_margin_v` — fontfile, no fontconfig). English title from
+    the summary + speech (NEVER the raw native Twitch title). Shares the main upload OAuth →
     `work/<date>/shorts/`
 13. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days` to free disk
 
@@ -153,14 +161,16 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   (min_agreement). Auto-update (when enabled) may touch config.yaml/blacklist/prompt
   strings ONLY — never code structure. kill_detect short-circuits once kills are
   confirmed; don't remove that without measuring runtime.
-- **LEAN MODE (current default)**: chasing the Synapse model (curated English clips +
-  transitions + brand, no narration). `commentary.enabled: false`, `tts.enabled: false`,
-  `video.music_enabled: false`, `prefilter.include_languages: [en]`. The VO/commentary/
-  music machinery is intact behind those switches — don't delete it. Trade-off: dropping
-  commentary weakens the YouTube "reused content"/YPP monetization hedge (was the original
-  reason commentary existed). Strategy is grow-first; revisit an originality layer (light
-  commentary or a niche/heavy editing) before applying for monetization. Per-streamer
-  credits are still always generated; uploads private by default.
+- **LEAN MODE (current default)**: chasing the Synapse model (curated clips + transitions
+  + KEMONO brand, no narration). `commentary.enabled: false`, `tts.enabled: false`,
+  `video.music_enabled: false` (background bed). The VO/commentary/music-bed machinery is
+  intact behind those switches — don't delete it. NB: clips are NO LONGER English-only —
+  `prefilter.include_languages` includes EU langs + ko, and foreign-speech clips get burned
+  English captions (transcribe → assemble) so they're watchable without narration; English
+  clips are skipped by transcribe (`skip_languages`). The OUTRO still uses music
+  (`video.outro_music`: KEMONO logo over an NCS drop) even though the bed is off. Trade-off:
+  no commentary weakens the YouTube "reused content"/YPP hedge — grow-first, revisit an
+  originality layer before monetizing. Per-streamer credits always generated.
 
 ## Token efficiency
 - Read only files relevant to the task. Module docstrings are accurate and current —

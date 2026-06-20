@@ -18,8 +18,9 @@ prefilter:                    # thresholds from twitch_clips training
   audio_pass: 0.52
   motion_exclude: 0.015
   max_keep: 40                # best N clips proceed to VLM stage
-  include_languages: [en]     # English-first channel: keep only English-broadcaster clips
-                              # (allowlist wins over exclude_languages). [] = disable allowlist.
+  # Keep English + the languages faster-whisper translates well (non-English speech is
+  # transcribed → English and captioned). ja/zh stay out (JP talk-context, ZH low-signal).
+  include_languages: [en, fr, de, es, ru, pt, it, pl, cs, sk, ko]
   exclude_languages: [ja, zh] # used only when include_languages is empty
 
 vlm_filter:
@@ -58,11 +59,12 @@ api_judge:                    # Gemini full-video quality judge on local survivo
   fallback_motion_min: 0.11
 
 transcribe:                   # multilingual streamer speech -> English (faster-whisper)
-  enabled: false              # LEAN MODE: only commentary consumes the stage output, and that's
-                              # off — so skip it (shorts still transcribes its own clips directly).
-                              # Set true when commentary.enabled is true.
+  enabled: true               # transcribe+translate non-English clips so the long-form can
+                              # caption them in English (English clips are skipped — see below).
   model: small                # tiny|base|small|medium — small fits the RTX 3050 4GB well
   max_seconds: 60             # ignore speech past this point in a clip (cost bound)
+  skip_languages: [en]        # don't transcribe these Twitch clip languages (already English →
+                              # no translation/captions needed). [] = transcribe everything.
   device: cpu                 # cpu | cuda — CPU is bulletproof; the unattended GPU session crashed
                               # in cuDNN ("cudnnGetLibConfig", err 127). Use cuda only once fixed.
   compute_type: int8          # int8 (cpu) | int8_float16 (cuda)
@@ -137,6 +139,9 @@ video:
   replay_min_score: 7         # clips ranked this high get a slow-mo best-moment replay
   replay_seconds: 6           # source seconds around the best moment (plays at 0.5x)
   outro_enabled: true
+  outro_music: true             # outro = KEMONO logo over an NCS track's drop (even in lean mode)
+  outro_seconds: 12             # length of the music outro
+  outro_music_start: 0.33       # fallback drop position (frac of track) if energy detection fails
   target_minutes_min: 5
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10

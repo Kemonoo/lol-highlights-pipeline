@@ -59,4 +59,18 @@ def load_config(path: Path | None = None) -> dict:
         mp = v.get("music_path", "")
         if mp and not Path(mp).is_absolute():
             v["music_path"] = str(ROOT / mp)
+
+    # Outro music: a track for the branded outro drop, picked independently of the bed
+    # (lean mode has no bed but still gets an outro song). Credited via music_attribution.
+    all_tracks = v.get("music_tracks") or []
+    if v.get("outro_music", False) and all_tracks:
+        pick = random.choice(all_tracks)
+        p = pick.get("path", "")
+        v["outro_music_path"] = str(ROOT / p) if p and not Path(p).is_absolute() else p
+        attr = f"{pick.get('artist', '')} - {pick.get('title', '')} | NoCopyrightSounds (NCS)"
+        v["outro_music_attribution"] = attr
+        if not v.get("music_attribution"):
+            v["music_attribution"] = attr        # ensure the NCS outro track is credited
+    else:
+        v["outro_music_path"] = ""
     return cfg

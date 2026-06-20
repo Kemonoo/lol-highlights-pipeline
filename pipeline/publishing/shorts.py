@@ -49,12 +49,7 @@ def _ascii_name(c: dict) -> str:
     return c.get("broadcaster_login", "") or "the streamer"
 
 
-# ── path helpers ──────────────────────────────────────────────────────────────
-
-def _ass_esc(path: Path) -> str:
-    """Escape a Windows absolute path for use inside a ffmpeg filter option value."""
-    return str(path).replace("\\", "/").replace(":", "\\:")
-
+# ── text helpers ──────────────────────────────────────────────────────────────
 
 def _clean_overlay(text: str) -> str:
     """Strip emoji, ASS control chars, and ffmpeg drawtext-unsafe chars."""
@@ -204,89 +199,62 @@ def _trim_clip(mp4: Path, out: Path, duration: float, best_s: float,
     return out
 
 
-# ── TikTok-style ASS captions ─────────────────────────────────────────────────
+# ── TikTok-style captions (drawtext: pixel-precise y, renders without fontconfig) ──
 
-def _write_tiktok_ass(words: list[dict], path: Path, margin_v: int = 80) -> None:
-    """One word per cue, Arial Black 64 px, white with thick black outline.
+_CAP_FONTS = ["C:/Windows/Fonts/ariblk.ttf", "C:/Windows/Fonts/arialbd.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
 
-    margin_v: pixels from the BOTTOM of the 1920 px frame (default 80).
-    Positioned at the very bottom so captions never overlap the LoL HUD.
-    """
-    def ts(s: float) -> str:
-        h, rem = divmod(s, 3600)
-        m, s2  = divmod(rem, 60)
-        return f"{int(h)}:{int(m):02d}:{s2:06.3f}"
 
-    header = (
-        "[Script Info]\n"
-        "ScriptType: v4.00+\n"
-        f"PlayResX: {TARGET_W}\n"
-        f"PlayResY: {TARGET_H}\n"
-        "WrapStyle: 0\n\n"
-        "[V4+ Styles]\n"
-        "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,"
-        "OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,"
-        "ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,"
-        "Alignment,MarginL,MarginR,MarginV,Encoding\n"
-        # Arial Black, size 64, white fill (&H00FFFFFF), yellow karaoke (&H0000FFFF),
-        # black 6 px outline (&H00000000), bold (-1), bottom-center (Alignment=2)
-        f"Style: Cap,Arial Black,64,&H00FFFFFF,&H0000FFFF,&H00000000,"
-        f"&H00000000,-1,0,0,0,100,110,2,0,1,6,0,2,60,60,{margin_v},1\n\n"
-        "[Events]\n"
-        "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
-    )
+def _cap_font() -> str:
+    """A colon-escaped bold fontfile path for drawtext (Arial Black → Bold → DejaVu)."""
+    for f in _CAP_FONTS:
+        if Path(f).exists():
+            return f.replace(":", r"\:")
+    return _CAP_FONTS[-1].replace(":", r"\:")
 
-    events = []
+
+def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64) -> str:
+    """One drawtext per word (only one visible at a time), centred, white with a black
+    outline, its BOTTOM sitting `cap_mv` px above the frame bottom. Returns a comma-joined
+    filterchain. drawtext+fontfile renders everywhere (no fontconfig/libass font matching)."""
+    font = _cap_font()
+    y = TARGET_H - cap_mv - fontsize
+    seg = []
     for w in words:
-        word = (w["word"]
-                .replace("{", "").replace("}", "").replace("\\", "")
-                .replace("<", "").replace(">", "")
-                .strip())
+        word = _clean_overlay(w.get("word", "")).upper()
         if not word:
             continue
-        t0 = w["start"]
-        t1 = max(t0 + 0.15, w["end"])
-        events.append(f"Dialogue: 0,{ts(t0)},{ts(t1)},Cap,,0,0,0,,{word.upper()}")
-
-    path.write_text(header + "\n".join(events), encoding="utf-8-sig")
+        t0 = float(w["start"]); t1 = max(t0 + 0.15, float(w["end"]))
+        seg.append(
+            f"drawtext=fontfile='{font}':text='{word}':fontsize={fontsize}:fontcolor=white:"
+            f"borderw=7:bordercolor=black:x=(w-text_w)/2:y={y}:"
+            f"enable='between(t,{t0:.2f},{t1:.2f})'")
+    return ",".join(seg)
 
 
 # ── single-pass render ────────────────────────────────────────────────────────
 
 def _render_short(mp4: Path, out: Path, facecam: tuple | None,
-                  vo: Path | None, ass: Path | None,
-                  overlay_text: str, game_h: int) -> None:
-    """Render the final Short in ONE ffmpeg pass.
-
-    filter_complex contains:
-      - 1080x1920 vertical transform (blur-bg or split)
-      - ASS caption overlay (TikTok style, if words exist)
-      - Meme-text drawtext (if overlay_text is set)
-      - Audio: clip audio ducked under VO for VO duration, clip audio alone after
-    """
+                  caption_words: list[dict], cap_mv: int, game_h: int) -> None:
+    """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
+    (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
+    (no voiceover, no music)."""
     face_h = TARGET_H - game_h
-
-    # ── video filter graph ──────────────────────────────────────────
     parts: list[str] = []
 
     if facecam:
         cx, cy, cw, ch = facecam
         parts += [
-            # Split into gameplay stream and face cam stream
             "[0:v]split=2[vgame][vface]",
-            # Gameplay: scale to fill the top panel (center-crop to 1080 x game_h)
             f"[vgame]scale={TARGET_W}:{game_h}:force_original_aspect_ratio=increase,"
             f"crop={TARGET_W}:{game_h}[game]",
-            # Face cam: crop the detected corner region, scale to fill bottom panel
             f"[vface]crop={cw}:{ch}:{cx}:{cy},"
             f"scale={TARGET_W}:{face_h}:force_original_aspect_ratio=increase,"
             f"crop={TARGET_W}:{face_h}[face]",
-            # Stack: gameplay top, face cam bottom
             "[game][face]vstack=inputs=2[cur]",
         ]
     else:
         parts += [
-            # Split into background (blurred fill) and foreground (pillar-boxed)
             "[0:v]split=2[vbg][vfg]",
             f"[vbg]scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=increase,"
             f"crop={TARGET_W}:{TARGET_H},boxblur=20:5[bg]",
@@ -295,55 +263,16 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
         ]
 
     cur = "cur"
-
-    # ── ASS caption overlay ─────────────────────────────────────────
-    if ass and ass.exists():
-        nxt = "subs"
-        parts.append(f"[{cur}]ass='{_ass_esc(ass)}'[{nxt}]")
-        cur = nxt
-
-    # ── meme/hook text drawtext ─────────────────────────────────────
-    if overlay_text:
-        safe = _clean_overlay(overlay_text)
-        if safe:
-            # TOP third — sound-off hook readable in the first frame, clear of YouTube's
-            # top UI and of the bottom speech captions (research: hook text, top third).
-            nxt = "ovr"
-            parts.append(
-                f"[{cur}]drawtext=text='{safe}'"
-                f":fontsize=66:fontcolor=white"
-                f":bordercolor=black:borderw=6"
-                f":box=1:boxcolor=black@0.40:boxborderw=14"
-                f":x=(w-text_w)/2:y=h*0.12[{nxt}]"
-            )
-            cur = nxt
-
-    video_graph = ";".join(parts)
-
-    # ── audio ───────────────────────────────────────────────────────
-    vo_input:    list[str] = []
-    audio_parts: list[str] = []
-    audio_map:   list[str]
-
-    if vo and vo.exists():
-        vo_input    = ["-i", str(vo)]
-        audio_parts = [
-            "[0:a]volume=0.25[ga]",
-            "[1:a]volume=1.0[va]",
-            # duration=first: mix runs for clip's full length;
-            # VO plays until it ends, then only the (ducked) clip audio continues.
-            "[ga][va]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-        ]
-        audio_map = ["-map", "[aout]"]
-    else:
-        audio_map = ["-map", "0:a?"]
-
-    full_graph = ";".join(parts + audio_parts)
+    if caption_words:
+        dt = _caption_filters(caption_words, cap_mv)
+        if dt:
+            parts.append(f"[{cur}]{dt}[cap]")
+            cur = "cap"
 
     cmd = [
-        "ffmpeg", "-y", "-i", str(mp4), *vo_input,
-        "-filter_complex", full_graph,
-        "-map", f"[{cur}]", *audio_map,
+        "ffmpeg", "-y", "-i", str(mp4),
+        "-filter_complex", ";".join(parts),
+        "-map", f"[{cur}]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",
         str(out),
@@ -490,22 +419,16 @@ def run(cfg: dict, state, date_label: str) -> Path:
         except Exception as e:
             log.warning("  transcription failed: %s", e)
 
-        vo_path = None        # no voiceover on Shorts
-        overlay_text = ""     # no AI meme caption — captions only
-        ass_path: Path | None = None
+        # split layout: caption bottom sits above the facecam panel (over gameplay, off
+        # the face + in-game HUD); blur-bg layout: a high lower-third position.
+        cap_mv = (face_h + cap_split_gap) if facecam else cap_margin
         if speech_words:
-            ass_path = out_dir / f"{clip_id}.ass"
-            # split layout: sit just ABOVE the facecam panel (over gameplay, off the face);
-            # blur-bg layout: a high lower-third position.
-            cap_mv = (face_h + cap_split_gap) if facecam else cap_margin
-            _write_tiktok_ass(speech_words, ass_path, margin_v=cap_mv)
-            log.info("  captions: %d words @ %dpx", len(speech_words), cap_mv)
+            log.info("  captions: %d words @ %dpx from bottom", len(speech_words), cap_mv)
 
-        # 4. Single-pass render
+        # 4. Single-pass render (clip audio only, drawtext captions, no VO/music)
         v_final = out_dir / f"{clip_id}.mp4"
         try:
-            _render_short(clip_src, v_final, facecam, vo_path,
-                          ass_path, overlay_text, game_h)
+            _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h)
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or b"").decode(errors="replace")[-500:]
             log.warning("  render failed for %s:\n%s", clip_id, stderr)
@@ -514,8 +437,6 @@ def run(cfg: dict, state, date_label: str) -> Path:
         finally:
             if trim_tmp:
                 trim_tmp.unlink(missing_ok=True)
-            if ass_path:
-                ass_path.unlink(missing_ok=True)
 
         log.info("  rendered -> %s", v_final.name)
 

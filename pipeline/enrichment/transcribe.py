@@ -117,11 +117,14 @@ def run(cfg: dict, state, date_label: str) -> Path:
     max_s = tc.get("max_seconds")
     device = tc.get("device", "cpu")
     compute = tc.get("compute_type", "int8")
+    skip = {l.lower() for l in tc.get("skip_languages", [])}
 
     try:
         for c in clips:
             cid = c["id"]
             if cid in cache:
+                continue
+            if (c.get("language") or "").lower() in skip:   # already English → no translation
                 continue
             mp4 = _resolve_mp4(c, raw_dir)
             if not mp4:

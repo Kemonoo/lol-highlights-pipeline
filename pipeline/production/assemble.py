@@ -65,6 +65,26 @@ def _esc(text: str) -> str:
     return "".join(ch for ch in text if ch not in "\\'%:,[]=;").strip()
 
 
+def _caption_dt(words: list | None, v: dict, fontsize: int = 52) -> str:
+    """drawtext chain (one word visible at a time) for burned English captions on a
+    foreign-language clip — bottom-centre, above the in-game HUD. '' when no words."""
+    if not words:
+        return ""
+    f = _font("x", v)
+    y = int(v["height"] * 0.78)
+    seg = []
+    for w in words:
+        word = _esc((w.get("word") or "").upper())
+        if not word:
+            continue
+        t0 = float(w["start"]); t1 = max(t0 + 0.15, float(w["end"]))
+        seg.append(
+            f"drawtext=fontfile='{f}':text='{word}':fontsize={fontsize}:fontcolor=white:"
+            f"borderw=6:bordercolor=black:x=(w-text_w)/2:y={y}:"
+            f"enable='between(t,{t0:.2f},{t1:.2f})'")
+    return ",".join(seg)
+
+
 # ── intro / outro cards ───────────────────────────────────────────────────────
 
 def _card(out: Path, v: dict, dur: float, drawtexts: str, vo: Path | None) -> None:
@@ -101,7 +121,56 @@ def render_intro(out: Path, date_label: str, vo: Path | None, v: dict) -> None:
     _card(out, v, dur, dt, vo)
 
 
-def render_outro(out: Path, streamers: list[str], v: dict) -> None:
+def _find_drop(track: str, win: float, frac: float = 0.33) -> float:
+    """Start (seconds) of the most energetic `win`-second window — the song's drop.
+    Falls back to frac*duration if librosa analysis fails."""
+    try:
+        import librosa
+        import numpy as np
+        y, sr = librosa.load(track, sr=22050, mono=True)
+        dur = len(y) / sr
+        if dur <= win:
+            return 0.0
+        hop = 2048
+        rms = librosa.feature.rms(y=y, hop_length=hop)[0]
+        tps = hop / sr
+        wlen = max(1, int(win / tps))
+        csum = np.cumsum(np.insert(rms, 0, 0))
+        means = (csum[wlen:] - csum[:-wlen]) / wlen
+        start = int(np.argmax(means)) * tps
+        return float(min(max(start, 0.0), max(dur - win, 0.0)))
+    except Exception:
+        try:
+            d = _duration(Path(track))
+            return min(d * frac, max(d - win, 0.0))
+        except Exception:
+            return 0.0
+
+
+def _branded_music_outro(out: Path, v: dict, cfg: dict, music: str) -> None:
+    """KEMONO logo (slow push-in) over the drop of an NCS track."""
+    from . import brand
+    logo = brand.build_logo(cfg)
+    w, h, fps = v["width"], v["height"], v["fps"]
+    dur = float(v.get("outro_seconds", 12))
+    start = _find_drop(music, dur, float(v.get("outro_music_start", 0.33)))
+    zoom = (f"scale={w*2}:-1,zoompan=z='min(zoom+0.0009,1.08)':d={int(dur*fps)}:"
+            f"s={w}x{h}:fps={fps}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
+    vf = f"{zoom},fade=t=in:st=0:d=0.5,fade=t=out:st={dur-0.6:.2f}:d=0.6,format=yuv420p"
+    af = (f"aresample=44100,afade=t=in:st=0:d=0.5,afade=t=out:st={dur-1.0:.2f}:d=1.0,"
+          f"loudnorm=I=-16:TP=-1.5:LRA=11")
+    _ff(["-loop", "1", "-i", str(logo),
+         "-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", str(music),
+         "-filter_complex", f"[0:v]{vf}[v];[1:a]{af}[a]",
+         "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
+         *ENC, "-preset", v.get("preset", "veryfast"), str(out)])
+
+
+def render_outro(out: Path, streamers: list[str], v: dict, cfg: dict) -> None:
+    music = v.get("outro_music_path", "")
+    if v.get("brand", {}).get("enabled") and music and Path(music).exists():
+        _branded_music_outro(out, v, cfg, music)
+        return
     f = _font("x", v)
     names = _esc("  ·  ".join(streamers[:6]))
     dt = (
@@ -120,7 +189,8 @@ def render_outro(out: Path, streamers: list[str], v: dict) -> None:
 # ── per-clip segment (main + optional slow-mo replay) ─────────────────────────
 
 def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
-               nameplate: Path | None = None, sfx: Path | None = None) -> None:
+               nameplate: Path | None = None, sfx: Path | None = None,
+               captions: list | None = None) -> None:
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = _duration(mp4)
     lt_end = min(v.get("lower_third_seconds", 5.5) + 0.6, max(dur - 1, 2))
@@ -150,6 +220,9 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
             f"borderw=5:bordercolor=0x9146FF:x=w-text_w-64:y=56:"
             f"alpha='if(lt(t,0.4),t/0.4,if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'"
         )
+    cap = _caption_dt(captions, v)               # English captions for foreign-speech clips
+    if cap:
+        vf += "," + cap
     vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
     afade = f"afade=t=in:st=0:d=0.3,afade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
 
@@ -227,10 +300,11 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
 
 
 def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
-                   nameplate: Path | None = None, sfx: Path | None = None) -> None:
+                   nameplate: Path | None = None, sfx: Path | None = None,
+                   captions: list | None = None) -> None:
     """Main part + optional replay, concatenated into one segment file."""
     main = out.with_suffix(".main.mp4")
-    _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx)
+    _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx, captions=captions)
     want_replay = (v.get("replay_enabled", False)
                    and clip.get("api_rank_score", 0) >= v.get("replay_min_score", 7))
     replay = out.with_suffix(".replay.mp4")
@@ -290,6 +364,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
     seg_dir.mkdir(exist_ok=True)
     vo_dir = work / "vo"
 
+    from ..enrichment.transcribe import load as _load_transcripts
+    transcripts = _load_transcripts(work)   # clip_id -> {lang,text,words}; only foreign clips
+
     # animated streamer nameplate (per clip) + its synthesized flush-in SFX
     np_cfg = v.get("nameplate", {}) or {}
     sfx_path = None
@@ -345,8 +422,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 from . import nameplate as _np
                 np_path = _np.build(cfg, c)
             try:
-                render_segment(c, mp4, svo, seg, v,
-                               nameplate=np_path, sfx=sfx_path if np_path else None)
+                caps = transcripts.get(c["id"], {}).get("words")   # English captions if foreign
+                render_segment(c, mp4, svo, seg, v, nameplate=np_path,
+                               sfx=sfx_path if np_path else None, captions=caps)
                 mark(seg, svo)
             except Exception as e:
                 log.warning("segment failed for %s: %s", c["id"], e)
@@ -363,7 +441,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if v.get("outro_enabled", True):
         outro = seg_dir / "_outro.mp4"
         streamers = list(dict.fromkeys(ch["broadcaster"] for ch in chapters))
-        render_outro(outro, streamers, v)   # cheap; always re-render (names change)
+        render_outro(outro, streamers, v, cfg)   # cheap; always re-render (names change)
         segments.append(outro)
 
     if len(segments) < 2:
