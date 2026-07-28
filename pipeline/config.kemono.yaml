@@ -1,0 +1,58 @@
+# Example overlay — the settings the KEMONO channel actually runs with.
+#
+#   python -m pipeline.run_daily --config config.kemono.yaml
+#   python -m pipeline.doctor    --config config.kemono.yaml
+#
+# An overlay holds ONLY the keys that differ from config.yaml; everything else is
+# inherited. That is the intended way to keep your own settings — copy this file,
+# change what you need, and upstream changes to config.yaml keep applying to you
+# instead of becoming merge conflicts.
+#
+# Overlays compose, so throttling is a separate file rather than a variant of this one:
+#
+#   python -m pipeline.run_daily --config config.kemono.yaml
+#   python -m pipeline.run_daily --config config.kemono.yaml,config.local.throttled.yaml
+#
+# ⚠ THIS OVERLAY PUBLISHES. It uploads to the maintainer's own channel, publicly.
+# config.yaml stays upload-disabled and private so a fresh clone can never publish by
+# accident; turning it on is a deliberate act, which is what passing --config is.
+# If you cloned this repo: copy this file, don't use it — it is somebody else's channel.
+
+video:
+  brand:
+    name: KEMONO
+    tagline: DAILY LEAGUE OF LEGENDS
+    splash_champion: LeeSin
+    splash_skin: 11              # God Fist Lee Sin
+  music_enabled: false           # lean mode: the clips' own audio carries the video
+  outro_music: true              # ...but the outro still lands on an NCS drop
+  nameplate:
+    accent: cyan
+
+# Curated out after labelling: JP event / custom-tournament channels whose clips are
+# talk-context rather than highlights. Yours will differ — this list is a finding
+# about one channel's audience, not a recommendation.
+blacklist:
+  broadcasters:
+    - kokujintv
+    - k4sen
+    - らいじん
+    - revol87
+    - デイワン
+
+upload:
+  enabled: true
+  privacy: public                # goes live on the channel as soon as it finishes
+  allow_reupload: false          # idempotency: a crash-retry must not double-post
+
+shorts:
+  upload: true
+  privacy: public
+
+thumbnail:
+  provider: gemini               # needs billing enabled on the Gemini API project
+
+llm:
+  roles:
+    thumbnail_image:
+      model: gemini-3.1-flash-image

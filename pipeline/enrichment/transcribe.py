@@ -106,7 +106,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     src = work / "vlm_filtered.json"
     if not src.exists():
-        log.info("transcribe: no vlm_filtered.json — skip")
+        log.info("transcribe: no vlm_filtered.json - skip")
         return work
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
     raw_dir = data / "raw" / date_label
@@ -115,8 +115,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cache = load(work)
     model_name = tc.get("model", "small")
     max_s = tc.get("max_seconds")
-    device = tc.get("device", "cpu")
-    compute = tc.get("compute_type", "int8")
+    # `auto` picks CUDA only when the whole stack (ctranslate2 + cuDNN 9) checks out,
+    # so an unattended run can't crash in cuDNN the way it used to.
+    from ..hardware import whisper_device
+    device, compute = whisper_device(cfg)
     skip = {l.lower() for l in tc.get("skip_languages", [])}
 
     try:
@@ -142,7 +144,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             log.info("transcribe %s [%s %.2f] %d words: %s", cid[:18], r["lang"],
                      r["lang_prob"], len(r["words"]), r["text"][:60] or "(no speech)")
     except KeyboardInterrupt:
-        log.warning("transcribe interrupted — %d clip(s) cached", len(cache))
+        log.warning("transcribe interrupted - %d clip(s) cached", len(cache))
         raise
 
     if not out.exists():                            # ensure the stage marker exists

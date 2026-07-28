@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clip-pipeline"
+version = "1.0.0"
+description = "Automated daily pipeline: top Twitch clips -> AI-filtered -> edited YouTube video + Shorts"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Kemonoo" }]
+keywords = ["twitch", "youtube", "video", "automation", "ffmpeg", "llm", "league-of-legends"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+]
+
+# What a full render needs, and nothing more. Upload, transcription, and voiceover are
+# extras because a first-time user should be able to try the pipeline without pulling
+# a multi-gigabyte ML stack. Version floors are the oldest releases this is known to
+# work against; upper bounds guard the next major only.
+dependencies = [
+    "requests>=2.31,<3",
+    "PyYAML>=6.0,<7",
+    "yt-dlp>=2024.1",
+    "tzdata>=2024.1",         # zoneinfo needs this on Windows
+    "numpy>=1.26,<3",
+    "opencv-python>=4.9,<5",  # prefilter motion scoring only (never for rendering)
+    "librosa>=0.10,<1",       # audio-hype scoring + outro drop detection
+    "Pillow>=10.2,<14",       # thumbnail / nameplate / brand compositing
+]
+
+[project.optional-dependencies]
+# Multilingual speech -> English captions. Pulls torch-sized wheels via ctranslate2.
+transcribe = ["faster-whisper>=1.0,<2"]
+
+# Neural voiceover (produced mode). kokoro is local and highest quality; edge-tts is
+# a lighter online fallback.
+tts = ["edge-tts>=6.1", "kokoro>=0.9,<1", "soundfile>=0.12"]
+
+# YouTube Data API upload + OAuth.
+upload = ["google-api-python-client>=2.100,<3", "google-auth-oauthlib>=1.2,<2"]
+
+# Optional LLM provider (llm.roles.*.provider: anthropic).
+anthropic = ["anthropic>=0.40"]
+
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+# Everything except dev - the full produced-mode pipeline.
+all = [
+    "clip-pipeline[transcribe,tts,upload,anthropic]",
+]
+
+[project.scripts]
+clip-pipeline = "pipeline.run_daily:main"
+clip-doctor = "pipeline.doctor:main"
+clip-progress = "pipeline.progress:main"
+
+[project.urls]
+Homepage = "https://github.com/Kemonoo/lol-highlights-pipeline"
+Issues = "https://github.com/Kemonoo/lol-highlights-pipeline/issues"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Tests must not touch the network, a GPU, or ffmpeg - they cover the pure decision
+# logic, which is where the filter's behaviour actually lives.
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["_archive", "venv", "data"]
+
+[tool.ruff.lint]
+# E/F/W/I/UP catch real defects (undefined names, unused variables, bad imports,
+# outdated syntax). B and SIM are deliberately NOT enabled: they are refactor
+# opinions, and applying them across working render code is churn with no
+# behavioural payoff.
+select = ["E", "F", "W", "I", "UP"]
+ignore = [
+    "E501",   # line length is enforced by the formatter setting above, not per-line
+    "E741",   # `l` reads fine as a loop variable in the dense compositing/scoring code
+    "E701",   # one-line `if x: return` is used deliberately in guard clauses
+    "E702",   # paired assignments on one line keep the geometry math readable
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ files re-export their submodules so `from .production import
+# assemble` works; the imports look unused to the linter but are the point.
+"pipeline/*/__init__.py" = ["F401"]
+# tools/ holds standalone scripts, not library code: they set up sys.path before
+# importing and are written in a looser one-off style.
+"pipeline/tools/*" = ["E402"]

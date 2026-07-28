@@ -1,0 +1,26 @@
+# Line endings. Windows is the production target but the repo is public, so the
+# shell scripts must never reach a Linux/macOS clone with CRLF — bash fails on the
+# shebang with a bare `bad interpreter: /usr/bin/env bash^M`, which reads as a
+# missing interpreter rather than a line-ending problem.
+* text=auto
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+
+# ...and the Windows entry points want CRLF: cmd.exe mis-parses LF-only batch files
+# in some cases (a trailing label or `goto` past a chunk boundary).
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary assets — never convert, never diff as text.
+*.png  binary
+*.jpg  binary
+*.mp3  binary
+*.mp4  binary
+*.wav  binary
+*.mov  binary
+*.ttf  binary
+*.otf  binary

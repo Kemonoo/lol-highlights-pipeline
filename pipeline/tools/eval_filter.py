@@ -56,9 +56,9 @@ def main():
     fn = sum(1 for r in rows if r["decision"] != "KEEP" and r["label"] in good_set)
     tn = sum(1 for r in rows if r["decision"] != "KEEP" and r["label"] not in good_set)
 
-    print(f"\n=== Eval {date} — {len(rows)} labeled clips "
+    print(f"\n=== Eval {date} - {len(rows)} labeled clips "
           f"(good set = {sorted(good_set)}; {missing} labels without scores) ===")
-    print(f"            label-good  label-bad")
+    print("            label-good  label-bad")
     print(f"  KEEP      {tp:9d}  {fp:9d}")
     print(f"  REJECT    {fn:9d}  {tn:9d}")
     prec = tp / (tp + fp) if tp + fp else 0

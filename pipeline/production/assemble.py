@@ -19,17 +19,38 @@ from pathlib import Path
 
 log = logging.getLogger("pipeline.assemble")
 
-ENC = ["-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p",
-       "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2"]
+_AUDIO_ENC = ["-pix_fmt", "yuv420p",
+              "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2"]
 
+
+def enc(v: dict, threads: int | None = None) -> list[str]:
+    """Full encode args (video codec + quality + preset + audio) for the `video`
+    config section. Hardware-accelerated when this machine has an encoder for it —
+    see pipeline/hardware.py. Every segment must use this so concat stays clean.
+
+    The thread cap defaults to whatever `hardware.apply_limits()` stashed on the video
+    config at startup, so every call site inherits it without threading a parameter
+    through the whole render path."""
+    from ..hardware import encoder_args
+    if threads is None:
+        threads = int(v.get("_cpu_threads", 0))
+    return [*encoder_args(v, threads), *_AUDIO_ENC]
+
+# Windows -> macOS -> Linux. Windows is the tested platform; the rest keep a clone
+# rendering rather than silently drawing nothing. Override with video.font.
 FONT_CANDIDATES = [
     "C:/Windows/Fonts/arialbd.ttf",
     "C:/Windows/Fonts/segoeuib.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
 ]
 FONT_CJK_CANDIDATES = [
     "C:/Windows/Fonts/msgothic.ttc",
     "C:/Windows/Fonts/YuGothB.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
@@ -98,7 +119,7 @@ def _card(out: Path, v: dict, dur: float, drawtexts: str, vo: Path | None) -> No
     else:
         args += ["-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo:d={dur:.2f}",
                  "-filter_complex", f"[0:v]{vf}[v]", "-map", "[v]", "-map", "1:a"]
-    args += ["-t", f"{dur:.2f}", *ENC, "-preset", v.get("preset", "veryfast"), str(out)]
+    args += ["-t", f"{dur:.2f}", *enc(v), str(out)]
     _ff(args)
 
 
@@ -163,7 +184,7 @@ def _branded_music_outro(out: Path, v: dict, cfg: dict, music: str) -> None:
          "-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", str(music),
          "-filter_complex", f"[0:v]{vf}[v];[1:a]{af}[a]",
          "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
-         *ENC, "-preset", v.get("preset", "veryfast"), str(out)])
+         *enc(v), str(out)])
 
 
 def render_outro(out: Path, streamers: list[str], v: dict, cfg: dict) -> None:
@@ -270,7 +291,7 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
     fc.append(f"{a_in}{afade}[a]")
 
     args += ["-filter_complex", ";".join(fc), "-map", "[v]", "-map", "[a]"]
-    args += [*ENC, "-preset", v.get("preset", "veryfast"), str(out)]
+    args += [*enc(v), str(out)]
     _ff(args)
 
 
@@ -295,7 +316,7 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
     _ff(["-ss", f"{start:.2f}", "-t", f"{rs:.2f}", "-i", str(mp4),
          "-filter_complex", f"[0:v]{vf}[v];[0:a]aresample=44100,{af}[a]",
          "-map", "[v]", "-map", "[a]",
-         *ENC, "-preset", v.get("preset", "veryfast"), str(out)])
+         *enc(v), str(out)])
     return True
 
 
@@ -412,7 +433,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if download_clip(c.get("url", ""), hq):
                 mp4 = hq
             else:
-                log.warning("no video file for %s — skipping", c["id"])
+                log.warning("no video file for %s - skipping", c["id"])
                 continue
         seg = seg_dir / f"{c['id']}.mp4"
         svo = vo_dir / f"{c['id']}.mp3"

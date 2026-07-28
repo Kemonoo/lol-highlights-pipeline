@@ -211,3 +211,139 @@ incentive to troll yet. The automated loop still requires `min_agreement` before
 - Owner runs the scheduled job on their own Windows machine (RTX 3050 4GB) — favour stability
   over speed for anything in the unattended path.
 - Don't over-explain finished work; commit-style summaries are preferred.
+
+---
+
+## 2026-07-28 — Open-source pass: provider abstraction, model migration, doctor
+
+Goal: make the repo something a stranger can clone and run with **their** keys and
+hardware, without weakening what's here. Five things came out of it.
+
+**1. The paid layer had ~5 weeks to live.** Config pinned `gemini-2.5-flash` (judge),
+`gemini-2.5-flash-lite` (commentary/feedback) and `gemini-2.5-flash-image` (thumbnail).
+All three were deprecated: the image model shuts down **2026-10-02**, the other two
+**2026-10-16**. Verified against the live ListModels endpoint rather than the docs, and
+moved to `gemini-3.6-flash` / `gemini-3.1-flash-lite` / `gemini-3.1-flash-image` (all
+confirmed reachable on this key). This is the *second* time a retirement broke the
+pipeline — `gemini-2.0-flash` was the first. Hence #2.
+
+**2. Model ids now live in exactly one place.** New `pipeline/providers/` package: stages
+ask for a ROLE (`judge`/`vlm`/`commentary`/`feedback`/`thumbnail_image`) and
+`llm.roles.*` in config.yaml decides the backend. Four adapters — gemini, ollama,
+openai-compatible (which covers OpenRouter/Groq/Together/LM Studio/vLLM/llama.cpp and
+Ollama's own `/v1`), anthropic. The next retirement is a one-line config edit, and
+someone with their own GPU box can point `base_url` at it.
+
+Replaced four hand-rolled `requests.post` call sites that each had their own retry and
+brace-scraping JSON parse (only api_judge retried at all). All four now use native
+structured output — `responseSchema` / `format` / `json_schema`. That matters most for
+the 4B local model, which wrapped JSON in prose often enough to skew the filter.
+
+**3. Judge quality was being throttled by an obsolete limit.** `max_mb: 19` + 480p/CRF-30
+existed to fit Google's 20MB inline cap. That cap became **100MB in Jan 2026**. The judge
+had been grading fast teamfights off a 480p smear for no reason. Now 720p/CRF-28 at 90MB,
+with the Files API for anything larger. Also set `thinking: low` on the judge role —
+measured 409 → 92 tokens and 4.2s → 2.3s per call with identical scores.
+
+**4. Dangerous defaults.** The committed config had `upload.enabled: true`,
+`privacy: public`, and the same for Shorts. Anyone who cloned this, completed OAuth and
+ran it would have auto-published to their own channel. Now false/private across the
+board — and this contradicted CLAUDE.md's own stated constraint, which is worth
+remembering as a class of bug: the constraint was written down and the config drifted
+past it anyway.
+
+**5. Hardware was being ignored.** Everything encoded with libx264 on CPU. `video.encoder:
+auto` now probes ffmpeg and *test-encodes a frame* (NVENC is listed on machines with no
+driver loaded) — this box picks `h264_nvenc`. Verified NVENC segments still concat with
+stream copy, which was the real risk. Note presets are not portable: an x264 preset name
+is rejected by NVENC, so `hardware.args_for_encoder()` maps per family.
+
+Also: `transcribe.device: auto`. The old CPU pin was working around an unattended crash
+in cuDNN — root cause was simply **missing cuDNN 9** (`pip install nvidia-cudnn-cu12`).
+`auto` verifies ctranslate2 *and* cuDNN before selecting CUDA, so it can't crash mid-run
+the way it did.
+
+**`python -m pipeline.doctor`** reports all of the above and runs as a preflight on every
+run. First cut of the preflight was wrong in an instructive way: it skipped the actual
+role health check for speed, which meant the one question it existed to answer — "is
+Ollama running?" — was the one it couldn't answer. Now it really checks, scoped to the
+roles the planned stages need (2.4s for a full run, 0s for `--only assemble`).
+
+**Two real bugs found by turning the linter on**, both pre-existing:
+- `tools/review_clips.py` — `seen, files = set(), [... if f in seen ...]` raises
+  NameError every time (tuple RHS evaluates before the binding). The labelling UI had
+  been broken on this path.
+- `tools/collect_training_data.py` — imported `.scoring`, which moved to
+  `filtering/scoring.py` in the subpackage reorg. Module hadn't imported since.
+
+Kept deliberately: the cost cascade, the detection/decision split, cache versioning,
+FFmpeg-only rendering, the stage contract. Lint is scoped to E/F/W/I/UP — B and SIM are
+refactor opinions and applying them to working render code is churn.
+
+Repo hygiene: MIT LICENSE (with an explicit notice that the *clips* aren't covered),
+README rewrite, `docs/setup.md` (the Twitch app and YouTube OAuth walkthroughs, including
+the test-user step everyone misses), `docs/architecture.md`, CONTRIBUTING, pyproject with
+extras so a curious visitor installs ~50MB instead of 4GB, 43 tests over the pure
+decision rules, and CI on Windows + Linux. Brand defaults are neutral now; the KEMONO
+setup lives in `config.kemono.yaml` as an overlay — which is also the documented way for
+anyone to keep their own settings without forking config.yaml.
+
+**Still open:** the README has no screenshots. For a *video* project that is the biggest
+remaining gap, and it needs a human with a finished render.
+
+---
+
+## 2026-07-28 (later) — First public run on the new stack, and three bugs it found
+
+Ran the whole pipeline end to end with the refactor in place: 219 clips → 40 → 11,
+uploaded public as `WlnEF80YafU` plus 3 Shorts, ~2h10m at 70% CPU. What broke on the way
+is the useful part.
+
+**1. Ollama structured output came back empty — a regression I introduced.** The new
+provider layer called the legacy `/api/generate`, which on Ollama 0.32.1 returns `''`
+whenever `format` is combined with images. Every frame vote was empty, every clip scored
+`0of3`, and **the rejections were cached** — clips literally titled "Quinn Penta!" and
+"Instant Quadrakill" were thrown away. Fixed by moving to `/api/chat`.
+
+Two lessons worth keeping. First, the fix I reached for *next* was wrong: making an empty
+response raise `_Retryable` turned the kill-feed crops — where empty legitimately means
+"no kills here" — into 20s/40s/60s backoff storms. Empty is now a valid answer at the
+provider, and the *consumer* decides whether it's suspicious. Second, `detect()` now
+refuses to cache a verdict when **no** frame produced a usable answer:
+
+    if not answered:
+        raise RuntimeError("no usable answer from the vlm provider ...")
+
+A broken provider used to be indistinguishable from a confident REJECT, and the damage
+outlived the outage because it went in the cache. Distinguish "said no" from "said
+nothing" anywhere a model's silence gets persisted.
+
+**2. `pipeline.progress` reported on the watcher's config, not the run's.** Owner noticed
+`[-] upload  disabled` while an upload was very much about to happen — the monitor loads
+config itself, and it hadn't been passed the same `--config` overlay as the run. I had
+claimed in the docstring that it "can't drift out of sync with what the pipeline did",
+which was true of the per-clip caches and false of everything config-derived. Runs now
+drop `work/<date>/run.json` at startup recording what they are configured to do, and
+progress prefers it, falling back to config only for a date that never ran.
+
+Second, smaller one from the same report: `upload` is the only stage with no output file,
+so it sat at PENDING forever and `--watch` could never print "Run complete". It now reads
+the YouTube id back out of `state.json`.
+
+**3. The video description advertised "with commentary".** Hardcoded in `credits.py`
+since before lean mode; it went out on a public video. Now conditional on
+`commentary.enabled`.
+
+**Degradation held up.** The Gemini thumbnail tripped the recitation filter
+(`IMAGE_OTHER`) and fell back to the PIL design without stopping the run — though it
+landed on the weakest variant (`champion=none, face=pfp`), which is worth revisiting.
+
+**Unattended runs now manage power.** `run_daily_auto.bat` wraps the run in
+`scripts/keep_awake.ps1` — a PC woken by a wake timer is in an *unattended* wake and
+Windows re-sleeps it after ~2 minutes, which would have killed every scheduled run before
+it finished. `SLEEP_AFTER=1` then suspends the machine via `scripts/sleep_prompt.ps1`,
+which skips its countdown window when the session is already idle (nobody to ask at
+03:00) and treats every ambiguous case — Esc, closing the window, no interactive desktop
+handling — as "stay awake". Per-machine settings moved to a gitignored
+`auto_run.local.cmd` so the committed `.bat` keeps shipping harmless defaults: no upload,
+no sleep. Same split as `config.yaml` vs the overlays.

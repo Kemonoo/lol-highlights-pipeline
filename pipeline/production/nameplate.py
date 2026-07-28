@@ -34,12 +34,16 @@ ACCENTS = {
 
 # bold display fonts (CJK fallback for JP/KR/CN names), monospace for the eyebrow
 _DISP = ["C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/segoeuib.ttf",
-         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
 _DISP_CJK = ["C:/Windows/Fonts/msgothic.ttc", "C:/Windows/Fonts/YuGothB.ttc",
+             "/System/Library/Fonts/Hiragino Sans GB.ttc",
              "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
 _MONO = ["C:/Windows/Fonts/consolab.ttf", "C:/Windows/Fonts/consola.ttf",
          "C:/Windows/Fonts/cour.ttf",
+         "/System/Library/Fonts/Menlo.ttc",
          "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"]
 
 _CACHE_VERSION = "v2"
@@ -295,6 +299,7 @@ def build(cfg, clip):
         return None
     try:
         from PIL import Image  # noqa: F401  (ensures Pillow present before work)
+
         from .thumbnail import _twitch_pfp
 
         W, H = v.get("width", 1920), v.get("height", 1080)
@@ -314,7 +319,7 @@ def build(cfg, clip):
 
         key = hashlib.md5(
             f"{name}|{bid}|{accent_name}|{eyebrow}|{W}x{H}|{fps}|{hold}|{y_frac}|{_CACHE_VERSION}"
-            .encode("utf-8")).hexdigest()[:16]
+            .encode()).hexdigest()[:16]
         out = np_dir / f"{key}.mov"
         if out.exists():
             return out

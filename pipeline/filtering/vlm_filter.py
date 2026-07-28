@@ -16,23 +16,15 @@ Decision (pure code, recomputed from cache every run -> tuning rules is FREE):
 
 Outputs in data/work/<date>/: vlm_scored.json, vlm_filtered.json, thumbs/, crops/, report.html
 """
-import base64
 import json
 import logging
 import subprocess
 import tempfile
 from pathlib import Path
 
-import requests
-
 from . import kill_detect
 
 log = logging.getLogger("pipeline.vlm_filter")
-
-PREFERRED_OLLAMA_MODELS = [
-    "qwen3-vl:8b", "qwen3-vl:4b", "qwen3-vl:2b", "qwen2.5vl:7b", "qwen2.5vl:3b",
-    "qwen2.5-vl:7b", "llava:13b", "llava:7b", "llava",
-]
 
 GAMEPLAY_PROMPT = """Is this screenshot actual in-game League of Legends gameplay — 3D champions on the map with the game HUD (ability bar at the bottom, minimap, health bars)?
 Loading screens, champion select, lobby/queue screens, scoreboards, menus, websites, other games, or mostly-webcam/just-chatting shots do NOT count.
@@ -68,73 +60,34 @@ def sample_frames(mp4: Path, n: int) -> list[bytes]:
     return frames
 
 
-# ── providers ─────────────────────────────────────────────────────────────────
+# ── provider ──────────────────────────────────────────────────────────────────
+# Which model answers these questions is config (llm.roles.vlm), not code. Prompts
+# stay here because they are tuned to the decomposed-question approach small local
+# models need — see the module docstring.
 
-def pick_ollama_model(vf: dict) -> str:
-    configured = vf["ollama_model"]
-    try:
-        resp = requests.get(f"{vf['ollama_url']}/api/tags", timeout=10)
-        resp.raise_for_status()
-        available = {m["name"] for m in resp.json().get("models", [])}
-        available |= {a.split(":latest")[0] for a in available}
-    except Exception as e:
-        raise RuntimeError(
-            f"Cannot reach Ollama at {vf['ollama_url']} — is Ollama running? "
-            f"Start the Ollama app (or `ollama serve`), then re-run. ({e})"
-        )
-    if configured != "auto":
-        return configured
-    for m in PREFERRED_OLLAMA_MODELS:
-        if m in available:
-            return m
-    raise RuntimeError(
-        f"No vision model found in Ollama. Available: {sorted(available)}. "
-        f"Try: ollama pull qwen3-vl:4b"
-    )
+# Every question here is a single boolean or a small count. Passing a schema makes the
+# provider constrain decoding, which matters far more for a 4B local model than for a
+# frontier one: unconstrained, they answer in prose often enough to skew the filter.
+SCHEMAS = {
+    GAMEPLAY_PROMPT: {"type": "object",
+                      "properties": {"gameplay": {"type": "boolean"}}},
+    PRO_PLAY_PROMPT: {"type": "object",
+                      "properties": {"esports_broadcast": {"type": "boolean"}}},
+}
 
 
-def _parse_json(text: str) -> dict | None:
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        return None
-    try:
-        return json.loads(text[start:end + 1])
-    except json.JSONDecodeError:
-        return None
+def make_asker(cfg: dict):
+    """Return ask(images, prompt) -> dict | None backed by the `vlm` role.
 
+    kill_detect consumes the same callable, so its prompts get structured output too
+    when they register a schema in SCHEMAS."""
+    from ..providers import get_provider
 
-def make_asker(vf: dict):
-    """Return ask(images, prompt) -> dict | None for the configured provider."""
-    if vf["provider"] == "gemini":
-        def ask(images: list[bytes], prompt: str) -> dict | None:
-            key = vf["gemini_api_key"]
-            if not key:
-                raise RuntimeError("provider=gemini but GEMINI_API_KEY not set")
-            url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-                   f"{vf['gemini_model']}:generateContent?key={key}")
-            parts = [{"inline_data": {"mime_type": "image/jpeg",
-                                      "data": base64.b64encode(f).decode()}}
-                     for f in images]
-            parts.append({"text": prompt})
-            resp = requests.post(url, json={"contents": [{"parts": parts}]}, timeout=60)
-            resp.raise_for_status()
-            return _parse_json(
-                resp.json()["candidates"][0]["content"]["parts"][0]["text"])
-        return ask
-
-    model = pick_ollama_model(vf)
-    log.info("Local VLM: %s", model)
+    provider = get_provider(cfg, "vlm", vision=True)
 
     def ask(images: list[bytes], prompt: str) -> dict | None:
-        resp = requests.post(
-            f"{vf['ollama_url']}/api/generate",
-            json={"model": model, "prompt": prompt,
-                  "images": [base64.b64encode(f).decode() for f in images],
-                  "stream": False, "options": {"temperature": 0.0}},
-            timeout=600,
-        )
-        resp.raise_for_status()
-        return _parse_json(resp.json().get("response", ""))
+        return provider.complete_json(prompt, images=images,
+                                      schema=SCHEMAS.get(prompt))
     return ask
 
 
@@ -148,10 +101,21 @@ def detect(clip: dict, mp4: Path, ask, vf: dict, crops_dir: Path | None) -> None
         clip["vlm_summary"] = "no frames extractable"
         return
 
-    votes = []
+    # Distinguish "the model said no" from "the model said nothing". Counting an
+    # unanswered frame as a no-vote makes a broken provider look like a confident
+    # REJECT — and the result gets cached, so the damage outlives the outage.
+    votes, answered = [], 0
     for f in frames:
         r = ask([f], GAMEPLAY_PROMPT)
-        votes.append(bool(r.get("gameplay", False)) if r else False)
+        if r is None or "gameplay" not in r:
+            votes.append(False)
+            continue
+        answered += 1
+        votes.append(bool(r.get("gameplay", False)))
+    if not answered:
+        raise RuntimeError(
+            "no usable answer from the vlm provider for any sampled frame "
+            "(check `python -m pipeline.doctor`)")
     clip["vlm_gameplay"] = sum(votes) > len(votes) / 2
     clip["gameplay_votes"] = f"{sum(votes)}of{len(votes)}"
     if not clip["vlm_gameplay"]:
@@ -335,10 +299,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
         try:
             if ask is None:
-                ask = make_asker(vf)
+                ask = make_asker(cfg)
             detect(c, mp4, ask, vf, crops_dir)
         except Exception as e:
-            log.warning("detection failed for %s: %s — deciding on audio only", c["id"], e)
+            log.warning("detection failed for %s: %s - deciding on audio only", c["id"], e)
             c["vlm_gameplay"] = True  # benefit of the doubt on gameplay
             decide(c, vf, blacklist)
             c["reason"] += "_VLM_FAILED"

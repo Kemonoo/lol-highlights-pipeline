@@ -4,8 +4,19 @@ client_secret.json
 
 # environments / caches
 venv/
+.venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# personal config overlays (config.kemono.yaml IS committed as a worked example)
+pipeline/config.local*.yaml
+
+# per-machine settings for the scheduled run — schedule, sleep-after, which
+# overlay to use (auto_run.local.cmd.example IS committed)
+auto_run.local.cmd
 
 # runtime data (clips, renders, caches, tokens)
 data/
@@ -29,3 +40,6 @@ _archive/
 
 # one-off batch scripts (not part of the distributed setup)
 run_days.bat
+
+# NB: .env.example, LICENSE, pyproject.toml, tests/ and docs/ ARE committed.
+# If you add a personal secret, put it in .env — never in config.yaml.

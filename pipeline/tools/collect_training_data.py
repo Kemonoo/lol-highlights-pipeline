@@ -31,13 +31,12 @@ from zoneinfo import ZoneInfo
 import requests
 import yt_dlp
 
-from .scoring import (
+from ..filtering.scoring import (
     compute_audio_score,
     compute_motion_score,
     has_positive_keyword,
     is_tournament,
 )
-
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -226,7 +225,7 @@ def save_clips(clips: list[dict], date_label: str) -> None:
 # ── Modes ─────────────────────────────────────────────────────────────────────
 
 def run_collect(clips: list[dict], date_label: str) -> None:
-    print(f"  COLLECT MODE — {len(clips)} clips, no filtering.\n")
+    print(f"  COLLECT MODE - {len(clips)} clips, no filtering.\n")
     for i, clip in enumerate(clips, 1):
         title = clip["title"]
         print(f"  [{i:03d}/{len(clips)}] {title[:65]}")

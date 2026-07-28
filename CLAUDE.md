@@ -16,15 +16,25 @@ Automated daily channel **KEMONO**: top League of Legends Twitch clips → filte
 assembled into a daily YouTube video (countdown format, brand intro, AI thumbnail) +
 derived Shorts → auto-uploaded. Currently **LEAN MODE** (no voiceover/commentary/music
 bed — see the lean-mode note below). Runs unattended at 03:00 on the owner's Windows
-machine (RTX 3050 4GB) via `run_daily_auto.bat` (Task Scheduler).
-Entry point: `python -m pipeline.run_daily [--date YYYY-MM-DD]`.
+machine (RTX 3050 4GB) via `run_daily_auto.bat` (Task Scheduler; `setup_schedule.bat`
+registers it with `WakeToRun`). The bat wraps the run in `scripts/keep_awake.ps1`
+(a wake-timer wake is an *unattended* wake — Windows re-sleeps it after ~2 min) and,
+when `SLEEP_AFTER=1`, suspends afterwards via `scripts/sleep_prompt.ps1` (skips its
+cancel window when the session is already idle; every ambiguous case = stay awake).
+Per-machine settings live in the gitignored `auto_run.local.cmd` (`CONFIG`,
+`SLEEP_AFTER`, ...) so the committed bat keeps shipping harmless defaults — same split
+as config.yaml vs. overlays.
+Entry points: `python -m pipeline.run_daily [--date YYYY-MM-DD] [--config <overlay.yaml>]
+[--skip-doctor]` and `python -m pipeline.doctor` (environment check; also runs as a fast
+preflight at the top of every run).
 
 **Debugging a bad/missing upload starts at `data/logs/auto_<date>.log`.** The bat retries
 the whole run on a non-zero exit, so every side-effecting stage must stay idempotent.
 
 ### Stage chain (pipeline/run_daily.py STAGES, each module has run(cfg, state, date_label))
 Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
-`production/`, `publishing/`, `feedback/`, `tools/` (paths below are relative to `pipeline/`).
+`production/`, `publishing/`, `feedback/`, `providers/`, `tools/` (paths below are
+relative to `pipeline/`).
 0. `feedback/feedback.py` — reads comments on recent uploads (clip-number refs "#3" map to
    chapters), Gemini-classifies sentiment, aggregates (>= feedback.min_agreement
    agreeing comments = ACTIONABLE) → data/feedback/log.jsonl + proposals.md.
@@ -37,21 +47,26 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
 2. `filtering/prefilter.py` — free local scoring: title keywords / tournament exclude /
    audio-hype / motion (functions from `filtering/scoring.py`) + broadcaster blacklist
    → `work/<date>/prefiltered.json`
-3. `filtering/vlm_filter.py` + `filtering/kill_detect.py` — local Ollama VLM, STEPWISE
+3. `filtering/vlm_filter.py` + `filtering/kill_detect.py` — local VLM via the `vlm`
+   role, STEPWISE
    (one simple question per image — small models fail multi-question prompts): gameplay
    vote (3 frames), pro-play check, kill-feed/banner/event-log crop analysis. Detection
    cached (`vlm_partial_v3.json`); decisions are PURE CODE recomputed from cache every run
    (`decide()`) so rule tuning costs zero GPU time → `vlm_scored.json`,
    `vlm_filtered.json`, `report.html` (visual audit), `crops/` (region calibration)
-4. `filtering/api_judge.py` — Gemini watches survivors as full video (shrunk to 480p,
-   inline ≤19MB), scores focus/play_quality/entertainment (cache `api_partial_v2.json`).
+4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
+   to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
+   provider's Files API), scores focus/play_quality/entertainment against a JSON schema
+   (cache `api_partial_v2.json`). No judge available → `local_judge()`, never a hard fail.
    Duration-aware selection: fill toward `video.target_minutes_ideal` with fillers
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
    from vlm_scored.json — idempotent)
 5. `enrichment/transcribe.py` — multilingual streamer speech → English (faster-whisper,
-   task=translate; `transcribe.device` defaults to CPU — the scheduled GPU session crashed
-   in cuDNN): detects language, translates, word timestamps → `work/<date>/transcripts.json`
+   task=translate; `transcribe.device: auto` resolves via `hardware.whisper_device()`,
+   which picks CUDA only when ctranslate2 AND cuDNN 9 are both present — the old unattended
+   crash was a missing cuDNN, fixed by `pip install nvidia-cudnn-cu12`): detects language,
+   translates, word timestamps → `work/<date>/transcripts.json`
    {clip_id: {lang, text, words}}. Skips `transcribe.skip_languages` ([en] — already English).
    Cached per clip; feeds assemble (burns English captions on foreign clips), commentary
    (reliable context, produced mode) + shorts (English captions). `enrichment/match_linker.py`,
@@ -59,7 +74,9 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
    contain the implementation plans. Riot API > scraping op.gg/u.gg (no public APIs there)
 6. `production/commentary.py` — montage-caster lines (hype the player/moment; never
    invents facts; sees previous lines to avoid repetition) + `_intro` cold-open line.
-   Provider auto: Gemini if key, else Ollama → `commentary.json` [{clip_id, text}].
+   Uses the `commentary` role with a STICKY runtime fallback: after 2 consecutive primary
+   failures (= quota gone, retrying is pointless) it switches to the role's `fallback`
+   block for the rest of the run → `commentary.json` [{clip_id, text}].
    Treats the per-clip summary as an UNRELIABLE hint, but now ALSO sees the English speech
    transcript (transcripts.json) as a RELIABLE signal — reacts to what the streamer
    actually said; still never invents champions/numbers; English only.
@@ -79,8 +96,9 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
    in quiet gaps + single-pass loudnorm, video stream copied)
 9. `production/credits.py` — title hook from best clip, chapters, per-streamer credit
    links, music attribution → `data/output/<date>.meta.json`
-10. `production/thumbnail.py` — 1280×720 thumbnail, two providers (`thumbnail.provider`):
-    `gemini` (default) builds a viral reaction thumbnail with Gemini 2.5 Flash Image
+10. `production/thumbnail.py` — 1280×720 thumbnail, two providers (`thumbnail.provider`,
+    now defaulting to `local` so a fresh clone needs no billing):
+    `gemini` builds a viral reaction thumbnail via the `thumbnail_image` role
     ("Nano Banana", paid ~$0.04/img): picks the highest-ranked clip WITH a detectable
     facecam, has the model enhance that facecam into an over-the-top excited/shocked
     reaction on a green screen (`_CUT_PROMPT`), chroma-keys it out (`_green_key`),
@@ -102,9 +120,14 @@ Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
     `work/<date>/shorts/`
 13. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days` to free disk
 
-Support: `config.py` (YAML + ${ENV} expansion + .env loader; picks a random `music_track`
-per run + builds its attribution string), `state.py` (data/state.json: processed clip ids,
-permissions, uploaded videos), `tools/label_clips.py` (browser labeling UI, stdlib HTTP
+Support: `config.py` (YAML + ${ENV} expansion + .env loader + `--config` OVERLAY deep-merge
++ legacy-key migration; picks a random `music_track` per run + builds its attribution
+string), `providers/` (role→backend abstraction: `base.py` interface + retry + schema
+handling, `gemini.py` (text/image/video, Files API, thinking levels), `ollama.py`,
+`openai_compat.py` (any OpenAI-compatible endpoint), `anthropic_api.py` (official SDK,
+optional extra)), `hardware.py` (ffmpeg encoder + GPU/VRAM + cuDNN detection),
+`doctor.py` (environment report + preflight), `state.py` (data/state.json: processed
+clip ids, permissions, uploaded videos), `tools/label_clips.py` (browser labeling UI, stdlib HTTP
 server, keys G/O/B → work/<date>/labels.json), `tools/eval_filter.py` (precision/recall vs
 labels), `tools/gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3),
 `tools/collect_training_data.py` (standalone Twitch fetch + feature extraction →
@@ -120,6 +143,8 @@ Chromium on purpose — no browser dependency in the daily run.
 
 ### Data flow / layout
 ```
+tests/                  decision rules + config resolution (no network/GPU/ffmpeg)
+docs/                   setup.md, architecture.md + internal notes (DEVLOG, PLAN, ...)
 data/raw/<date>/        clips.json + downloaded mp4s
 data/work/<date>/       prefiltered.json → vlm_scored/vlm_filtered.json → commentary.json
                         → vo/*.mp3 → segments/*.mp4 → chapters.json; caches; report.html
@@ -129,6 +154,17 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
 ```
 
 ### Non-obvious decisions (do not re-litigate without instruction)
+- **Provider abstraction**: stages ask for a ROLE (`judge`/`vlm`/`commentary`/`feedback`/
+  `thumbnail_image`) via `providers.get_provider(cfg, role)`; `llm.roles.*` in config.yaml
+  decides the backend. NEVER hardcode a model id in a stage — every id lives in
+  `llm.roles` so a vendor retirement is a one-line fix (this already bit us twice:
+  gemini-2.0-flash, then the whole 2.5 family). Capabilities are declared
+  (`supports_video`/`supports_images`/`supports_image_generation`) and checked with
+  `provider.require(...)` so a misconfigured role fails clearly at startup.
+- **Degradation is a tested property, not an accident**: no key → `local_judge()`;
+  quota dead mid-run → sticky commentary fallback; no billing → PIL thumbnail; no GPU →
+  CPU. Only ffmpeg and (for vlm_filter) Ollama are hard requirements. Don't "simplify"
+  a fallback path away.
 - **Detection/decision split**: model outputs cached per clip; keep/reject rules
   recompute from cache on every run. When changing DETECTION semantics (prompts,
   regions), bump the cache filename version (`vlm_partial_v3` → v4, `api_partial_v2`
@@ -155,6 +191,10 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   a fallback — code must work when the repo moves between machines.
 - **Read tolerance**: JSON reads use `.rstrip("\x00")` — work files can carry NUL
   padding from a filesystem-sync quirk. Keep this on new readers of work/ files.
+- **Encoding goes through `assemble.enc(v)` / `hardware.encoder_args()`** — `video.encoder:
+  auto` probes for NVENC/QSV/VideoToolbox/AMF. EVERY segment (including brand.py's intro)
+  must use the same helper or the concat demuxer breaks. Presets are per-encoder: an x264
+  preset name is rejected by NVENC.
 - **ffmpeg drawtext**: any option value containing commas MUST be single-quoted inside
   the filtergraph (`y='h-236+24*(1-...)'`); overlay text passes through `_esc()` which
   strips `\\'%:,[]=;`. Fonts via `_font()` (Windows Arial → DejaVu fallback; CJK
@@ -230,7 +270,17 @@ Use the cheapest model that can handle the task reliably:
 - Don't touch `_archive/` (reference only). Scoring functions live in
   `pipeline/filtering/scoring.py` — prefilter depends on their signatures.
 - Windows is the production target: paths must work on Windows; fonts via _font();
-  batch files for user-facing entry points.
-- Upload stays `privacy: private` and `enabled: false` by default.
+  batch files for user-facing entry points. POSIX is supported-but-untested — keep the
+  `.sh` counterparts and macOS/Linux font candidates working, don't add Windows-only
+  syntax to shared code paths.
+- Upload stays `privacy: private` and `enabled: false` by default (also `shorts.upload`
+  and `shorts.privacy`). A fresh clone must never publish to someone's channel.
 - Keep per-streamer credits/chapters generation intact in credits.py (legal/monetization
   requirement).
+- Model ids ONLY in `llm.roles.*`. Stages reference roles, never vendors or model names.
+- `tests/` must stay runnable with no network, no GPU, no ffmpeg and no API keys — that
+  is what makes CI possible. Test the pure decision layer; don't mock ffmpeg.
+- Public-repo hygiene: this is a published GitHub project. LICENSE, README.md,
+  docs/setup.md, CONTRIBUTING.md and .env.example are user-facing — keep them accurate
+  when behavior changes. The owner's own settings live in `config.kemono.yaml` (an
+  overlay), NOT in config.yaml defaults.

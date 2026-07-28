@@ -32,5 +32,5 @@ def extract_events(clip: dict, cfg: dict) -> list[dict]:
 
 def run(cfg: dict, state, date_label: str) -> Path:
     work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
-    log.info("hud_ocr not implemented — skipping")
+    log.info("hud_ocr not implemented - skipping")
     return work

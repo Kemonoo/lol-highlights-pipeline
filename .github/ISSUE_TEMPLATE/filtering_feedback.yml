@@ -1,0 +1,44 @@
+name: Filtering feedback
+description: A clip was kept that shouldn't have been, or dropped that should have been kept
+labels: [filtering]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Filtering complaints are useful — the rules were tuned from exactly this kind of
+        feedback. `data/work/<date>/report.html` shows every decision with its reason;
+        that's the artifact to look at first.
+
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Which way did it go wrong?
+      options:
+        - A bad clip was KEPT
+        - A good clip was DROPPED
+    validations:
+      required: true
+
+  - type: input
+    id: clip
+    attributes:
+      label: Clip URL
+      placeholder: https://clips.twitch.tv/...
+
+  - type: input
+    id: reason
+    attributes:
+      label: The decision reason from report.html
+      description: e.g. `TITLE_KEYWORD_penta`, `NO_GAMEPLAY_1of3`, `local_k0_a0.81_mo0.02`
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it's wrong
+      description: >
+        What should the filter have noticed? Be specific — "it's boring" is hard to act
+        on, "the kill feed is empty and nothing happens until 0:18" is a rule.
+    validations:
+      required: true

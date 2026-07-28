@@ -36,6 +36,6 @@ def link_clip(clip: dict, ml_cfg: dict, state) -> dict | None:
 def run(cfg: dict, state, date_label: str) -> Path:
     work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
     if not cfg["match_linker"]["enabled"]:
-        log.info("match_linker disabled — skipping (commentary will use VLM summary only)")
+        log.info("match_linker disabled - skipping (commentary will use VLM summary only)")
         return work
     raise NotImplementedError("Phase 2")

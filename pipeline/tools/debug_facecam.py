@@ -165,13 +165,6 @@ def detect_and_annotate(mp4: Path, duration: float) -> tuple[np.ndarray | None, 
 
     return composite, result
 
-    label = "FACE FOUND" if result["found"] else "NO FACE"
-    color = (0, 200, 0) if result["found"] else (0, 0, 220)
-    cv2.putText(annotated, label, (20, 60),
-                cv2.FONT_HERSHEY_SIMPLEX, 2, color, 4)
-
-    return annotated, result
-
 
 def main():
     from ..config import load_config
@@ -196,7 +189,7 @@ def main():
 
     src = work / "vlm_filtered.json"
     if not src.exists():
-        print("vlm_filtered.json not found — run at least up to api_judge first.")
+        print("vlm_filtered.json not found - run at least up to api_judge first.")
         return
 
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
@@ -214,7 +207,7 @@ def main():
             lp = c.get("local_path") or ""
             mp4 = Path(lp) if lp else mp4
         if not mp4.exists():
-            print(f"  {clip_id[:30]}: MP4 missing — skip")
+            print(f"  {clip_id[:30]}: MP4 missing - skip")
             continue
 
         frame, info = detect_and_annotate(mp4, duration)

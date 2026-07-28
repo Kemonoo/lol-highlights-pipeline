@@ -13,8 +13,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .scoring import compute_audio_score, compute_motion_score, has_positive_keyword, is_tournament
 from ..ingestion.fetch import download_clip
+from .scoring import compute_audio_score, compute_motion_score, has_positive_keyword, is_tournament
 
 log = logging.getLogger("pipeline.prefilter")
 

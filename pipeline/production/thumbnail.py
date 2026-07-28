@@ -20,9 +20,15 @@ import math
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import requests
+
+# Pillow is imported lazily inside the functions that need it, so the pipeline can run
+# stages that don't touch imaging without it. This block gives type checkers and
+# linters the names used in the quoted annotations below without importing at runtime.
+if TYPE_CHECKING:
+    from PIL import Image, ImageFont
 
 log = logging.getLogger("pipeline.thumbnail")
 
@@ -116,8 +122,9 @@ def _fetch_splash(champ_id: str, cache_dir: Path) -> Optional["Image.Image"]:
 
 def _twitch_pfp(broadcaster_id: str, cache_dir: Path) -> Optional["Image.Image"]:
     """Fetch and cache the Twitch profile picture for a broadcaster."""
-    from PIL import Image
     import os
+
+    from PIL import Image
 
     cached = cache_dir / f"pfp_{broadcaster_id}.jpg"
     if cached.exists():
@@ -129,7 +136,7 @@ def _twitch_pfp(broadcaster_id: str, cache_dir: Path) -> Optional["Image.Image"]
     client_id     = os.getenv("TWITCH_CLIENT_ID")
     client_secret = os.getenv("TWITCH_CLIENT_SECRET")
     if not client_id or not client_secret:
-        log.debug("TWITCH_CLIENT_ID/SECRET not set — skipping pfp")
+        log.debug("TWITCH_CLIENT_ID/SECRET not set - skipping pfp")
         return None
     try:
         token = requests.post(
@@ -307,7 +314,7 @@ def _text_outlined(draw, xy, text, font, fill, stroke, width):
 def _compose(
     bg_img:      Optional["Image.Image"],
     pfp_img:     Optional["Image.Image"],
-    achievement: Optional[tuple[str, tuple]],
+    achievement: tuple[str, tuple] | None,
     hook:        str,
     stat_line:   str,
     streamer:    str,
@@ -421,6 +428,7 @@ def _reaction_face(clip: dict, mp4: Path, best_s: float) -> "Image.Image | None"
     try:
         import cv2
         from PIL import Image
+
         from ..publishing.shorts import _detect_facecam, _extract_frame
         dur = float(clip.get("duration", 30) or 30)
         region = _detect_facecam(mp4, dur)
@@ -463,6 +471,7 @@ def _clip_frame_bg(mp4: Path, best_s: float) -> "Image.Image | None":
     try:
         import cv2
         from PIL import Image
+
         from ..publishing.shorts import _extract_frame
         frame = _extract_frame(mp4, best_s if best_s and best_s > 0 else 2.0)
         if frame is None:
@@ -577,8 +586,8 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
     top = max(clips, key=lambda c: c.get("api_rank_score", 0))
     summary = top.get("vlm_summary", "") + " " + top.get("title", "")
     best_s = float(top.get("api_best_moment_s", 0) or 0)
-    from .credits import _hook
     from .commentary import _ascii_name
+    from .credits import _hook
     hook = _hook(clips)
     streamer = _ascii_name(top)
 
@@ -639,68 +648,12 @@ _ANN_RED = ((255, 184, 160), (198, 28, 28), (255, 70, 40))
 _FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 
 
-def _img_to_b64(img: "Image.Image", fmt: str = "PNG") -> str:
-    import base64
-    import io
-    buf = io.BytesIO()
-    img.convert("RGB").save(buf, fmt)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
-
-
-def _gemini_generate_image(prompt: str, images: list, model: str, api_key: str,
-                           timeout: int = 150) -> "Image.Image | None":
-    """POST a prompt + input images to the Gemini image model; return a PIL image."""
-    import base64
-    import io
-    import requests
-    from PIL import Image
-    parts = [{"text": prompt}]
-    for im in images:
-        parts.append({"inline_data": {"mime_type": "image/png", "data": _img_to_b64(im)}})
-    import time
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={api_key}")
-    body = {"contents": [{"parts": parts}],
-            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}}
-    for attempt in range(3):
-        resp = requests.post(url, json=body, timeout=timeout)
-        if resp.status_code in (429, 500, 503):
-            # transient per-minute limit on the paid tier → honour retryDelay and retry.
-            # A free-tier "limit: 0" returns a long delay; we give up fast and let the
-            # caller fall back to the local design rather than stalling the pipeline.
-            delay = _retry_delay_s(resp)
-            if delay > 45 or attempt == 2:
-                resp.raise_for_status()
-            log.info("  gemini image %s — waiting %.0fs (attempt %d/3)",
-                     resp.status_code, delay, attempt + 1)
-            time.sleep(delay)
-            continue
-        resp.raise_for_status()
-        for cand in resp.json().get("candidates", []):
-            for p in cand.get("content", {}).get("parts", []):
-                blob = p.get("inlineData") or p.get("inline_data")
-                if blob and blob.get("data"):
-                    return Image.open(io.BytesIO(base64.b64decode(blob["data"]))).convert("RGB")
-        return None
-    return None
-
-
-def _retry_delay_s(resp) -> float:
-    """Seconds from a 429/503 RetryInfo detail (default 15s)."""
-    try:
-        for d in resp.json().get("error", {}).get("details", []):
-            if "RetryInfo" in d.get("@type", "") and d.get("retryDelay"):
-                return float(str(d["retryDelay"]).rstrip("s"))
-    except Exception:
-        pass
-    return 15.0
-
-
 def _clip_frame_raw(mp4: Path, best_s: float) -> "Image.Image | None":
     """Ungraded gameplay still at the peak moment — fed to Gemini as scene reference."""
     try:
         import cv2
         from PIL import Image
+
         from ..publishing.shorts import _extract_frame
         f = _extract_frame(mp4, best_s if best_s and best_s > 0 else 2.0)
         return None if f is None else Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
@@ -887,10 +840,26 @@ def _name_badge(canvas, text: str, accent) -> None:
            stroke_width=2, stroke_fill=(0, 0, 0))
 
 
-def _reaction_cutout(face, model: str, api_key: str) -> "Image.Image | None":
-    """One paid Gemini call: enhance the facecam into an excited green-screen reaction."""
-    img = _gemini_generate_image(_CUT_PROMPT, [face], model, api_key)
-    return _green_key(img) if img is not None else None
+def _reaction_cutout(provider, face) -> "Image.Image | None":
+    """One paid image call: enhance the facecam into an excited green-screen reaction.
+
+    Deliberately narrow — see CLAUDE.md: asking the model to build the whole scene
+    trips the recitation filter and flakes. We key this out and composite the rest
+    ourselves."""
+    import io
+
+    from PIL import Image
+    blob = provider.generate_image(_CUT_PROMPT, images=[_img_bytes(face)])
+    if not blob:
+        return None
+    return _green_key(Image.open(io.BytesIO(blob)).convert("RGB"))
+
+
+def _img_bytes(im) -> bytes:
+    import io
+    buf = io.BytesIO()
+    im.convert("RGB").save(buf, "PNG")
+    return buf.getvalue()
 
 
 def _compose_reaction(frame, cutout, hook, streamer, accent) -> "Image.Image":
@@ -939,9 +908,12 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
     data = Path(cfg["paths"]["data_abs"])
     work = data / "work" / date_label
     raw_dir = data / "raw" / date_label
-    api_key = th.get("gemini_api_key") or cfg.get("api_judge", {}).get("api_key", "")
-    if not api_key:
-        log.info("gemini thumb: no API key — fallback")
+    from ..providers import ProviderUnavailable, get_provider
+    try:
+        provider = get_provider(cfg, "thumbnail_image")
+        provider.require(image_generation=True)
+    except ProviderUnavailable as e:
+        log.info("AI thumbnail unavailable (%s) — using the local design", e)
         return None
 
     src = work / "vlm_filtered.json"
@@ -953,22 +925,22 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
 
     picked = _best_with_face(clips, raw_dir, int(th.get("face_search_top", 6)))
     if not picked:
-        log.info("gemini thumb: no clip with a detectable facecam — fallback")
+        log.info("gemini thumb: no clip with a detectable facecam - fallback")
         return None
     clip, mp4, face, best_s = picked
 
-    from .credits import _hook
     from .commentary import _ascii_name
+    from .credits import _hook
     hook = _hook(clips)
     streamer = _ascii_name(clip)
     frame = _clip_frame_raw(mp4, best_s)
     if frame is None:
-        log.info("gemini thumb: no gameplay frame — fallback")
+        log.info("gemini thumb: no gameplay frame - fallback")
         return None
 
-    cutout = _reaction_cutout(face, th.get("gemini_model", "gemini-2.5-flash-image"), api_key)
+    cutout = _reaction_cutout(provider, face)
     if cutout is None:
-        log.warning("gemini thumb: reaction cutout failed — fallback")
+        log.warning("gemini thumb: reaction cutout failed - fallback")
         return None
 
     accent = _ANN_GOLD   # gold text reads best against the always-red border
@@ -1015,7 +987,7 @@ def _generate_legacy(cfg: dict, date_label: str) -> Path | None:
 
     src = work / "vlm_filtered.json"
     if not src.exists():
-        log.info("thumbnail: no vlm_filtered.json — skip")
+        log.info("thumbnail: no vlm_filtered.json - skip")
         return None
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
     if not clips:
@@ -1030,13 +1002,13 @@ def _generate_legacy(cfg: dict, date_label: str) -> Path | None:
     champ_id  = _detect_champion(summary, champ_map)
     bg_img    = _fetch_splash(champ_id, cache_dir) if champ_id else None
     if not champ_id:
-        log.info("  no champion detected — using dark background")
+        log.info("  no champion detected - using dark background")
 
     # Twitch profile picture
     broadcaster_id = top.get("broadcaster_id", "")
     pfp_img = _twitch_pfp(broadcaster_id, cache_dir) if broadcaster_id else None
     if pfp_img is None:
-        log.info("  no pfp for broadcaster %s — using fallback", broadcaster_id)
+        log.info("  no pfp for broadcaster %s - using fallback", broadcaster_id)
 
     # Achievement + hook
     achievement = _achievement(summary)
@@ -1047,7 +1019,9 @@ def _generate_legacy(cfg: dict, date_label: str) -> Path | None:
     # drives both the achievement stamp and the hook, so e.g. a "quadra" clip yields
     # achievement == hook == "QUADRA KILL"; showing both renders the text twice.
     ach_label = achievement[0] if achievement else ""
-    _norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
     rank = top.get("rank") or top.get("broadcaster_rank") or ""
     stat_parts = []
     if rank:

@@ -1,4 +1,73 @@
 # Pipeline configuration. ${VARS} are expanded from environment / .env.
+#
+# Run `python -m pipeline.doctor` to check this config against what is actually
+# installed and reachable on your machine before a full run.
+
+llm:
+  # ── Which model does which job ─────────────────────────────────────────────
+  # Every role below takes the same shape:
+  #   provider:  gemini | ollama | openai | anthropic | none
+  #   model:     provider-specific model id ("auto" = best installed, ollama only)
+  #   api_key:   ${ENV_VAR} — omit for local providers
+  #   base_url:  override the endpoint. This is what makes any OpenAI-compatible
+  #              backend work: OpenRouter, Groq, Together, DeepSeek, LM Studio,
+  #              vLLM, llama.cpp, or Ollama's own /v1 endpoint. With
+  #              provider: openai + base_url, you can run every text role on
+  #              hardware or an account of your choosing.
+  #   thinking:  off | low | high — reasoning budget (Gemini 3.x). Ignored by
+  #              providers that don't expose one.
+  #
+  # Model IDs verified against the live Gemini API on 2026-07-28. Google retires
+  # models on a schedule (gemini-2.0-flash started 404ing mid-2026; the whole 2.5
+  # family shuts down Oct 2026). If a stage suddenly fails with HTTP 404, check
+  # https://ai.google.dev/gemini-api/docs/deprecations and change the id here —
+  # that is the only place model ids live.
+  # `gemini-flash-latest` / `gemini-flash-lite-latest` are floating aliases that
+  # never 404 but can change behaviour without warning. Pinned ids are the default
+  # here on purpose; switch to an alias if you'd rather have uptime than stability.
+  defaults:
+    timeout_s: 120
+    max_retries: 4
+    retry_base_s: 20          # backoff between retries = retry_base_s * attempt
+
+  roles:
+    judge:                    # stage 4 — watches each surviving clip as VIDEO
+      provider: gemini        # needs NATIVE video understanding; local VLMs and
+                              # OpenAI chat models cannot do this. With no key the
+                              # stage degrades to local_judge() instead of failing.
+      model: gemini-3.6-flash
+      api_key: ${GEMINI_API_KEY}
+      thinking: low           # measured: 409 -> 92 tokens and 4.2s -> 2.3s per call
+                              # versus default thinking, with identical scores.
+
+    vlm:                      # stage 3 — per-frame gameplay/kill detection
+      provider: ollama        # free + local. The cost cascade depends on this
+                              # staying cheap: it sees ~10x more clips than judge.
+      model: auto             # auto = best vision model installed (see providers/ollama.py)
+      base_url: http://localhost:11434
+
+    commentary:               # stage 6 — voiceover lines (produced mode only)
+      provider: auto          # auto = gemini if GEMINI_API_KEY is set, else ollama
+      model: gemini-3.1-flash-lite
+      api_key: ${GEMINI_API_KEY}
+      fallback:               # used when provider: auto finds no API key
+        provider: ollama
+        model: qwen2.5:7b     # MUST be installed (`ollama list`)
+        base_url: http://localhost:11434
+
+    feedback:                 # stage 0 — classifies viewer comment sentiment
+      provider: auto
+      model: gemini-3.1-flash-lite
+      api_key: ${GEMINI_API_KEY}
+      fallback:
+        provider: ollama
+        model: qwen2.5:7b
+        base_url: http://localhost:11434
+
+    thumbnail_image:          # stage 10 — reaction-face image generation
+      provider: gemini        # image generation; needs BILLING enabled (not free tier).
+      model: gemini-3.1-flash-image
+      api_key: ${GEMINI_API_KEY}
 
 twitch:
   game_id: "21779"            # League of Legends
@@ -23,13 +92,8 @@ prefilter:                    # thresholds from twitch_clips training
   include_languages: [en, fr, de, es, ru, pt, it, pl, cs, sk, ko]
   exclude_languages: [ja, zh] # used only when include_languages is empty
 
-vlm_filter:
+vlm_filter:                   # model choice lives in llm.roles.vlm
   enabled: true
-  provider: ollama            # ollama (local, free) | gemini (API)
-  ollama_url: http://localhost:11434
-  ollama_model: auto          # auto = best available from preference list (see vlm_filter.py)
-  gemini_api_key: ${GEMINI_API_KEY}
-  gemini_model: gemini-2.5-flash
   max_keep: 18                # clips passed to the API judge
   # ── stepwise judgment (see vlm_filter.py docstring) ──
   gameplay_frames: 3          # frames for the binary gameplay majority vote
@@ -43,11 +107,14 @@ vlm_filter:
     banner: [0.35, 0.05, 0.65, 0.22]    # center multikill announcement
     eventlog: [0.0, 0.75, 0.30, 1.0]    # bottom-left "has slain ..." text
 
-api_judge:                    # Gemini full-video quality judge on local survivors
-  enabled: true               # auto-skips when GEMINI_API_KEY is not set in .env
-  model: gemini-2.5-flash     # NB: gemini-2.0-flash was retired (404 on generateContent)
-  api_key: ${GEMINI_API_KEY}
-  max_mb: 19                  # inline API limit; clips are shrunk to 480p first
+api_judge:                    # full-video quality judge — model in llm.roles.judge
+  enabled: true               # falls back to local_judge() when no API key is set
+  # Google raised the inline-upload cap from 20MB to 100MB in Jan 2026, so the
+  # judge no longer has to watch a 480p smear. Clips over max_mb even at this
+  # height go through the Files API (2GB cap) instead of being downscaled further.
+  max_mb: 90                  # inline payload budget (base64-encoded)
+  shrink_height: 720          # was 480 — only mattered under the old 20MB cap
+  shrink_crf: 28              # was 30; more headroom now that the size cap is 4.5x
   min_entertainment: 6        # keep gameplay clips at or above this
   min_entertainment_reaction: 7  # reaction-focus clips need a higher bar
   min_play_quality: 7         # or any clip with play this impressive
@@ -65,9 +132,13 @@ transcribe:                   # multilingual streamer speech -> English (faster-
   max_seconds: 60             # ignore speech past this point in a clip (cost bound)
   skip_languages: [en]        # don't transcribe these Twitch clip languages (already English →
                               # no translation/captions needed). [] = transcribe everything.
-  device: cpu                 # cpu | cuda — CPU is bulletproof; the unattended GPU session crashed
-                              # in cuDNN ("cudnnGetLibConfig", err 127). Use cuda only once fixed.
-  compute_type: int8          # int8 (cpu) | int8_float16 (cuda)
+  device: auto                # auto | cpu | cuda. `auto` uses CUDA when a working GPU stack is
+                              # detected and silently falls back to CPU otherwise, so this is
+                              # safe on any machine. Historical note: an unattended GPU run
+                              # crashed in cuDNN ("cudnnGetLibConfig", err 127) — that is a
+                              # missing cuDNN 9, fixed with `pip install nvidia-cudnn-cu12`.
+                              # `python -m pipeline.doctor` checks for it.
+  compute_type: auto          # auto | int8 (cpu) | int8_float16 (cuda)
 
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true
@@ -96,15 +167,9 @@ match_linker:
   # broadcaster twitch login -> list of summoner "Name#TAG"
   summoner_map: {}
 
-commentary:
+commentary:                   # model choice lives in llm.roles.commentary
   enabled: false              # LEAN MODE: no AI voiceover script (Synapse-style: clips speak
                               # for themselves). Set true to bring back narrated commentary.
-  provider: auto              # auto = gemini if key set, else ollama
-  gemini_model: gemini-2.5-flash-lite  # cheap/fast bucket separate from the judge's flash
-  ollama_url: http://localhost:11434
-  model: qwen2.5:7b           # local fallback when Gemini quota is exhausted; MUST be an
-                              # installed Ollama model (`ollama list`). qwen3:30b-a3b is
-                              # higher quality if you can spare the load time.
   style: hype_caster          # hype_caster | analyst | chill  (base style; rotated when vary_style: true)
   vary_style: true            # cycle hype_caster/chill/analyst across clips to avoid monotony
   max_sentences: 2
@@ -121,17 +186,28 @@ video:
   width: 1920
   height: 1080
   fps: 30
-  preset: veryfast            # x264 encode speed/quality tradeoff
+  preset: veryfast            # x264 encode speed/quality tradeoff (software encoding only)
+  encoder: auto               # auto | libx264 | h264_nvenc | h264_qsv | h264_videotoolbox
+                              # `auto` probes `ffmpeg -encoders` and picks hardware encoding
+                              # when your machine has it (NVIDIA / Intel / Apple Silicon),
+                              # falling back to libx264. Assembly is the slowest stage on a
+                              # CPU-only box, so this is the single biggest win from better
+                              # hardware. Pin a value if autodetect picks badly.
   font: null                  # null = auto (Arial Bold on Windows, CJK fallback for JP/KR/CN names)
   intro_enabled: true
   intro_title: DAILY LEAGUE HIGHLIGHTS   # used only when brand.enabled is false
-  brand:                        # KEMONO channel identity (God Fist Lee Sin)
+  brand:                        # ── YOUR channel identity — change these ──────────
     enabled: true               # animated logo sting as the intro (replaces the text card)
-    name: KEMONO
-    tagline: DAILY LEAGUE OF LEGENDS
-    splash_skin: 11             # Data Dragon LeeSin_11 = God Fist Lee Sin
-    splash_path: ""             # optional: path to your EDITED splash (overrides the download)
+    name: DAILY HIGHLIGHTS      # wordmark rendered in gold. Set this to your channel name.
+    tagline: LEAGUE OF LEGENDS  # smaller line under the wordmark
+    splash_champion: LeeSin     # Data Dragon champion id used as the intro backdrop.
+                                # Any champion works: Jinx, Yasuo, Ahri, KaiSa, MissFortune...
+                                # (ids are case-sensitive and have no spaces)
+    splash_skin: 0              # 0 = base skin. LeeSin_11 = God Fist, for example.
+    splash_path: ""             # optional: path to your OWN artwork — overrides the download
+                                # entirely, which is the right move for a real channel.
     intro_seconds: 2.8
+    # See config.kemono.yaml for the fully-branded example this repo actually runs.
   lower_third_seconds: 5.5    # how long the streamer card stays on screen
   countdown_enabled: true     # clips play worst->best with a #N badge (retention format)
   replay_enabled: false       # off: the judge's best_moment_s timestamp lands after the
@@ -188,10 +264,13 @@ video:
     sfx_delay_ms: 120         # SFX onset after the clip starts
 
 upload:
-  enabled: true               # OAuth set up — first upload opens a browser once
+  # SAFE BY DEFAULT: a fresh clone renders videos but never publishes them.
+  # Turn this on deliberately, and move privacy off `private` only once you have
+  # watched a few finished videos and are happy to put them on your channel.
+  enabled: false              # true = upload to YouTube (first run opens a browser for OAuth)
   allow_reupload: false       # idempotency: skip if this date already uploaded (the bat retries
                               # on crash; without this a retry made a DUPLICATE video). true = force.
-  privacy: public           # exactly one of: private | unlisted | public
+  privacy: private            # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
   # clickbait/curiosity titles; a date series-marker is appended → "HOOK | June 17, 2026"
   # (like daily-clip channels that suffix an episode number). Placeholders: {hook} {emoji}
@@ -206,11 +285,12 @@ upload:
     - "{hook} {emoji} The Best League of Legends Moments Today"
     - "{star} Went CRAZY… {emoji} LoL Best Moments (Top {n})"
 
-thumbnail:
+thumbnail:                    # image model lives in llm.roles.thumbnail_image
   enabled: true               # generate a cinematic 1280×720 thumbnail per video
-  provider: gemini            # gemini (AI reaction via Nano Banana, paid ~$0.04/img) | local (free PIL)
-  gemini_model: gemini-2.5-flash-image   # Nano Banana — enhances the facecam into a reaction
-  gemini_api_key: ${GEMINI_API_KEY}
+  provider: local             # local (free PIL, no key needed) | gemini (AI reaction, ~$0.04/img)
+                              # Default is `local` so a fresh clone costs nothing and cannot
+                              # fail on billing. Switch to `gemini` once you've enabled
+                              # pay-as-you-go — image models are not on the free tier.
   face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")
   variants: 3                 # local-provider CTR variants (thumbnail.jpg = primary; rest for A/B)
   # gemini: enhance the facecam into an over-the-top excited reaction on a green screen,
@@ -223,9 +303,10 @@ thumbnail:
 
 shorts:
   enabled: true
-  count: 3                    # how many shorts to post per day (top clips by rank score)
-  upload: true                # auto-upload after render; shares the main upload OAuth token
-  privacy: public             # private | unlisted | public
+  count: 3                    # how many shorts to render per day (top clips by rank score)
+  upload: false               # SAFE BY DEFAULT (see upload.enabled). true = auto-upload after
+                              # render; shares the main upload OAuth token.
+  privacy: private            # private | unlisted | public
   detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
   target_seconds: 32          # punchy length — 20-35s wins on Shorts (retention drops past ~45s)
   pre_roll_s: 7               # seconds of build-up before the best moment (lead with the heat)
@@ -239,6 +320,15 @@ cleanup:
 
 permissions:
   require_permission: false   # when true, only broadcasters approved in state.json are used
+
+resources:                    # keep a run from making the machine unusable
+  cpu_percent: 100            # cap CPU-bound work (ffmpeg threads, numpy/BLAS, opencv)
+                              # at this share of your cores. 100 = no limit.
+                              # Does NOT throttle the GPU: Ollama and NVENC run in their
+                              # own processes and can't be capped portably from here.
+  low_priority: false         # true = run at below-normal scheduling priority. ffmpeg
+                              # children inherit it, so the whole run yields to whatever
+                              # you're doing in the foreground. Costs wall-clock time.
 
 paths:
   data: data                  # relative to repo root

@@ -1,26 +1,14 @@
-# Core pipeline
-requests
-pyyaml
-yt-dlp
-edge-tts
-tzdata
+# Kept for `pip install -r requirements.txt` compatibility.
+# The authoritative dependency list is pyproject.toml — prefer:
+#
+#   pip install -e .                 # core: fetch, filter, render
+#   pip install -e ".[all]"          # + transcription, voiceover, upload
+#   pip install -e ".[transcribe]"   # pick individual extras
+#
+# ffmpeg and ffprobe must be on PATH (not installable via pip).
+# Local VLM filtering needs Ollama (https://ollama.com) with a vision model:
+#   ollama pull qwen3-vl:4b
+#
+# Run `python -m pipeline.doctor` to check everything at once.
 
-# Pre-filter scoring (audio hype / motion)
-librosa
-numpy
-opencv-python
-
-# Thumbnail compositing
-Pillow
-
-# YouTube upload (stage 10)
-google-api-python-client
-google-auth-oauthlib
-
-# Multilingual speech -> English (enrichment/transcribe.py: commentary context + shorts
-# captions). GPU-accelerated on the RTX 3050 (int8_float16) when CUDA is present, else CPU.
-faster-whisper
-
-# ffmpeg + ffprobe must be on PATH
-# Local VLM filtering needs Ollama (https://ollama.com) with a vision model,
-# e.g.:  ollama pull qwen3-vl:4b
+-e .

@@ -19,13 +19,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .ingestion import fetch
-from .filtering import prefilter, vlm_filter, api_judge
-from .enrichment import transcribe, match_linker, hud_ocr
-from .production import commentary, tts, assemble, credits, thumbnail
-from .publishing import upload, shorts, cleanup
-from .feedback import feedback
 from .config import load_config
+from .enrichment import hud_ocr, match_linker, transcribe
+from .feedback import feedback
+from .filtering import api_judge, prefilter, vlm_filter
+from .ingestion import fetch
+from .production import assemble, commentary, credits, thumbnail, tts
+from .publishing import cleanup, shorts, upload
 from .state import State
 
 log = logging.getLogger("pipeline")
@@ -80,7 +80,7 @@ def _expand_selection_if_short(cfg: dict, state, date_label: str) -> None:
         api_judge.run(cfg, state, date_label)
     m = _selection_minutes(cfg, date_label)
     if m < ideal:
-        log.info("Selection finalized at %.1f min — day's pool exhausted", m)
+        log.info("Selection finalized at %.1f min - day's pool exhausted", m)
 
 
 def _stage_outputs(cfg: dict, d: str) -> dict:
@@ -102,6 +102,51 @@ def _stage_outputs(cfg: dict, d: str) -> dict:
     }
 
 
+def _write_run_manifest(cfg: dict, date_label: str, *, overlays: str,
+                        skip: set, only: set) -> None:
+    """Record what THIS run is actually configured to do.
+
+    Without it, `pipeline.progress` has to re-read config.yaml to know whether a stage
+    is enabled — and reports on whichever overlay the person watching happened to pass,
+    not the one the run loaded. That turns the monitor into a source of confident
+    misinformation (an upload that IS going to happen shown as 'disabled'). Progress is
+    read-only over artifacts, so the run has to leave this behind."""
+    import json
+    import os
+    import time
+
+    work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
+    work.mkdir(parents=True, exist_ok=True)
+    up = cfg.get("upload", {})
+    sh = cfg.get("shorts", {})
+
+    def on(section: str, default: bool = True) -> bool:
+        return bool(cfg.get(section, {}).get("enabled", default))
+
+    manifest = {
+        "started_at": time.time(),
+        "pid": os.getpid(),
+        "overlays": [o.strip() for o in overlays.split(",") if o.strip()],
+        "only": sorted(only), "skip": sorted(skip),
+        "stages": {
+            "api_judge": on("api_judge"),
+            "transcribe": on("transcribe"),
+            "commentary": on("commentary", False),
+            "tts": on("tts", False),
+            "thumbnail": on("thumbnail"),
+            "upload": bool(up.get("enabled", False)),
+            "shorts": bool(sh.get("enabled", True)),
+        },
+        "upload_privacy": up.get("privacy", "private"),
+        "shorts_count": int(sh.get("count", 0)),
+        "shorts_upload": bool(sh.get("upload", False)),
+    }
+    try:
+        (work / "run.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    except OSError as e:                    # never let bookkeeping stop a run
+        log.debug("could not write run manifest: %s", e)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Twitch -> YouTube daily pipeline")
     parser.add_argument("--date", help="YYYY-MM-DD (default: yesterday)")
@@ -110,13 +155,26 @@ def main() -> int:
     parser.add_argument("--stop-after", default="", help="stop after this stage")
     parser.add_argument("--force", action="store_true",
                         help="re-run stages even if their output already exists")
+    parser.add_argument("--config", default="",
+                        help="YAML overlay(s) merged over config.yaml - only the keys "
+                             "you want to change. Comma-separate to compose several, "
+                             "applied left to right "
+                             "(e.g. config.kemono.yaml,config.local.throttled.yaml)")
+    parser.add_argument("--skip-doctor", action="store_true",
+                        help="skip the pre-run environment check")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)-22s %(levelname)-7s %(message)s",
                         datefmt="%H:%M:%S")
 
-    cfg = load_config()
+    cfg = load_config(overlay=args.config or None)
+
+    # Before any heavy import: the thread-count env vars are read by OpenMP/BLAS at
+    # import time, so applying them later would silently do nothing.
+    from .hardware import apply_limits
+    apply_limits(cfg)
+
     state = State(cfg["paths"]["data_abs"])
 
     if args.date:
@@ -129,7 +187,7 @@ def main() -> int:
             if work_root.exists() else []
         if dates:
             date_label = dates[-1]
-            log.info("No --date given — using latest run: %s", date_label)
+            log.info("No --date given - using latest run: %s", date_label)
         else:
             tz = ZoneInfo(cfg["twitch"]["timezone"])
             date_label = (datetime.now(tz) - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -147,7 +205,16 @@ def main() -> int:
     if not cfg["match_linker"]["enabled"]:
         skip.add("match_linker")
 
+    # Fail in seconds on a misconfigured machine rather than 20 minutes in, after
+    # fetch has already downloaded a few hundred MB of clips.
+    if not args.skip_doctor:
+        from .doctor import preflight
+        planned = (only or {name for name, _ in STAGES}) - skip
+        if not preflight(cfg, stages=planned):
+            return 1
+
     outputs = _stage_outputs(cfg, date_label)
+    _write_run_manifest(cfg, date_label, overlays=args.config, skip=skip, only=only)
 
     log.info("=== Pipeline run for %s ===", date_label)
     for name, fn in STAGES:
@@ -169,16 +236,16 @@ def main() -> int:
             if name == "api_judge":
                 _expand_selection_if_short(cfg, state, date_label)
         except NotImplementedError as e:
-            log.warning("[%s] not implemented yet — skipping (%s)", name, e)
+            log.warning("[%s] not implemented yet - skipping (%s)", name, e)
         except FileNotFoundError as e:
-            log.error("[%s] missing input — did an earlier stage run? (%s)", name, e)
+            log.error("[%s] missing input - did an earlier stage run? (%s)", name, e)
             return 1
         except KeyboardInterrupt:
-            log.warning("[%s] interrupted — progress saved, re-run to continue", name)
+            log.warning("[%s] interrupted - progress saved, re-run to continue", name)
             return 130
         except Exception as e:
             log.error("[%s] failed: %s", name, e)
-            log.error("Progress is saved — fix the issue and re-run; "
+            log.error("Progress is saved - fix the issue and re-run; "
                       "completed stages and clips will be skipped.")
             return 1
         if args.stop_after == name:

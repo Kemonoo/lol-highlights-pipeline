@@ -148,7 +148,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         clips = [c for c in clips
                  if state.permission_status(c.get("broadcaster_name", "")) == "approved"]
 
-    log.info("Fetched %d new clips for %s (metadata only — downloads are on-demand: "
+    log.info("Fetched %d new clips for %s (metadata only - downloads are on-demand: "
              "low-quality for scoring, full quality for filter survivors)",
              len(clips), date_label)
 

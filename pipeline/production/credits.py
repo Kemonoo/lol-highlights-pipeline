@@ -95,8 +95,13 @@ def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
     emoji = _EMOJI[int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16) % len(_EMOJI)]
     title = _title(cfg, date_label, clips, len(chapters))
 
+    # Lean mode ships no voiceover, so don't advertise commentary that isn't there —
+    # this is the description viewers read under a public video.
+    blurb = ("with commentary" if cfg.get("commentary", {}).get("enabled", False)
+             else "ranked and counted down")
+
     # CTA + keywords front-loaded (first ~150 chars show in search/feed)
-    lines = [f"{emoji} The best League of Legends plays of the day, with commentary. "
+    lines = [f"{emoji} The best League of Legends plays of the day, {blurb}. "
              f"Which clip was your favorite? Drop the number in the comments 👇 — and "
              f"SUBSCRIBE for daily LoL highlights!",
              "", "⏱ Chapters & streamers (go follow them):"]

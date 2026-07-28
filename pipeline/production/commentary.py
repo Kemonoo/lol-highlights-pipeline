@@ -1,9 +1,8 @@
 """Stage 6 — Grounded voiceover commentary, v2.
 
-Providers (config commentary.provider):
-  auto    -> gemini if GEMINI_API_KEY is set, else ollama
-  gemini  -> Gemini text call (same key as api_judge; ~100 tokens/clip, negligible cost)
-  ollama  -> local qwen2.5
+Which model writes the lines is config, not code: llm.roles.commentary (with a
+`fallback` block used when the primary starts failing mid-run). ~100 tokens/clip, so
+cost is negligible on any provider.
 
 Grounding: each line is written ONLY from known facts — the api_judge description
 (champion names, what actually happens), title, streamer, audio mood. Previous lines
@@ -17,8 +16,6 @@ import json
 import logging
 import re
 from pathlib import Path
-
-import requests
 
 log = logging.getLogger("pipeline.commentary")
 
@@ -115,83 +112,53 @@ def _parse_line(d: dict | None) -> str:
     return ""
 
 
-# ── providers ─────────────────────────────────────────────────────────────────
+# ── provider ──────────────────────────────────────────────────────────────────
 
-def _gemini_text(prompt: str, cm: dict) -> dict | None:
-    """Gemini text call with retry/backoff — free-tier rate limits (429) are common
-    when writing 20+ lines right after the api_judge calls."""
-    import time
-    from ..filtering.vlm_filter import _parse_json
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{cm.get('gemini_model', 'gemini-2.5-flash')}:generateContent"
-           f"?key={cm['gemini_api_key']}")
-    last = None
-    for attempt in range(2):   # short: a dead daily quota won't recover, fallback will
-        try:
-            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]},
-                                 timeout=60)
-            if resp.status_code in (429, 500, 503):
-                wait = 15 * (attempt + 1)
-                log.info("  Gemini %s — waiting %ss (attempt %d/2)",
-                         resp.status_code, wait, attempt + 1)
-                time.sleep(wait)
-                last = RuntimeError(f"HTTP {resp.status_code}")
-                continue
-            resp.raise_for_status()
-            return _parse_json(
-                resp.json()["candidates"][0]["content"]["parts"][0]["text"])
-        except requests.RequestException as e:
-            last = e
-            time.sleep(8)
-    raise last
+LINE_SCHEMA = {"type": "object", "properties": {"line": {"type": "string"}}}
 
 
-def _ollama_text(prompt: str, cm: dict) -> dict | None:
-    from ..filtering.vlm_filter import _parse_json
-    resp = requests.post(
-        f"{cm['ollama_url']}/api/generate",
-        json={"model": cm["model"], "prompt": prompt, "stream": False,
-              "options": {"temperature": 0.7}},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    return _parse_json(resp.json().get("response", ""))
+def make_writer(cfg: dict):
+    """Return write(prompt) -> dict | None for the `commentary` role.
 
+    Sticky degradation: after 2 consecutive primary failures — which in practice means
+    the daily quota is gone, not that a retry might work — switch to the role's local
+    fallback for the rest of the run. A writer that returns None is not an error; the
+    caller emits a template line, so a dead API costs flavour, not the video."""
+    from ..providers import get_fallback, get_provider
 
-def _ollama_or_none(prompt: str, cm: dict) -> dict | None:
-    try:
-        return _ollama_text(prompt, cm)
-    except Exception as e:
-        log.warning("ollama fallback failed: %s", e)
-        return None  # caller emits the template line
-
-
-def make_writer(cm: dict):
-    provider = cm.get("provider", "auto")
-    if provider == "auto":
-        provider = "gemini" if cm.get("gemini_api_key") else "ollama"
-    log.info("Commentary provider: %s", provider)
-    if provider != "gemini":
-        return _ollama_text
-
-    # Gemini primary with sticky local fallback: after 2 consecutive failures
-    # (= daily quota exhausted, retrying is pointless) switch to Ollama for the rest.
+    primary = get_provider(cfg, "commentary")
+    fallback = get_fallback(cfg, "commentary")
     state = {"fails": 0}
 
-    def writer(prompt: str, cm_: dict) -> dict | None:
-        if state["fails"] >= 2:
-            return _ollama_or_none(prompt, cm_)
+    def _try(provider, prompt: str) -> dict | None:
+        if provider is None:
+            return None
         try:
-            r = _gemini_text(prompt, cm_)
+            return provider.complete_json(prompt, schema=LINE_SCHEMA)
+        except Exception as e:
+            log.warning("commentary write failed (%s): %s", provider.rc.describe(), e)
+            raise
+
+    def write(prompt: str) -> dict | None:
+        if state["fails"] >= 2:
+            try:
+                return _try(fallback, prompt)
+            except Exception:
+                return None
+        try:
+            r = _try(primary, prompt)
             state["fails"] = 0
             return r
         except Exception as e:
             state["fails"] += 1
             if state["fails"] >= 2:
-                log.warning("Gemini failing repeatedly (%s) — switching to local "
-                            "Ollama for the remaining lines", e)
-            return _ollama_or_none(prompt, cm_)
-    return writer
+                log.warning("commentary provider failing repeatedly (%s) — using the "
+                            "local fallback for the remaining lines", e)
+            try:
+                return _try(fallback, prompt)
+            except Exception:
+                return None
+    return write
 
 
 # ── line generation ───────────────────────────────────────────────────────────
@@ -227,7 +194,7 @@ def write_line(clip: dict, cm: dict, writer, previous: list[str],
         max_sentences=cm.get("max_sentences", 2),
     )
     try:
-        line = _english_only(_parse_line(writer(prompt, cm)))
+        line = _english_only(_parse_line(writer(prompt)))
         if line:
             return line
     except Exception as e:
@@ -243,7 +210,7 @@ def write_intro(clips: list[dict], cm: dict, writer) -> str:
         n=len(clips), streamers=streamers, teaser=teaser,
     )
     try:
-        line = _english_only(_parse_line(writer(prompt, cm)))
+        line = _english_only(_parse_line(writer(prompt)))
         if line:
             return line
     except Exception as e:
@@ -264,8 +231,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
 
     cm = dict(cfg["commentary"])
-    cm.setdefault("gemini_api_key", cfg.get("api_judge", {}).get("api_key", ""))
-    writer = make_writer(cm)
+    writer = make_writer(cfg)
 
     from ..enrichment.transcribe import load as _load_transcripts
     transcripts = _load_transcripts(work)   # clip_id -> {lang, text, words}

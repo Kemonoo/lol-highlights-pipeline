@@ -131,7 +131,7 @@ def analyze(mp4: Path, ask, vf_cfg: dict, crops_dir: Path | None = None) -> dict
                      or (max(kf_counts, default=0) >= 1
                          and _contains(eventlog, KILL_WORDS)))
         if confirmed:
-            log.debug("%s kills confirmed at t=%ss — stopping early", mp4.stem, t)
+            log.debug("%s kills confirmed at t=%ss - stopping early", mp4.stem, t)
             break
 
     multikill = (_contains(announcements, MULTIKILL_WORDS)

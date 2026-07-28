@@ -19,6 +19,14 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+# cv2 and numpy are imported lazily inside the detection functions (opencv is only
+# needed when shorts.detect_facecam is on). This gives the quoted annotations below
+# their names without importing at runtime.
+if TYPE_CHECKING:
+    import cv2
+    import numpy as np
 
 log = logging.getLogger("pipeline.shorts")
 
@@ -202,7 +210,10 @@ def _trim_clip(mp4: Path, out: Path, duration: float, best_s: float,
 # ── TikTok-style captions (drawtext: pixel-precise y, renders without fontconfig) ──
 
 _CAP_FONTS = ["C:/Windows/Fonts/ariblk.ttf", "C:/Windows/Fonts/arialbd.ttf",
-              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+              "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+              "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
 
 
 def _cap_font() -> str:
@@ -234,8 +245,27 @@ def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64) -> str:
 
 # ── single-pass render ────────────────────────────────────────────────────────
 
+def _shorts_enc(cfg: dict) -> list[str]:
+    """Encoder flags for a Short. Uses the machine's detected encoder (see
+    pipeline/hardware.py) at a slightly lower quality target than the long-form —
+    Shorts are standalone, so they never have to match anything for concat."""
+    from ..hardware import pick_encoder
+    v = cfg.get("video", {})
+    name = pick_encoder(str(v.get("encoder", "auto")))
+    if name == "h264_nvenc":
+        return ["-c:v", name, "-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0"]
+    if name == "h264_qsv":
+        return ["-c:v", name, "-global_quality", "23"]
+    if name == "h264_videotoolbox":
+        return ["-c:v", name, "-q:v", "50"]
+    if name == "h264_amf":
+        return ["-c:v", name, "-rc", "cqp", "-qp_i", "23", "-qp_p", "23"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+
+
 def _render_short(mp4: Path, out: Path, facecam: tuple | None,
-                  caption_words: list[dict], cap_mv: int, game_h: int) -> None:
+                  caption_words: list[dict], cap_mv: int, game_h: int,
+                  cfg: dict) -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
     (no voiceover, no music)."""
@@ -273,7 +303,9 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
         "ffmpeg", "-y", "-i", str(mp4),
         "-filter_complex", ";".join(parts),
         "-map", f"[{cur}]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        # Shorts are standalone (never concatenated), so they can carry their own
+        # slightly lower quality target — but still use the detected encoder.
+        *_shorts_enc(cfg),
         "-c:a", "aac", "-b:a", "128k",
         str(out),
     ]
@@ -283,15 +315,25 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
             result.returncode, cmd, result.stdout, result.stderr)
 
 
-# ── Gemini helper ─────────────────────────────────────────────────────────────
+# ── title generation ──────────────────────────────────────────────────────────
 
-def _gemini_call(prompt: str, cm: dict, key: str) -> str:
-    from ..production.commentary import _gemini_text
+_TITLE_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}}
+
+
+def _write_title(cfg: dict, prompt: str) -> str:
+    """English Shorts title via the `commentary` role. '' on any failure - the caller
+    has a template fallback, and a missing title must never block an upload."""
+    from ..providers import ProviderUnavailable, get_provider
     try:
-        r = _gemini_text(prompt, cm)
-        return (r or {}).get(key, "") or ""
+        provider = get_provider(cfg, "commentary")
+    except ProviderUnavailable as e:
+        log.info("  no title provider (%s) - using the template title", e)
+        return ""
+    try:
+        r = provider.complete_json(prompt, schema=_TITLE_SCHEMA)
+        return (r or {}).get("title", "") or ""
     except Exception as e:
-        log.warning("  Gemini call failed: %s", e)
+        log.warning("  title generation failed: %s", e)
         return ""
 
 
@@ -302,8 +344,9 @@ def _upload(mp4: Path, title: str, description: str, tags: list,
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
-        from .upload import _credentials
+
         from ..config import ROOT
+        from .upload import _credentials
         yt   = build("youtube", "v3", credentials=_credentials(ROOT, data))
         body = {
             "snippet": {
@@ -341,17 +384,13 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     src = work / "vlm_filtered.json"
     if not src.exists():
-        log.info("shorts: no vlm_filtered.json — skipping")
+        log.info("shorts: no vlm_filtered.json - skipping")
         return work
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
 
     count      = sh.get("count", 3)
     candidates = sorted(clips, key=lambda c: -c.get("api_rank_score", 0))[:count]
 
-    cm = {
-        "gemini_model":   cfg.get("commentary", {}).get("gemini_model", "gemini-2.0-flash-lite"),
-        "gemini_api_key": cfg.get("api_judge",  {}).get("api_key", ""),
-    }
     privacy      = sh.get("privacy", "public")
     detect_face  = sh.get("detect_facecam", True)
     target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
@@ -368,7 +407,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     for c in candidates:
         clip_id  = c["id"]
         if done.get(clip_id):
-            log.info("short %s already done — skip", clip_id)
+            log.info("short %s already done - skip", clip_id)
             continue
 
         mp4 = raw_dir / f"{clip_id}.mp4"
@@ -377,13 +416,13 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if lp:
                 mp4 = Path(lp)
         if not mp4.exists():
-            log.warning("short: %s mp4 missing — skip", clip_id)
+            log.warning("short: %s mp4 missing - skip", clip_id)
             continue
 
         duration = float(c.get("duration", 30))
         streamer  = _ascii_name(c)   # ASCII-safe: login fallback for JP/KR/CN names
         summary   = c.get("vlm_summary") or c.get("title", "")
-        log.info("short: %s — %s (%.0f s)", clip_id, streamer, duration)
+        log.info("short: %s - %s (%.0f s)", clip_id, streamer, duration)
 
         # 1. Trim to a punchy length, leading close to the action (Short retention)
         clip_src = mp4
@@ -396,7 +435,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 log.info("  trimmed %.0f s -> %.0f s (best moment %.1f s, pre-roll %.0f s)",
                          duration, target_s, best_s, pre_roll)
             except subprocess.CalledProcessError as e:
-                log.warning("  trim failed — using full clip: %s", e)
+                log.warning("  trim failed - using full clip: %s", e)
                 trim_tmp = None
 
         # 2. Face cam detection (bottom corners only)
@@ -428,7 +467,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         # 4. Single-pass render (clip audio only, drawtext captions, no VO/music)
         v_final = out_dir / f"{clip_id}.mp4"
         try:
-            _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h)
+            _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h, cfg)
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or b"").decode(errors="replace")[-500:]
             log.warning("  render failed for %s:\n%s", clip_id, stderr)
@@ -445,11 +484,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
             broadcaster_url = f"https://twitch.tv/{streamer.lower()}"
             # English title generated from the (English) summary + translated speech —
             # NEVER the raw Twitch clip title, which is often the streamer's own language.
-            title_en = ""
-            if cm["gemini_api_key"]:
-                title_en = _gemini_call(
-                    _TITLE_PROMPT.format(streamer=streamer, summary=summary[:120],
-                                         speech=speech_text[:200] or "(none)"), cm, "title")
+            title_en = _write_title(cfg, _TITLE_PROMPT.format(
+                streamer=streamer, summary=summary[:120],
+                speech=speech_text[:200] or "(none)"))
             title_en = re.sub(r"[^\x00-\x7F]", "", title_en).strip().strip('"')
             if not title_en:
                 title_en = f"{streamer} had to make this work"

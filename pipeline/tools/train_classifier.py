@@ -11,14 +11,15 @@ Usage:
 """
 
 import json
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 try:
     from sklearn.linear_model import LogisticRegression
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import cross_val_score, StratifiedKFold
     from sklearn.metrics import classification_report
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
+    from sklearn.preprocessing import StandardScaler
 except ImportError:
     print("scikit-learn not installed.  pip install scikit-learn")
     raise
@@ -109,7 +110,7 @@ def main():
     print(f"Loaded {len(clips)} labeled clips  ({n_accept} accepted, {n_reject} rejected)\n")
 
     if len(clips) < 20:
-        print("Very few labeled clips — results will be unreliable.")
+        print("Very few labeled clips - results will be unreliable.")
         print("Aim for at least 50 labeled clips (3+ days of collect + review).\n")
 
     X, y = build_features(clips)

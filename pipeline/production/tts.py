@@ -21,7 +21,6 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List
 
 log = logging.getLogger("pipeline.tts")
 
@@ -66,7 +65,7 @@ def _kokoro(lang_code: str = "a"):
 
 
 def _synthesize_kokoro(text: str, output_path: Path, voice: str,
-                       speed: float = 1.0) -> List[Dict]:
+                       speed: float = 1.0) -> list[dict]:
     import numpy as np
     import soundfile as sf
 
@@ -94,7 +93,7 @@ def _synthesize_kokoro(text: str, output_path: Path, voice: str,
 
 # ── edge-tts provider ─────────────────────────────────────────────────────────
 
-def _synthesize_edge(text: str, output_path: Path, voice: str) -> List[Dict]:
+def _synthesize_edge(text: str, output_path: Path, voice: str) -> list[dict]:
     voice_id = VOICES.get(voice, voice)
     word_events, sent_events, audio_dur = asyncio.run(
         _edge_run(text, output_path, voice_id)
@@ -133,7 +132,7 @@ async def _edge_run(text: str, output_path: Path, voice_id: str):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _distribute_words(sentences: List[Dict]) -> List[Dict]:
+def _distribute_words(sentences: list[dict]) -> list[dict]:
     words = []
     for sent in sentences:
         raw = sent["text"].split()
@@ -150,7 +149,7 @@ def _distribute_words(sentences: List[Dict]) -> List[Dict]:
     return words
 
 
-def _uniform_distribution(text: str, total_duration: float) -> List[Dict]:
+def _uniform_distribution(text: str, total_duration: float) -> list[dict]:
     raw = text.split()
     if not raw or total_duration <= 0:
         return []
@@ -167,7 +166,7 @@ _NON_LATIN = re.compile(r"[^\u0000-\u024F\u2010-\u201F\s]")
 
 
 def synthesize(text: str, output_path: Path, voice: str = "male-us",
-               provider: str = "kokoro", speed: float = 1.0) -> List[Dict]:
+               provider: str = "kokoro", speed: float = 1.0) -> list[dict]:
     """Synthesize text to MP3; return [{"word", "start", "end"}] in seconds."""
     text = _NON_LATIN.sub("", text or "").strip()
     if not text:
@@ -181,7 +180,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     work = Path(cfg["paths"]["data_abs"]) / "work" / date_label
     tts = cfg.get("tts", {})
     if not tts.get("enabled", True):
-        log.info("tts disabled — videos will have no voiceover")
+        log.info("tts disabled - videos will have no voiceover")
         return work
 
     provider = tts.get("provider", "kokoro")
@@ -211,7 +210,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             timings_path.write_text(
                 json.dumps(timings, indent=2, ensure_ascii=False), encoding="utf-8")
     except KeyboardInterrupt:
-        log.warning("TTS interrupted — keeping %d lines rendered so far", len(timings))
+        log.warning("TTS interrupted - keeping %d lines rendered so far", len(timings))
         raise
 
     return work

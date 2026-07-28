@@ -45,7 +45,7 @@ def _credentials(root: Path, data: Path):
         except Exception:
             granted = set()
         if granted and not set(SCOPES).issubset(granted):
-            log.info("cached token is missing scopes %s — re-authorizing in browser",
+            log.info("cached token is missing scopes %s - re-authorizing in browser",
                      sorted(set(SCOPES) - granted))
             token_f.unlink()
         else:
@@ -68,7 +68,7 @@ def _credentials(root: Path, data: Path):
 def run(cfg: dict, state, date_label: str) -> None:
     up = cfg["upload"]
     if not up.get("enabled", False):
-        log.info("upload disabled — video left in data/output/ "
+        log.info("upload disabled - video left in data/output/ "
                  "(enable in config after OAuth setup, see pipeline/upload.py)")
         return
 
@@ -78,16 +78,16 @@ def run(cfg: dict, state, date_label: str) -> None:
     if state is not None and not up.get("allow_reupload", False):
         existing = state.uploaded_id(date_label)
         if existing:
-            log.info("upload: %s already uploaded as %s — skipping "
+            log.info("upload: %s already uploaded as %s - skipping "
                      "(set upload.allow_reupload to force)", date_label, existing)
             return
 
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
-    except ImportError:
+    except ImportError as e:
         raise RuntimeError(
-            "pip install google-api-python-client google-auth-oauthlib")
+            'YouTube upload needs its extra: pip install -e ".[upload]"') from e
 
     from ..config import ROOT
     data = Path(cfg["paths"]["data_abs"])

@@ -12,10 +12,10 @@ Usage:
 
 import json
 import sys
+import tkinter as tk
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-import tkinter as tk
 
 DATA_DIR   = Path(__file__).resolve().parents[2] / "data" / "training"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,7 +33,7 @@ def load_state():
         a = sum(1 for c in clips if c.get("review_status") == "accepted")
         r = sum(1 for c in clips if c.get("review_status") == "rejected")
         p = sum(1 for c in clips if c.get("review_status") == "pending")
-        print(f"Resuming — {p} pending, {a} accepted, {r} rejected")
+        print(f"Resuming - {p} pending, {a} accepted, {r} rejected")
         return clips, date, index
 
     files = sorted(
@@ -41,7 +41,11 @@ def load_state():
         key=lambda f: f.stat().st_mtime,
         reverse=True,
     )
-    seen, files = set(), [f for f in files if not (f.resolve() in seen or seen.add(f.resolve()))]
+    # Deduplicate by resolved path, keeping newest-first order. NB: this must be two
+    # statements — as a single tuple assignment the comprehension reads `seen` before
+    # the assignment binds it, which raises NameError.
+    seen: set = set()
+    files = [f for f in files if not (f.resolve() in seen or seen.add(f.resolve()))]
     if not files:
         print(f"No dataset_*.json or clips_*.json files found in {DATA_DIR}.")
         sys.exit(1)
@@ -53,7 +57,7 @@ def load_state():
     for c in clips:
         c["review_status"] = "pending"
     mode_tag = " [COLLECT MODE]" if data.get("mode") == "collect" else ""
-    print(f"Starting fresh — {len(clips)} clips from {path.name}{mode_tag}")
+    print(f"Starting fresh - {len(clips)} clips from {path.name}{mode_tag}")
     return clips, date, 0
 
 

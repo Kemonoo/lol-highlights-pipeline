@@ -1,0 +1,33 @@
+@echo off
+REM ===========================================================================
+REM  Per-machine settings for run_daily_auto.bat.
+REM
+REM      copy auto_run.local.cmd.example auto_run.local.cmd
+REM
+REM  auto_run.local.cmd is gitignored, so this is where your own choices go -
+REM  editing run_daily_auto.bat directly means every `git pull` is a conflict.
+REM  Everything here overrides the defaults at the top of that file; delete the
+REM  lines you don't care about.
+REM ===========================================================================
+
+REM Config overlay(s) for the pipeline, comma-separated, applied left to right.
+REM Without one the run uses config.yaml, which renders but does NOT upload.
+REM Point this at your own overlay - config.kemono.yaml uploads to somebody
+REM else's channel. Paths must not contain spaces.
+REM     set "CONFIG=config.mychannel.yaml"
+REM     set "CONFIG=config.mychannel.yaml,pipeline\config.local.throttled.yaml"
+
+REM Sleep the PC once the run finishes.
+REM     1 = sleep, 0 = leave it running.
+REM A window appears first with a countdown and a "Stay awake" button; closing
+REM it, pressing Esc, or clicking anything but "Sleep now" cancels the sleep.
+REM If the session has already been idle for SLEEP_IDLE_MINUTES there is nobody
+REM to ask, so it skips the window and sleeps - that is the 03:00 case.
+REM NB: with hibernation enabled Windows may hibernate rather than suspend.
+REM Run `powercfg /hibernate off` if you want true sleep.
+set "SLEEP_AFTER=1"
+set "SLEEP_PROMPT_SECONDS=120"
+set "SLEEP_IDLE_MINUTES=5"
+
+REM Seconds before the single automatic retry of a failed run.
+REM     set "RETRY_SECONDS=600"

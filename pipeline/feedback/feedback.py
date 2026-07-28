@@ -42,16 +42,37 @@ Answer ONLY JSON, one entry per comment, same order:
    "summary": "<=10 words"}}]}}"""
 
 
+CLASSIFY_SCHEMA = {
+    "type": "object",
+    "properties": {"results": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "clip_ref": {"type": "integer", "nullable": True},
+            "sentiment": {"type": "string",
+                          "enum": ["positive", "negative", "neutral"]},
+            "topic": {"type": "string",
+                      "enum": ["clip_quality", "commentary", "music", "editing", "other"]},
+            "summary": {"type": "string"},
+        }}}},
+}
+
+
 def _classify(comments: list[str], cfg: dict) -> list[dict]:
-    """One batched Gemini call; [] on any failure."""
-    from ..production.commentary import _gemini_text
-    cm = {"gemini_model": cfg.get("commentary", {}).get("gemini_model", "gemini-2.0-flash-lite"),
-          "gemini_api_key": cfg.get("api_judge", {}).get("api_key", "")}
-    if not cm["gemini_api_key"]:
+    """One batched call to the `feedback` role; [] on any failure.
+
+    This stage must never block the pipeline (see the module docstring), so every
+    failure path here returns [] rather than raising."""
+    from ..providers import ProviderUnavailable, get_provider
+    try:
+        provider = get_provider(cfg, "feedback")
+    except ProviderUnavailable as e:
+        log.info("comment classification unavailable (%s) — skipping", e)
         return []
     try:
-        r = _gemini_text(CLASSIFY_PROMPT.format(
-            comments=json.dumps(comments[:60], ensure_ascii=False)), cm)
+        r = provider.complete_json(
+            CLASSIFY_PROMPT.format(
+                comments=json.dumps(comments[:60], ensure_ascii=False)),
+            schema=CLASSIFY_SCHEMA)
         if r and isinstance(r.get("results"), list):
             return r["results"]
     except Exception as e:
@@ -115,8 +136,9 @@ def _run(cfg: dict, state, fb: dict) -> None:
         log.info("feedback: no uploaded videos yet")
     else:
         try:
-            from ..publishing.upload import _credentials
             from googleapiclient.discovery import build
+
+            from ..publishing.upload import _credentials
             yt = build("youtube", "v3", credentials=_credentials(ROOT, data))
             for v in videos[-fb.get("videos_to_check", 5):]:
                 comments = [c for c in _fetch_comments(yt, v["youtube_id"])

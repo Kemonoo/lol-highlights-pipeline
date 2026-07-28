@@ -4,8 +4,10 @@ Runs ONLY on clips the free local filter already kept (~7-12/day), so cost is pe
 Answers the question local models fail at: "is the highlight the GAMEPLAY, and is the
 play actually good?" — catches boring-kills, talk-driven hype, misplay deaths.
 
-Per clip: shrink to 480p (inline API limit), send the whole video (with audio) to
-Gemini, get structured judgment, cache it (api_partial.json — interruption-safe).
+Per clip: shrink to `shrink_height` (720p by default), send the whole video with its
+audio to the `judge` role, get a schema-constrained verdict, cache it
+(api_partial_v2.json — interruption-safe). Clips too large to inline go through the
+provider's file-upload path rather than being degraded further.
 Decision rules (pure code, tunable in config):
     KEEP if clip_focus in (gameplay, reaction) and entertainment >= min_entertainment
     KEEP if play_quality >= min_play_quality
@@ -15,20 +17,31 @@ vlm_filtered.json (downstream stages unchanged). Also upgrades vlm_summary with
 Gemini's description — the commentary stage gets real facts to work with.
 
 Outputs: work/<date>/api_scored.json (audit), updated vlm_filtered.json.
-Disabled automatically when GEMINI_API_KEY is missing.
+Degrades to local_judge() when no video-capable provider is configured (no API key,
+quota exhausted, or the role points somewhere that can't ingest video), so the pipeline
+still finishes — with a less well-curated selection.
 """
-import base64
 import json
 import logging
 import subprocess
 import time
 from pathlib import Path
 
-import requests
-
-from .vlm_filter import _parse_json
-
 log = logging.getLogger("pipeline.api_judge")
+
+# Structured output: the judge's answer drives selection and ordering, so a malformed
+# response costs a clip. The provider maps this onto native JSON-schema decoding.
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "clip_focus": {"type": "string",
+                       "enum": ["gameplay", "reaction", "talk", "other"]},
+        "play_quality": {"type": "integer"},
+        "entertainment": {"type": "integer"},
+        "what_happens": {"type": "string"},
+        "best_moment_s": {"type": "number"},
+    },
+}
 
 PROMPT = """You are selecting clips for a daily "League of Legends best moments" YouTube video aimed at an English-speaking audience. Watch this Twitch clip (it has the streamer's audio).
 
@@ -46,55 +59,33 @@ Answer ONLY JSON:
 }"""
 
 
-def shrink(mp4: Path, out: Path, max_mb: float) -> Path | None:
-    """480p re-encode so the clip fits the inline API limit. Returns path or None."""
+def shrink(mp4: Path, out: Path, aj: dict) -> Path | None:
+    """Re-encode to keep the payload manageable. Returns the path, or None if even
+    the shrunk clip is over budget (the provider then routes it via the Files API).
+
+    Height and CRF are config now: the old hard-coded 480p/CRF-30 existed only to fit
+    the 20MB inline cap Google raised to 100MB in Jan 2026, and it was costing the
+    judge real detail on exactly the fast teamfights it is meant to grade."""
+    height = int(aj.get("shrink_height", 720))
+    crf = str(aj.get("shrink_crf", 28))
     if not out.exists():
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(mp4),
-             "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "veryfast",
-             "-crf", "30", "-c:a", "aac", "-b:a", "64k", "-ac", "1", str(out)],
+             "-vf", f"scale=-2:{height}", "-c:v", "libx264", "-preset", "veryfast",
+             "-crf", crf, "-c:a", "aac", "-b:a", "64k", "-ac", "1", str(out)],
             capture_output=True,
         )
-    if out.exists() and out.stat().st_size <= max_mb * 1024 * 1024:
-        return out
-    return None
+    if not out.exists():
+        return None
+    if out.stat().st_size > float(aj.get("max_mb", 90)) * 1024 * 1024:
+        log.info("  %s still %.0fMB after shrink - uploading instead of inlining",
+                 out.name, out.stat().st_size / 1024 / 1024)
+    return out
 
 
-def judge(mp4: Path, aj: dict) -> dict | None:
-    model = aj["model"]
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={aj['api_key']}")
-    body: dict = {"contents": [{"parts": [
-        {"inline_data": {"mime_type": "video/mp4",
-                         "data": base64.b64encode(mp4.read_bytes()).decode()}},
-        {"text": PROMPT},
-    ]}]}
-    last = None
-    for attempt in range(4):
-        try:
-            resp = requests.post(url, json=body, timeout=180)
-            if resp.status_code in (429, 500, 503):
-                wait = 20 * (attempt + 1)
-                # Log the actual Google error message so we can diagnose quota issues
-                try:
-                    err_detail = resp.json().get("error", {})
-                    log.info("  API %s — %s (attempt %d/4, waiting %ss)",
-                             resp.status_code,
-                             err_detail.get("message", "no detail"),
-                             attempt + 1, wait)
-                except Exception:
-                    log.info("  API %s — waiting %ss (attempt %d/4)",
-                             resp.status_code, wait, attempt + 1)
-                time.sleep(wait)
-                last = RuntimeError(f"HTTP {resp.status_code}")
-                continue
-            resp.raise_for_status()
-            return _parse_json(
-                resp.json()["candidates"][0]["content"]["parts"][0]["text"])
-        except requests.RequestException as e:
-            last = e
-            time.sleep(10)
-    raise last
+def judge(mp4: Path, provider) -> dict | None:
+    """Send the whole clip (with audio) to the judge role and parse its verdict."""
+    return provider.complete_json(PROMPT, video=mp4.read_bytes(), schema=SCHEMA)
 
 
 def local_judge(clip: dict, aj: dict) -> None:
@@ -136,9 +127,7 @@ def decide_api(clip: dict, aj: dict) -> None:
     clip["api_rank_score"] = round(0.4 * ent + 0.6 * pq, 2)
     min_ent = (aj.get("min_entertainment_reaction", 7) if focus == "reaction"
                else aj.get("min_entertainment", 6))
-    if focus in ("gameplay", "reaction") and ent >= min_ent:
-        clip["api_decision"] = "KEEP"
-    elif pq >= aj.get("min_play_quality", 7):
+    if focus in ("gameplay", "reaction") and ent >= min_ent or pq >= aj.get("min_play_quality", 7):
         clip["api_decision"] = "KEEP"
     else:
         clip["api_decision"] = "DROP"
@@ -151,7 +140,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     work = data / "work" / date_label
 
     if not aj.get("enabled", False):
-        log.info("api_judge disabled — keeping local selection")
+        log.info("api_judge disabled - keeping local selection")
         return work
     # (a missing api key is fine for clips already in the judgment cache)
 
@@ -170,6 +159,17 @@ def run(cfg: dict, state, date_label: str) -> Path:
     partial_path = work / "api_partial_v2.json"
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
+
+    # No key, no Gemini, misconfigured role — all the same to this stage: clips already
+    # in the cache still resolve, and everything else falls back to local scoring. The
+    # pipeline is meant to finish without any API access, just less well curated.
+    from ..providers import ProviderUnavailable, get_provider
+    try:
+        provider = get_provider(cfg, "judge")
+        provider.require(video=True)
+    except ProviderUnavailable as e:
+        log.warning("no video judge available (%s) — scoring uncached clips locally", e)
+        provider = None
 
     judged = []
     consecutive_fails = 0
@@ -193,23 +193,24 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 mp4 = Path(lp)
         if not mp4.exists():
             continue
-        if not aj.get("api_key"):
-            log.warning("%s not in cache and no GEMINI_API_KEY — keeping unjudged", c["id"])
+        if provider is None:
+            log.warning("%s not in cache and no judge available - scoring locally", c["id"])
             local_judge(c, aj)
             judged.append(c)
             continue
+        max_bytes = float(aj.get("max_mb", 90)) * 1024 * 1024
         lq = raw_dir / "lq" / f"{c['id']}.mp4"   # prefilter's low-quality copy
-        if lq.exists() and lq.stat().st_size <= aj.get("max_mb", 19) * 1024 * 1024:
+        if lq.exists() and lq.stat().st_size <= max_bytes:
             small = lq                            # already API-sized — skip re-encode
         else:
-            small = shrink(mp4, tmp / f"{c['id']}.mp4", aj.get("max_mb", 19))
+            small = shrink(mp4, tmp / f"{c['id']}.mp4", aj)
         if small is None:
-            log.warning("%s too large even shrunk — keeping without API judgment", c["id"])
+            log.warning("%s could not be prepared - keeping without API judgment", c["id"])
             local_judge(c, aj)
             judged.append(c)
             continue
         try:
-            r = judge(small, aj)
+            r = judge(small, provider)
             consecutive_fails = 0
             time.sleep(3)   # stay within free-tier RPM limits
         except Exception as e:
@@ -218,7 +219,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 log.warning("API failing repeatedly (%s) — quota likely exhausted; "
                             "keeping remaining clips unjudged (retried next run)", e)
             else:
-                log.warning("API judge failed for %s: %s — keeping clip", c["id"], e)
+                log.warning("API judge failed for %s: %s - keeping clip", c["id"], e)
             r = None
         if r is None:  # failures not cached -> retried next run
             local_judge(c, aj)

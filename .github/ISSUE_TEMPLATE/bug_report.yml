@@ -1,0 +1,54 @@
+name: Bug report
+description: Something fails or behaves differently than documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: run `python -m pipeline.doctor`. It catches most setup problems
+        and prints the fix.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+      placeholder: |
+        Ran: python -m pipeline.run_daily --date 2026-07-27
+        Expected: a video in data/output/
+        Got: the assemble stage failed with ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `python -m pipeline.doctor`
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >
+        From `data/logs/`, or the terminal. Please include the traceback if there is
+        one. Do not paste API keys.
+      render: text
+
+  - type: input
+    id: env
+    attributes:
+      label: OS, Python version, GPU
+      placeholder: "Windows 11, Python 3.12, RTX 3050"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Checks
+      options:
+        - label: I redacted any API keys from the output above
+          required: true
