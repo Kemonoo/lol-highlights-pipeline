@@ -1,11 +1,26 @@
 # CLAUDE.md
 
+## Docs map — read these before changing direction
+- **This file** = current architecture + rules. Always loaded.
+- **DEVLOG.md** = chronological context: why things are this way, what was tried and
+  **reversed**, production incidents + root causes, environment traps that cost hours,
+  open items. **Read it at the start of any non-trivial task**, and append a dated entry
+  when you change direction, fix a production bug, or shelve an idea.
+- **VIRAL_STRATEGY.md** = ranked growth roadmap (CTR/AVD levers) + what's shipped.
+- **FUTURE_WORK.md** = parked ideas incl. the shelved funny-outro findings.
+- **PLAN.md** = stage status table + monetization/legal constraints. README.md = public.
+
 ## Project context
 
-Automated daily pipeline: top League of Legends Twitch clips → filtered by AI →
-assembled into a monetizable long-form YouTube video (countdown format, commentary,
-TTS voiceover, music, replays) → optional auto-upload. Runs on the owner's Windows
-machine (RTX 3050 4GB). Entry point: `python -m pipeline.run_daily [--date YYYY-MM-DD]`.
+Automated daily channel **KEMONO**: top League of Legends Twitch clips → filtered by AI →
+assembled into a daily YouTube video (countdown format, brand intro, AI thumbnail) +
+derived Shorts → auto-uploaded. Currently **LEAN MODE** (no voiceover/commentary/music
+bed — see the lean-mode note below). Runs unattended at 03:00 on the owner's Windows
+machine (RTX 3050 4GB) via `run_daily_auto.bat` (Task Scheduler).
+Entry point: `python -m pipeline.run_daily [--date YYYY-MM-DD]`.
+
+**Debugging a bad/missing upload starts at `data/logs/auto_<date>.log`.** The bat retries
+the whole run on a non-zero exit, so every side-effecting stage must stay idempotent.
 
 ### Stage chain (pipeline/run_daily.py STAGES, each module has run(cfg, state, date_label))
 Code is organized into subpackages: `ingestion/`, `filtering/`, `enrichment/`,
@@ -144,6 +159,12 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   the filtergraph (`y='h-236+24*(1-...)'`); overlay text passes through `_esc()` which
   strips `\\'%:,[]=;`. Fonts via `_font()` (Windows Arial → DejaVu fallback; CJK
   detection picks msgothic/Noto for JP/KR/CN streamer names).
+- **Burn text with drawtext + an explicit `fontfile`, never ASS/libass**: this dev shell's
+  ffmpeg can't font-match ASS, so ASS captions render BLANK in preview frames (that burned
+  several rounds of blind repositioning). drawtext is also pixel-precise, which is what
+  caption/HUD-clearance geometry needs. A blank preview = suspect fonts, not logic.
+- **Raw MP4s vanish fast** (`cleanup.keep_raw_days: 1`): re-rendering or re-analyzing an
+  older date usually isn't possible — test on the newest date that still has MP4s.
 - **JP-title rule**: kana in title → clip can't pass on audio hype alone (owner finding:
   JP clips are usually talk-context). CJK ideographs alone ≠ Japanese.
 - **Blacklist** (config) was seeded from owner labels: JP event/custom-tournament

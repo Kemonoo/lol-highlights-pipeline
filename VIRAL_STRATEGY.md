@@ -30,16 +30,21 @@ Two implications for us specifically:
 
 | # | Item | Lever | Effort | Status |
 |---|------|-------|--------|--------|
-| 1 | **Packaging: titles + thumbnails (incl. A/B variants)** | CTR | M | titles ✅, thumbnails next |
-| 2 | **Cold-open hook** — front-load the #1 moment, kill the slow intro | AVD | M | planned |
-| 3 | **Only-the-best filtering** (deliver the promise) | CTR+AVD | — | ✅ mostly done (judge/lang/local-fallback) |
-| 4 | **Engagement CTAs** — subscribe + "comment your favorite #" + open loop | engagement/AVD | S | description ✅, spoken/on-screen next |
+| 1 | **Packaging: titles + thumbnails (incl. A/B variants)** | CTR | M | ✅ shipped (AI reaction thumbnail + hook\|date titles); A/B blocked, see below |
+| 2 | **Cold-open hook** — front-load the #1 moment, kill the slow intro | AVD | M | ⬅ **next up, not started** |
+| 3 | **Only-the-best filtering** (deliver the promise) | CTR+AVD | — | ✅ judge/lang/local-fallback; judge model fixed 06-19 |
+| 4 | **Engagement CTAs** — subscribe + "comment your favorite #" | engagement | S | ✅ description; spoken CTA **dropped** (lean = no VO); on-screen card still possible |
 | 5 | **Retention editing** — trim dead air, beat-synced cuts, speed-ramps, progress bar | AVD | M-L | planned |
-| 6 | **End screen / session** — outro CTA + end-screen window + "watch yesterday's" | session time | S | planned |
-| 7 | **Branding & SEO** — consistent packaging, keyword-rich description/tags/hashtags | discovery | S | partial |
-| 8 | **Analytics feedback loop** — pull CTR/AVD/retention, feed back into selection + packaging | compounding | L | planned |
+| 6 | **End screen / session** — outro CTA + end-screen window + "watch yesterday's" | session time | S | partial — branded music outro exists, no end-screen elements |
+| 7 | **Branding & SEO** — consistent packaging, keyword-rich description/tags/hashtags | discovery | S | ✅ KEMONO brand intro/outro/thumbnail + tags/hashtags |
+| 8 | **Analytics feedback loop** — pull CTR/AVD/retention, feed back into selection + packaging | compounding | L | planned (also the realistic path to A/B) |
 
 Effort: S ≈ <1 session, M ≈ 1–2, L ≈ multi-session.
+
+> **Post-pivot note (2026-06-20).** Written before the lean/Synapse pivot (see DEVLOG.md).
+> Anything assuming a voiceover is off the table; captions on foreign clips replace narration.
+> The unresolved strategic question is **differentiation** — lean English clips compete
+> head-on with Synapse. The automation-native edge is per-language channels, not more polish.
 
 ---
 
@@ -56,8 +61,14 @@ optimizes hardest.
 - Lead with the strongest specific moment (penta/1v5/steal), add an emotional kicker
   and curiosity, keep ≤ ~70 chars, rotate phrasing so the channel doesn't look botted.
 
-**Thumbnails (next):** current generator is a good base (champion splash + text). Apply
-2026 best practices:
+**Thumbnails (✅ shipped — final design):** Gemini 2.5 Flash Image enhances the streamer's
+real facecam into a screaming reaction on a green screen; we key it out and composite it over
+the real (slightly blurred) gameplay, then overlay a centred gold **Montserrat Bold**
+announcement (PENTAKILL/QUADRA KILL), a highlighted name badge, a white sticker outline on the
+face, and a radiating red border with slightly rounded corners. ~$0.04/run. Guardrails and the
+rejected approaches are in CLAUDE.md + DEVLOG.md. **A/B is blocked**: YouTube's Test & Compare
+has no public API, so only the primary is uploaded — variants go in Studio by hand, or wait
+for item 8. The research this was built from:
 - **One emotional human face** (faces = +20–35% CTR). Use a *reaction/expression* crop,
   not just the small avatar — ideally the streamer's facecam at the peak moment, or a
   shocked expression. One subject, one message, readable in <1s on mobile.

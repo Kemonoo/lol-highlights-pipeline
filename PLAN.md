@@ -1,10 +1,14 @@
 # Twitch → YouTube Long-Form Pipeline — Plan
 
+> **Current format is LEAN (since 2026-06-19):** no voiceover/commentary/music bed; foreign
+> clips get burned English captions instead of narration. The commentary+TTS machinery below
+> is intact but switched off. See DEVLOG.md for why, and the monetization caveat below.
+
 ## Vision
 Fully automated daily pipeline: fetch League of Legends Twitch clips → filter to actual
-highlights → enrich with real match data → write grounded voiceover commentary → TTS →
-assemble an 8–12 minute long-form YouTube video → upload with credits. Shorts derived
-from the same run.
+highlights → (optionally) enrich with real match data and grounded commentary → assemble an
+8–12 minute long-form YouTube video with brand intro/outro → upload with credits. Shorts
+derived from the same run.
 
 **Format decision (2026-06-10): long-form first.** Long-form unlocks mid-roll ads at 8+ min,
 far higher RPM than Shorts, and YouTube's "inauthentic content" policy demands significant
@@ -31,13 +35,15 @@ original commentary — which only fits long-form. Shorts are a derived byproduc
 | 4 | Gemini full-video judge: quality/focus scoring, duration-aware selection | `pipeline/filtering/api_judge.py` | ✅ working, ~1¢/day |
 | 5 | Match linker: clip timestamp → real match data (KDA, champion, rank) | `pipeline/enrichment/match_linker.py` | ❌ stub — Phase 2 |
 | 6 | HUD OCR: kill feed / scoreboard / multikill banners from frames | `pipeline/enrichment/hud_ocr.py` | ❌ stub — Phase 2 |
-| 7 | Commentary: montage-caster lines + video intro (Gemini, Ollama fallback) | `pipeline/production/commentary.py` | ✅ v2, style rotation |
-| 8 | TTS voiceover + word timestamps (Kokoro local `af_bella` / edge-tts fallback) | `pipeline/production/tts.py` | ✅ working |
-| 9 | Assemble: intro card, countdown badges, lower-thirds, VO ducking, replay, sidechain-ducked music | `pipeline/production/assemble.py` | ✅ v3 |
-| 10 | Credits + chapters + description (+ music attribution) | `pipeline/production/credits.py` | ✅ working |
-| 11 | Thumbnail: champion splash + text overlay (1280×720) | `pipeline/production/thumbnail.py` | ✅ working |
-| 12 | Upload to YouTube (resumable, OAuth desktop flow) | `pipeline/publishing/upload.py` | ✅ working |
-| 13 | Shorts: face-cam detection, vertical render, captions, upload | `pipeline/publishing/shorts.py` | ✅ working |
+| 6.5 | Transcribe: streamer speech → English (faster-whisper `task=translate`, CPU) | `pipeline/enrichment/transcribe.py` | ✅ working — feeds captions |
+| 7 | Commentary: montage-caster lines + video intro (Gemini, Ollama fallback) | `pipeline/production/commentary.py` | ⏸ **off in lean mode** (intact) |
+| 8 | TTS voiceover + word timestamps (Kokoro local `af_bella` / edge-tts fallback) | `pipeline/production/tts.py` | ⏸ **off in lean mode** (intact) |
+| 9 | Assemble: KEMONO brand intro, countdown badges, animated nameplates, English captions on foreign clips, music outro over an NCS drop | `pipeline/production/assemble.py` | ✅ v4 |
+| 9.5 | Brand: KEMONO logo (God Fist Lee Sin) + animated intro sting | `pipeline/production/brand.py` | ✅ working |
+| 10 | Credits + chapters + description, clickbait title + date series marker | `pipeline/production/credits.py` | ✅ working |
+| 11 | Thumbnail: AI reaction composite (Gemini 2.5 Flash Image; PIL fallback) | `pipeline/production/thumbnail.py` | ✅ working, ~4¢/run |
+| 12 | Upload to YouTube (resumable, OAuth desktop flow, **idempotent per date**) | `pipeline/publishing/upload.py` | ✅ working |
+| 13 | Shorts: face-cam split, English speech captions, no VO/music, English title | `pipeline/publishing/shorts.py` | ⚠️ works; only 1/3 produced in the last run — see DEVLOG open items |
 | — | Cleanup: prune raw MP4s older than keep_raw_days | `pipeline/publishing/cleanup.py` | ✅ working |
 | — | Orchestrator CLI with stage skip/resume/force | `pipeline/run_daily.py` | ✅ working |
 
