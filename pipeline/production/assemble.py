@@ -88,7 +88,7 @@ def _esc(text: str) -> str:
 
 def _caption_dt(words: list | None, v: dict, fontsize: int = 52) -> str:
     """drawtext chain (one word visible at a time) for burned English captions on a
-    foreign-language clip — bottom-centre, above the in-game HUD. '' when no words.
+    clip — bottom-centre, above the in-game HUD. '' when no words.
 
     Height is `caption_y_frac` of frame height. There is no universally safe band: the
     LoL HUD owns the bottom ~13%, and streamers stack their own overlays (rank badges,
@@ -247,7 +247,7 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
             f"borderw=5:bordercolor=0x9146FF:x=w-text_w-64:y=56:"
             f"alpha='if(lt(t,0.4),t/0.4,if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'"
         )
-    cap = _caption_dt(captions, v)               # English captions for foreign-speech clips
+    cap = _caption_dt(captions, v)               # burned English speech captions
     if cap:
         vf += "," + cap
     vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
@@ -392,7 +392,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     vo_dir = work / "vo"
 
     from ..enrichment.transcribe import load as _load_transcripts
-    transcripts = _load_transcripts(work)   # clip_id -> {lang,text,words}; only foreign clips
+    transcripts = _load_transcripts(work)   # clip_id -> {lang, text, words}
 
     # animated streamer nameplate (per clip) + its synthesized flush-in SFX
     np_cfg = v.get("nameplate", {}) or {}
@@ -449,7 +449,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 from . import nameplate as _np
                 np_path = _np.build(cfg, c)
             try:
-                caps = transcripts.get(c["id"], {}).get("words")   # English captions if foreign
+                caps = transcripts.get(c["id"], {}).get("words")   # burned English captions
                 render_segment(c, mp4, svo, seg, v, nameplate=np_path,
                                sfx=sfx_path if np_path else None, captions=caps)
                 mark(seg, svo)

@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 log = logging.getLogger("pipeline.hardware")
 
@@ -146,13 +147,51 @@ def gpu() -> tuple[str, int] | None:
         return name.strip(), 0
 
 
+_dll_dirs_registered = False
+
+
+def register_cuda_dll_dirs() -> list[str]:
+    """Windows: make pip-installed CUDA libraries loadable. Returns the dirs added.
+
+    `pip install nvidia-cudnn-cu12` puts the DLLs in site-packages/nvidia/*/bin, which
+    is NOT on the DLL search path. So `import nvidia.cudnn` succeeds while ctranslate2
+    still dies hunting for cudnn64_9.dll — that is the "cudnnGetLibConfig, err 127"
+    crash, and it is why installing the package alone never fixed it. os.add_dll_directory
+    is the supported fix and, unlike editing PATH, is scoped to this process.
+
+    Idempotent, and a no-op off Windows (those wheels carry usable rpaths).
+    """
+    global _dll_dirs_registered
+    if _dll_dirs_registered or sys.platform != "win32":
+        return []
+    _dll_dirs_registered = True
+    added = []
+    try:
+        import nvidia
+    except ImportError:
+        return []
+    for root in nvidia.__path__:
+        for sub in ("cudnn", "cublas", "cuda_runtime"):
+            d = Path(root) / sub / "bin"
+            if d.is_dir():
+                try:
+                    os.add_dll_directory(str(d))
+                    added.append(str(d))
+                except OSError:                      # pragma: no cover - path vanished
+                    pass
+    if added:
+        log.debug("registered CUDA dll dirs: %s", added)
+    return added
+
+
 @functools.lru_cache(maxsize=1)
 def cuda_ready() -> tuple[bool, str]:
     """Can faster-whisper actually use CUDA here? (ok, reason).
 
     The historical failure was a missing cuDNN 9 surfacing as a hard crash mid-run
-    ("cudnnGetLibConfig", err 127) rather than a clean exception, which is why this
-    checks the library is importable before we ever select the GPU path."""
+    ("cudnnGetLibConfig", err 127) rather than a clean exception. So this does not ask
+    whether the python package imports — it asks whether the DLL actually LOADS, which
+    is the thing ctranslate2 will need a few seconds later."""
     if gpu() is None:
         return False, "no NVIDIA GPU detected"
     try:
@@ -169,6 +208,14 @@ def cuda_ready() -> tuple[bool, str]:
     except ImportError:
         return False, ("cuDNN 9 not found - fix: pip install nvidia-cudnn-cu12 "
                        "(without it CUDA transcription crashes mid-run)")
+    register_cuda_dll_dirs()
+    if sys.platform == "win32":
+        import ctypes
+        try:
+            ctypes.WinDLL("cudnn_ops64_9.dll")
+        except OSError as e:
+            return False, (f"cuDNN 9 is installed but its DLL will not load ({e}) - "
+                           f"the GPU path would crash mid-run, staying on CPU")
     return True, "CUDA available"
 
 

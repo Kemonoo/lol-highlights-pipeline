@@ -28,7 +28,7 @@ free local models before anything paid ever sees them.
 | | |
 |---|---|
 | **Selects** | Pulls the day's top clips, then filters them through three escalating layers — free local scoring, a local vision model, and a video-native LLM that watches each survivor and grades the play. |
-| **Edits** | FFmpeg-only: branded intro, countdown badges, animated streamer nameplates, burned English captions on foreign-language clips, optional slow-mo replays, music outro, loudness mastering. |
+| **Edits** | FFmpeg-only: branded intro, countdown badges, animated streamer nameplates, burned English speech captions (any language, translated), optional slow-mo replays, music outro, loudness mastering. |
 | **Publishes** | Clickbait title, chapters, per-streamer credits, an AI or locally-composited thumbnail, resumable YouTube upload, and 3 derived vertical Shorts. |
 
 Every stage is cached and resumable. Interrupt it at any point and re-run — it picks up

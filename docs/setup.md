@@ -19,7 +19,8 @@ venv\Scripts\pip install -e .            # Windows
 Optional extras, installed only if you want them:
 
 ```bash
-pip install -e ".[transcribe]"   # English captions on foreign-language clips
+pip install -e ".[transcribe]"   # burned English speech captions
+pip install -e ".[cuda]"         # + NVIDIA GPU transcription (cuDNN 9, ~700MB)
 pip install -e ".[tts]"          # neural voiceover (produced mode)
 pip install -e ".[upload]"       # YouTube publishing
 pip install -e ".[anthropic]"    # Claude as an LLM provider

@@ -40,6 +40,12 @@ dependencies = [
 # Multilingual speech -> English captions. Pulls torch-sized wheels via ctranslate2.
 transcribe = ["faster-whisper>=1.0,<2"]
 
+# GPU transcription on NVIDIA. Deliberately NOT part of [transcribe]: it is ~700MB and
+# useless without an NVIDIA card, and transcription falls back to CPU cleanly without it.
+# Skipping it is the single most common reason `doctor` reports "transcribe: cpu" on a
+# machine that has a perfectly good GPU.
+cuda = ["nvidia-cudnn-cu12>=9,<10"]
+
 # Neural voiceover (produced mode). kokoro is local and highest quality; edge-tts is
 # a lighter online fallback.
 tts = ["edge-tts>=6.1", "kokoro>=0.9,<1", "soundfile>=0.12"]
@@ -52,7 +58,8 @@ anthropic = ["anthropic>=0.40"]
 
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
-# Everything except dev - the full produced-mode pipeline.
+# Everything except dev - the full produced-mode pipeline. `cuda` is left out on
+# purpose: it is NVIDIA-only and large, so add it explicitly if you have the card.
 all = [
     "clip-pipeline[transcribe,tts,upload,anthropic]",
 ]

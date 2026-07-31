@@ -67,8 +67,10 @@ relative to `pipeline/`).
    which picks CUDA only when ctranslate2 AND cuDNN 9 are both present — the old unattended
    crash was a missing cuDNN, fixed by `pip install nvidia-cudnn-cu12`): detects language,
    translates, word timestamps → `work/<date>/transcripts.json`
-   {clip_id: {lang, text, words}}. Skips `transcribe.skip_languages` ([en] — already English).
-   Cached per clip; feeds assemble (burns English captions on foreign clips), commentary
+   {clip_id: {lang, text, words}}. `transcribe.skip_languages` is now `[]` — EVERY clip is
+   transcribed and captioned (the list filters on Twitch's declared CHANNEL language, which
+   is often wrong, so `[en]` silently dropped captions from bilingual streamers).
+   Cached per clip; feeds assemble (burns English captions on every clip), commentary
    (reliable context, produced mode) + shorts (English captions). `enrichment/match_linker.py`,
    `enrichment/hud_ocr.py` — Phase-2 stubs (Riot API match data; HUD OCR). Docstrings
    contain the implementation plans. Riot API > scraping op.gg/u.gg (no public APIs there)
@@ -226,9 +228,11 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   + KEMONO brand, no narration). `commentary.enabled: false`, `tts.enabled: false`,
   `video.music_enabled: false` (background bed). The VO/commentary/music-bed machinery is
   intact behind those switches — don't delete it. NB: clips are NO LONGER English-only —
-  `prefilter.include_languages` includes EU langs + ko, and foreign-speech clips get burned
-  English captions (transcribe → assemble) so they're watchable without narration; English
-  clips are skipped by transcribe (`skip_languages`). The OUTRO still uses music
+  `prefilter.include_languages` includes EU langs + ko, and EVERY clip gets burned English
+  captions (transcribe → assemble) so the video carries without narration and works muted.
+  Caption height is `video.caption_y_frac` (0.70); note some streamers burn their OWN
+  live captions into the source, which we cannot remove — ours sits above them by
+  owner decision. The OUTRO still uses music
   (`video.outro_music`: KEMONO logo over an NCS drop) even though the bed is off. Trade-off:
   no commentary weakens the YouTube "reused content"/YPP hedge — grow-first, revisit an
   originality layer before monetizing. Per-streamer credits always generated.

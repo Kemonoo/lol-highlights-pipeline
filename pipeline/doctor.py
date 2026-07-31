@@ -186,7 +186,7 @@ def check_transcribe(r: Report, cfg: dict) -> None:
     try:
         import faster_whisper  # noqa: F401
     except ImportError:
-        r.add(WARN, "faster-whisper", "not installed - foreign clips get no captions",
+        r.add(WARN, "faster-whisper", "not installed - clips get no burned captions",
               'pip install -e ".[transcribe]"')
         return
     device, compute = hardware.whisper_device(cfg)

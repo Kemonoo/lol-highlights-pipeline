@@ -130,13 +130,16 @@ api_judge:                    # full-video quality judge — model in llm.roles.
   fallback_audio_min: 0.72
   fallback_motion_min: 0.11
 
-transcribe:                   # multilingual streamer speech -> English (faster-whisper)
-  enabled: true               # transcribe+translate non-English clips so the long-form can
-                              # caption them in English (English clips are skipped — see below).
+transcribe:                   # streamer speech -> English captions (faster-whisper)
+  enabled: true               # transcribe+translate every clip so the long-form can caption
+                              # it. Burned captions carry a no-narration montage: viewers
+                              # watch muted, and the reaction is half the joke.
   model: small                # tiny|base|small|medium — small fits the RTX 3050 4GB well
   max_seconds: 60             # ignore speech past this point in a clip (cost bound)
-  skip_languages: [en]        # don't transcribe these Twitch clip languages (already English →
-                              # no translation/captions needed). [] = transcribe everything.
+  skip_languages: []          # Twitch clip languages to skip entirely. NB this is the
+                              # CHANNEL's declared language, not detected speech, and it is
+                              # often wrong — an [en] entry silently drops captions from
+                              # bilingual streamers. [] = caption everything (recommended).
   device: auto                # auto | cpu | cuda. `auto` uses CUDA when a working GPU stack is
                               # detected and silently falls back to CPU otherwise, so this is
                               # safe on any machine. Historical note: an unattended GPU run
