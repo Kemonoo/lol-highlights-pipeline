@@ -88,11 +88,17 @@ def _esc(text: str) -> str:
 
 def _caption_dt(words: list | None, v: dict, fontsize: int = 52) -> str:
     """drawtext chain (one word visible at a time) for burned English captions on a
-    foreign-language clip — bottom-centre, above the in-game HUD. '' when no words."""
+    foreign-language clip — bottom-centre, above the in-game HUD. '' when no words.
+
+    Height is `caption_y_frac` of frame height. There is no universally safe band: the
+    LoL HUD owns the bottom ~13%, and streamers stack their own overlays (rank badges,
+    respawn timers, and increasingly their own live captions) immediately above it.
+    The old fixed 0.78 landed on top of those often enough to look broken.
+    """
     if not words:
         return ""
     f = _font("x", v)
-    y = int(v["height"] * 0.78)
+    y = int(v["height"] * float(v.get("caption_y_frac", 0.70)))
     seg = []
     for w in words:
         word = _esc((w.get("word") or "").upper())

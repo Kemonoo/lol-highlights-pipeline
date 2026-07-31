@@ -16,6 +16,11 @@ from __future__ import annotations
 
 import base64
 import logging
+import shutil
+import subprocess
+import sys
+import time
+from urllib.parse import urlparse
 
 import requests
 
@@ -24,6 +29,69 @@ from .base import Provider, ProviderUnavailable, RoleConfig, _Retryable, raise_f
 log = logging.getLogger("pipeline.providers.ollama")
 
 DEFAULT_URL = "http://localhost:11434"
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_autostart_tried = False
+
+
+def _is_local(base: str) -> bool:
+    return (urlparse(base).hostname or "").lower().strip("[]") in _LOCAL_HOSTS
+
+
+def _start_server(base: str, timeout: float = 240.0) -> bool:
+    """Launch `ollama serve` and wait for it to answer. True if it came up.
+
+    Unattended runs are why this exists. A stock Ollama install registers no Windows
+    service and no Run key, so it is only up while somebody has the tray app open —
+    close it, or reboot and don't log in, and every 03:00 run dies at the preflight
+    with "cannot reach Ollama". That failure cost three days of uploads and looks
+    identical to a broken pipeline in the logs.
+
+    Attempted once per process, and only for a local host: if the operator pointed the
+    role at a server on another machine, that server not being up is their business
+    and starting a local one would silently use the wrong models.
+    """
+    global _autostart_tried
+    if _autostart_tried:
+        return False
+    _autostart_tried = True
+
+    exe = shutil.which("ollama")
+    if not exe:
+        return False
+    log.info("Ollama not responding at %s — starting it", base)
+
+    kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        # Detached, no console: the server has to outlive this run, and a console
+        # window would block an unattended session.
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    else:
+        kwargs["start_new_session"] = True
+    try:
+        subprocess.Popen([exe, "serve"], **kwargs)
+    except OSError as e:
+        log.warning("could not start ollama: %s", e)
+        return False
+
+    # Measured on the dev box: ~30s for a warm restart, but the first start after the
+    # machine has been idle for days ran past 90s — it checks for an update first.
+    # A generous ceiling costs nothing except in the case where it was never going to work.
+    deadline = time.time() + timeout
+    started = time.time()
+    while time.time() < deadline:
+        time.sleep(1.5)
+        try:
+            if requests.get(f"{base}/api/tags", timeout=5).ok:
+                log.info("Ollama is up (%.0fs)", time.time() - started)
+                return True
+        except requests.RequestException:
+            pass
+        waited = time.time() - started
+        if waited > 30 and int(waited) % 30 < 2:      # don't look hung in the log
+            log.info("  still waiting for Ollama (%.0fs)", waited)
+    log.warning("started ollama but it did not answer within %.0fs", timeout)
+    return False
 
 # Best-first. Vision-capable models only - the vlm role is the reason this provider exists.
 PREFERRED_VISION = [
@@ -54,6 +122,9 @@ class OllamaProvider(Provider):
             resp = requests.get(f"{self.base}/api/tags", timeout=10)
             resp.raise_for_status()
         except requests.RequestException as e:
+            # _start_server only ever fires once per process, so this recurses at most once.
+            if self.rc.autostart and _is_local(self.base) and _start_server(self.base):
+                return self._tags()
             raise ProviderUnavailable(
                 f"cannot reach Ollama at {self.base} - is it running? Start the Ollama app "
                 f"(or `ollama serve`), then re-run. ({e})"

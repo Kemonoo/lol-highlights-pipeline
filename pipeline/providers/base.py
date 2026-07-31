@@ -48,6 +48,7 @@ class RoleConfig:
     timeout_s: float = 120.0
     max_retries: int = 4
     retry_base_s: float = 20.0
+    autostart: bool = True            # local backends only — see ollama._start_server
     fallback: dict | None = field(default=None, repr=False)
 
     def describe(self) -> str:

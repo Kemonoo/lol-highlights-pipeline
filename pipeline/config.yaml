@@ -29,6 +29,11 @@ llm:
     timeout_s: 120
     max_retries: 4
     retry_base_s: 20          # backoff between retries = retry_base_s * attempt
+    autostart: true           # if a LOCAL Ollama isn't answering, run `ollama serve`
+                              # and wait for it. Ollama installs no service and no
+                              # startup entry, so an unattended 03:00 run otherwise
+                              # dies at the preflight whenever nobody left the tray
+                              # app open. Ignored for a remote base_url.
 
   roles:
     judge:                    # stage 4 — watches each surviving clip as VIDEO
@@ -210,6 +215,11 @@ video:
     # See config.kemono.yaml for the fully-branded example this repo actually runs.
   lower_third_seconds: 5.5    # how long the streamer card stays on screen
   countdown_enabled: true     # clips play worst->best with a #N badge (retention format)
+  caption_y_frac: 0.70        # vertical position of the burned English captions, as a
+                              # fraction of frame height (0.70 = 70% down). The LoL HUD
+                              # owns the bottom ~13% and streamer overlays sit just above
+                              # it, so lower values are safer than they look. Raise
+                              # toward 0.78 only if your clips have a clean lower third.
   replay_enabled: false       # off: the judge's best_moment_s timestamp lands after the
                               # play too often — needs frame-accurate detection (future)
   replay_min_score: 7         # clips ranked this high get a slow-mo best-moment replay

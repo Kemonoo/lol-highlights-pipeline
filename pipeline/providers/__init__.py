@@ -57,6 +57,7 @@ def role_config(cfg: dict, role: str) -> RoleConfig:
         timeout_s=float(entry.get("timeout_s", defaults.get("timeout_s", 120))),
         max_retries=int(entry.get("max_retries", defaults.get("max_retries", 4))),
         retry_base_s=float(entry.get("retry_base_s", defaults.get("retry_base_s", 20))),
+        autostart=bool(entry.get("autostart", defaults.get("autostart", True))),
         fallback=entry.get("fallback"),
     )
 
