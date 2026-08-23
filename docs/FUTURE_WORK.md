@@ -59,11 +59,26 @@ or HUD OCR facts. Prevents hallucinated champion names / kill counts slipping th
 
 ## Medium impact
 
-### Thumbnail generation
-Auto-generate a thumbnail from the best frame of the top-ranked clip + text overlay.
-- FFmpeg can extract the frame at `api_best_moment_s`
-- Text: streamer name, clip count, hook phrase from credits.py
-- A/B test: generate 2 title variants per day, pick the one with higher CTR after 24 h
+### Local face-preserving AI thumbnail (researched 2026-08-23, not built)
+The `gemini` thumbnail provider needs a BILLED Gemini API key — image-generation models
+get **zero free-tier quota** (verified live: `limit: 0` on
+`generate_content_free_tier_requests` for `gemini-3.1-flash-image`), unlike the Gemini
+chat app's image gen, which is free to consumers because it isn't the metered developer
+API. Owner does not want to pay, so `thumbnail.provider` is back to `local` (see DEVLOG
+2026-08-23).
+Researched whether a local model on the 8GB RTX 3050 could replace it: SDXL +
+IP-Adapter-FaceID(-PlusV2) or InstantID can take a real facecam crop and re-render it as
+a stylized reaction while keeping the person's likeness, and both are light enough to run
+on 8GB VRAM. Not built because the cost is real, not the VRAM:
+- New heavy stack (torch+diffusers+insightface) the project has deliberately avoided —
+  contradicts the "ffmpeg + local Ollama, no browser/GPU-framework sprawl" design.
+- Multi-GB one-time downloads (SDXL base ~6.5GB + adapter/InstantID weights) on a machine
+  that also runs NVENC encode + Ollama VLM + Whisper in the same nightly window — VRAM
+  contention with a 8GB card is a real risk, not just runtime.
+- Identity-preservation quality from these adapters is inconsistent; an unattended job
+  can't eyeball whether a given night's face still looks like the streamer.
+If ever revisited: prototype offline first against a handful of saved facecam crops,
+measure identity fidelity before wiring it into `production/thumbnail.py`.
 
 ### Music detection / ducking
 Detect copyrighted music segments in the raw clip audio (streamer's Spotify playing)
@@ -82,8 +97,14 @@ channel once it gains visibility.
 Current Haar cascade + profile trick works for most streamers but struggles with:
 - Very dark cameras (CLAHE helps but isn't perfect)
 - Unusual angles / virtual cameras
+- Painted/stylized art false-positiving as a face — hit production 2026-08-22: the
+  League HUD's champion portrait icon (bottom-center) matched the frontal cascade and
+  got blown up into the thumbnail as if it were the streamer's webcam. Patched with a
+  bottom-center exclusion band (real facecams sit in a corner, never dead-center-bottom
+  where the HUD lives) — a heuristic, not a fix for the underlying class of bug.
 Upgrade path: YOLOv8-face (ultralytics, free) — runs on CUDA, more accurate, same
-frame-sampling approach. The `_detect_facecam` function is the only place to change.
+frame-sampling approach, and wouldn't need HUD-region carve-outs at all. The
+`_detect_facecam` function (`pipeline/publishing/shorts.py`) is the only place to change.
 
 ---
 

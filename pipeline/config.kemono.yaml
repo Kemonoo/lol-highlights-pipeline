@@ -50,9 +50,6 @@ shorts:
   privacy: public
 
 thumbnail:
-  provider: gemini               # needs billing enabled on the Gemini API project
-
-llm:
-  roles:
-    thumbnail_image:
-      model: gemini-3.1-flash-image
+  provider: local                 # gemini needs a BILLED API key (free tier quota is 0 for
+                                   # image models - verified 2026-08-23, every call 429s).
+                                   # Switch back to gemini if billing ever gets enabled.

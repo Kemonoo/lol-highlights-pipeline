@@ -450,7 +450,12 @@ def _reaction_face(clip: dict, mp4: Path, best_s: float) -> "Image.Image | None"
 
 
 def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0) -> "Image.Image":
-    """Fit an image to the thumbnail canvas with cinematic grade + vignette."""
+    """Fit an image to the thumbnail canvas; brightened + punchier, no darkening grade.
+
+    The previous cinematic-grade + strong vignette treatment read as too dark (owner
+    feedback) - a vignette in particular crushes exactly the corners/edges a thumbnail
+    needs to stay legible at YouTube's small feed size. Plain brightness/saturation/
+    contrast keeps the real gameplay frame recognizable instead."""
     from PIL import Image, ImageEnhance, ImageFilter
     img = img.convert("RGB")
     sw, sh = img.size
@@ -458,7 +463,9 @@ def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0) -> "Image.I
     img = img.resize((int(sw * scale), int(sh * scale)), Image.LANCZOS)
     ox, oy = (img.width - THUMB_W) // 2, (img.height - THUMB_H) // 2
     img = img.crop((ox, oy, ox + THUMB_W, oy + THUMB_H))
-    img = _vignette_overlay(_cinematic_grade(img), 0.9)
+    img = ImageEnhance.Brightness(img).enhance(1.2)
+    img = ImageEnhance.Color(img).enhance(1.35)
+    img = ImageEnhance.Contrast(img).enhance(1.15)
     if blur:
         img = img.filter(ImageFilter.GaussianBlur(blur))
     if darken:
@@ -507,17 +514,6 @@ def _circle_crop_any(img: "Image.Image", d: int) -> "Image.Image":
     return _circular_crop(img, d)
 
 
-def _fit_font(draw, lines: list, max_w: int, max_h: int, start: int):
-    size = start
-    while size > 44:
-        f = _font(size)
-        widest = max(draw.textlength(l, font=f) for l in lines)
-        if widest <= max_w and size * 1.06 * len(lines) <= max_h:
-            return f, size
-        size -= 6
-    return _font(44), 44
-
-
 def _compose_ctr(bg: "Image.Image | None", face: "Image.Image | None", big_text: str,
                  accent: tuple, streamer: str, face_scale: float = 0.84) -> "Image.Image":
     from PIL import Image, ImageDraw, ImageFilter
@@ -542,28 +538,19 @@ def _compose_ctr(bg: "Image.Image | None", face: "Image.Image | None", big_text:
         canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(22)))
         canvas.alpha_composite(circle, (ix, iy))
         canvas.alpha_composite(ring, (ix - pad, iy - pad))
-        face_left = ix
+        face_left = ix - pad   # keep the text clear of the glow ring, not just the circle
 
-    draw = ImageDraw.Draw(canvas)
-    words = big_text.split()
-    lines = [big_text] if len(words) <= 1 else (
-        words if len(words) == 2 else
-        [" ".join(words[:len(words) // 2]), " ".join(words[len(words) // 2:])])
     left = 64
-    font, size = _fit_font(draw, lines, max(face_left - left - 40, 200), int(H * 0.46), 200)
-    lh = int(size * 1.06)
-    y0 = (H - lh * len(lines)) // 2 - int(H * 0.05)
-    stroke = max(4, size // 15)
-    for i, ln in enumerate(lines):
-        _text_outlined(draw, (left, y0 + i * lh), ln, font, (255, 255, 255), (8, 6, 0), stroke)
-    # accent underline bar beneath the text block
-    by = y0 + lh * len(lines) + 6
-    bw = int(max(draw.textlength(l, font=font) for l in lines))
-    draw.rectangle([left, by, left + bw, by + max(7, size // 16)], fill=(*accent, 255))
+    lines = _hook_lines(big_text)
+    palette = _palette_for(accent)
+    font = _fit_title(lines, max(face_left - left - 70, 200), int(H * 0.46), start=170)
+    block = _title_block(lines, font, palette)
+    y0 = (H - block.height) // 2
+    canvas.alpha_composite(block, (left, y0))
 
     if streamer:
-        sf = _font(34)
-        _text_outlined(draw, (left, H - 70), f"ft. {streamer}", sf, (210, 230, 255), (0, 0, 0), 3)
+        _name_badge(canvas, f"ft. {streamer}", palette)
+    _red_border(canvas, color=accent, radius=40, border=14, glow=12, glow_alpha=140)
     return canvas.convert("RGB")
 
 
@@ -644,6 +631,18 @@ _CUT_PROMPT = (
 # announcement palettes: (gradient top, gradient bottom, glow)
 _ANN_GOLD = ((255, 240, 170), (208, 138, 28), (255, 168, 40))
 _ANN_RED = ((255, 184, 160), (198, 28, 28), (255, 70, 40))
+_ANN_CYAN = ((210, 250, 255), (20, 150, 180), (90, 220, 255))
+
+# maps the flat accent RGB used by the local CTR variants to a metallic text palette
+_PALETTE_FOR_ACCENT = {
+    (255, 60, 60):  _ANN_RED,
+    (255, 205, 60): _ANN_GOLD,
+    (31, 214, 230): _ANN_CYAN,
+}
+
+
+def _palette_for(accent: tuple) -> tuple:
+    return _PALETTE_FOR_ACCENT.get(accent, _ANN_GOLD)
 
 _FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 
@@ -800,10 +799,22 @@ def _fit_title(lines: list, max_w: int, max_h: int, start: int = 170):
 
 def _red_border(canvas, color=(230, 28, 28), border: int = 10, glow: int = 10,
                 glow_alpha: int = 125, radius: int = 26) -> None:
-    """Aggressive red frame with slightly-rounded corners + a short inward glow (≤ border).
+    """Picture-frame border: solid color flush to the literal canvas edge everywhere,
+    with a rounded window cut into it toward the image, plus a short glow bleeding
+    inward from that window edge.
 
-    Uses a rounded-rectangle signed-distance field so the outer corners curve gently
-    (the tiny corner triangles outside the rounded frame just show the image)."""
+    Earlier version painted only the band `0 <= depth < border` (depth = distance
+    inward from a rounded boundary sitting at the canvas edge) - that left the four
+    corner notches (where the round cut recedes from the literal square canvas corner)
+    completely unpainted, so bare background showed through in a triangle at each
+    corner. Dropping the `depth >= 0` floor fills that notch with the same solid color
+    too: everywhere outside the rounded window, all the way to the physical edge, is
+    now frame. Nothing changes along the straight edges (depth can't go negative there -
+    array bounds already cap it at 0), so this only affects the four corners. Net
+    effect: the frame's outer edge is always the literal image boundary - there is
+    nothing beyond it but the rest of the page - so it's automatically immune to
+    whatever corner-radius YouTube's own UI crops thumbnails to: the pixels it would
+    clip are flat color, not content, so the clip is invisible either way."""
     import numpy as np
     from PIL import Image
     W, H = canvas.size
@@ -813,7 +824,7 @@ def _red_border(canvas, color=(230, 28, 28), border: int = 10, glow: int = 10,
     inside = np.minimum(np.maximum(ax, ay), 0)
     depth = -(outside + inside)               # distance inward from the rounded edge
     a = np.zeros((H, W), float)
-    a[(depth >= 0) & (depth < border)] = 255
+    a[depth < border] = 255                   # solid frame: corner notch through to the band
     g = (depth >= border) & (depth < border + glow)
     a[g] = glow_alpha * (1 - (depth[g] - border) / glow) ** 1.7
     ov = np.zeros((H, W, 4), "uint8")

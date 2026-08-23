@@ -347,3 +347,82 @@ which skips its countdown window when the session is already idle (nobody to ask
 handling — as "stay awake". Per-machine settings moved to a gitignored
 `auto_run.local.cmd` so the committed `.bat` keeps shipping harmless defaults: no upload,
 no sleep. Same split as `config.yaml` vs the overlays.
+
+---
+
+## 2026-08-23 — Every video has been getting the LOCAL thumbnail, not the AI one
+
+Owner reported the AI thumbnail "still isn't working" after a prior session's model-id
+fix. It wasn't the model id — `data/logs/auto_2026-08-2{0,1,2,3}.log` showed
+`generate_gemini` failing every single day (401 once, then 429 "quota exceeded" three
+days running), falling back to the local design, which **does** get set as the YouTube
+thumbnail successfully. So a thumbnail was never missing; the AI one specifically never
+renders.
+
+Live-tested the exact call against `gemini-3.1-flash-image`: Google returns
+`limit: 0` on `generate_content_free_tier_requests` for that model. Image-generation
+models get **zero free-tier quota on the API**, full stop — unrelated to usage tier,
+unrelated to being able to generate images in the Gemini chat app (different product,
+not metered the same way). The only way to use this provider is a billed API key. Owner
+doesn't want the cost, so switched `config.kemono.yaml`'s `thumbnail.provider` back to
+`local` — no point spending 4 retries a night on a quota that can't open without billing.
+See *Local face-preserving AI thumbnail* in `FUTURE_WORK.md` for why a local SDXL-based
+replacement wasn't built instead (technically feasible on the 8GB 3050, but heavy and a
+departure from the project's dependency-light design).
+
+Since `local` is now the real, permanent default rather than an occasional fallback, gave
+it the visual treatment the `gemini` path had and it didn't: `_compose_ctr` now renders
+the headline as metallic gradient text (`_title_block`/`_metallic_line`, same Montserrat
+Bold assets) instead of flat white, wraps the whole frame in the radiating accent-colored
+border (`_red_border`), and puts the streamer credit in a bordered pill (`_name_badge`) —
+all reused from code the gemini path already had, just never shared with `local`.
+
+Also fixed a real bug this surfaced: 2026-08-22's *live, already-uploaded* thumbnail was
+a giant blown-up crop of the League HUD's champion portrait icon, not the streamer's
+face. `_detect_facecam`'s Haar cascade false-positived on the portrait's painted
+eye/highlight shapes. Facecam overlays are placed in a corner specifically to stay clear
+of the HUD, so added a bottom-center exclusion band to `_detect_facecam`
+(`pipeline/publishing/shorts.py`) — re-ran detection against the exact clip that produced
+that thumbnail and it now correctly returns no facecam (falls back to the Twitch pfp)
+instead of the false positive. This is a heuristic, not a real fix for Haar cascades
+false-positiving on painted art in general — see *Face-cam detection: ML upgrade* in
+FUTURE_WORK.md.
+
+**Follow-up, same day — three more owner review passes on `_compose_ctr`.** Background:
+dropped the cinematic-grade + vignette from `_prep_bg` entirely (it read as too dark) for
+plain brightness/saturation/contrast — this is the only treatment now, not a config
+choice. Face: went centered, then back to the original lower/bottom-biased position
+(`iy = H - d + 0.06*H`) per owner preference — noted as "looks better slightly lowered,"
+not actually centered.
+
+Border took three iterations to get right, worth recording so it isn't re-litigated:
+1. Sharp corners flush to the edge (`radius=0`) — corners looked "not well-fit."
+2. Rounded + `inset=10` (pulled the whole frame in from the edge) — this was wrong: it
+   put a visible gap of bare background *outside* the frame along the entire perimeter,
+   not just corners. Owner: "outside of it is the rest of the youtube website," i.e. the
+   frame must be the literal outermost layer, nothing beyond it.
+3. **Fix**: the stroke was never actually non-uniform (verified via SDF math: 10px on a
+   straight edge, ~10px radially through the corner) — the real defect was that the
+   rounded cut left the four physical JPEG corners unpainted (a small triangular notch of
+   bare background), because the fill condition was `(depth >= 0) & (depth < border)`.
+   Dropped the `>= 0` floor (now just `depth < border`) so the frame is solid color from
+   the rounded inner window all the way out to the literal canvas edge — a picture-frame
+   construction, not two concentric rounded rects with a gap between them. This is also
+   why it doesn't need to match YouTube's own corner radius: the outermost pixels are
+   flat color, so whatever YouTube's UI crops is invisible either way.
+
+Final locked-in default, chosen by the owner from four rendered options (A=sharp/
+B=r22/C=r40/**D**=r60 — labelled A-D but C was picked): `_red_border(canvas, color=accent,
+radius=40, border=14, glow=12, glow_alpha=140)`.
+
+**Artifact delivery note**: the review artifact (report + a live canvas-based
+radius/thickness tuner) never loaded for the owner — spinner, never resolved — across two
+publishes, including after shrinking it from ~870KB to ~290KB. Root cause not diagnosed
+(could be the per-pixel JS canvas loop, could be unrelated to this session's content).
+Fell back to writing labelled JPEGs straight to `data/thumbnail_review/` and reading them
+inline instead — that worked immediately. **Lesson: for this owner/environment, prefer
+local files over an HTML artifact when the deliverable is "look at a few images and pick
+one"** — an artifact adds real failure surface (page weight, JS, the runtime frame itself)
+for a task a plain file view already solves. Reach for an artifact when the interaction
+itself needs a browser (the live slider was the actual justification here) — but even
+then, don't make it the only path: render static alternatives too, if it's cheap.

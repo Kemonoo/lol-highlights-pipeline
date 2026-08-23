@@ -159,6 +159,17 @@ def _detect_facecam(mp4: Path, duration: float) -> tuple | None:
         detections = _faces_in_strip(strip, cas_frontal, cas_profile)
         if not detections:
             continue
+        # Reject hits centred in the bottom-center HUD band (champion portrait / ability
+        # icons / resource orbs live here) - Haar cascades false-positive on that painted
+        # portrait art, and real facecam overlays are placed in a corner specifically to
+        # stay clear of it, never dead-center-bottom.
+        detections = [
+            d for d in detections
+            if not (0.25 * fw < d[0] + d[2] / 2 < 0.75 * fw
+                    and d[1] + strip_y + d[3] / 2 > 0.85 * fh)
+        ]
+        if not detections:
+            continue
         fx, fy, rw, rh = max(detections, key=lambda f: f[2] * f[3])
         fy += strip_y
         all_hits.append((fx + rw // 2, fy + rh // 2, fx, fy, rw, rh, fw, fh))
