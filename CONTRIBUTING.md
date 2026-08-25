@@ -36,8 +36,8 @@ encode findings from hand-labelling sessions that aren't obvious from the code.
 
 Not because they're bad ideas generally — because they'd undo a deliberate decision:
 
-- **Making the `vlm` role use a paid API.** It sees ~10x more clips than the judge. This
-  is what keeps the pipeline at ~1¢/day.
+- **Making the `vlm` role use a paid API.** It sees ~10x more clips than the judge.
+  Keeping it local is what lets the pipeline run for free.
 - **Adding an orchestration framework.** Stages are modules with
   `run(cfg, state, date_label)` and `run_daily.py` is an ordered list. That's the whole
   design.

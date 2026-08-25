@@ -9,8 +9,8 @@ filter's rules free to change and possible to test.
 ## The cost cascade
 
 Roughly 220 clips are fetched per day. Around 20 make the video. If every clip went to a
-video-capable LLM, the daily cost would be dollars and the run would take hours. Instead
-each layer is cheaper than the one after it, and only survivors move up:
+video-capable LLM the run would take hours, and on a paid backend it would stop being
+free. Instead each layer is cheaper than the one after it, and only survivors move up:
 
 ```
   220 clips   fetch         metadata only, no downloads yet
@@ -22,7 +22,7 @@ each layer is cheaper than the one after it, and only survivors move up:
   ~12 clips   vlm_filter    free · local · GPU
       |                     is this gameplay? is it esports? are there kills?
       v
-   ~8 clips   api_judge     paid · ~1¢/day
+   ~8 clips   api_judge     optional · API or local fallback
       |                     watches the whole clip with audio; grades the play
       v
    final selection, ordered worst -> best as a countdown
@@ -31,7 +31,7 @@ each layer is cheaper than the one after it, and only survivors move up:
 Two properties follow, and both are worth protecting:
 
 - **The `vlm` role must stay local.** It sees ~10x more clips than the judge. Pointing
-  it at a paid API turns a 1¢/day pipeline into a dollars/day one.
+  it at a paid API is what would make the pipeline expensive to run.
 - **Downloads are lazy.** `fetch` stores metadata; `prefilter` pulls low-quality copies
   for scoring; only `vlm_filter` survivors get full-quality downloads. Bandwidth follows
   the same cascade as compute.
