@@ -285,10 +285,12 @@ upload:
                               # on crash; without this a retry made a DUPLICATE video). true = force.
   privacy: private            # exactly one of: private | unlisted | public
   category_id: "20"           # Gaming
-  # clickbait/curiosity titles; a date series-marker is appended → "HOOK | June 17, 2026"
-  # (like daily-clip channels that suffix an episode number). Placeholders: {hook} {emoji}
+  # clickbait/curiosity titles; an episode series-marker is appended → "HOOK | 12"
+  # (like daily-clip channels that number their uploads). Placeholders: {hook} {emoji}
   # {n} {star}. One is picked per day (rotated); credits.py has built-in defaults if omitted.
-  title_date: true            # append " | <Month Day, Year>" as the daily-series marker
+  # Episode numbers start at 1 and are assigned once per date_label in data/state.json
+  # ("episodes" map) — stable across reruns/retries of the same date.
+  title_date: true            # append " | <n>" as the daily-series marker
   title_styles:
     - "{hook}?! {emoji} League of Legends Best Moments"
     - "He Really Did THAT… {emoji} LoL Plays of the Day"

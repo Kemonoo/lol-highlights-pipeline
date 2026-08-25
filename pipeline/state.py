@@ -10,7 +10,7 @@ class State:
         if self.path.exists():
             self._d = json.loads(self.path.read_text(encoding="utf-8"))
         else:
-            self._d = {"processed_clip_ids": [], "permissions": {}, "videos": []}
+            self._d = {"processed_clip_ids": [], "permissions": {}, "videos": [], "episodes": {}}
 
     # ── clips ──────────────────────────────────────────────────────────
     def is_processed(self, clip_id: str) -> bool:
@@ -33,6 +33,18 @@ class State:
             "updated": datetime.now(timezone.utc).isoformat(),
         }
         self.save()
+
+    # ── episode numbering ─────────────────────────────────────────────
+    def episode_number(self, date_label: str) -> int:
+        """Sequential episode number for date_label, starting at 1 (assigned once,
+        stable across reruns/retries of the same date)."""
+        episodes = self._d.setdefault("episodes", {})
+        if date_label in episodes:
+            return episodes[date_label]
+        n = (max(episodes.values()) if episodes else 0) + 1
+        episodes[date_label] = n
+        self.save()
+        return n
 
     # ── videos ─────────────────────────────────────────────────────────
     def add_video(self, info: dict) -> None:

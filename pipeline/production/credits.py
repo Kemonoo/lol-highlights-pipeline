@@ -22,8 +22,8 @@ _HOOKS = [
 ]
 _EMOJI = ["😱", "🔥", "💀", "😳", "🤯"]
 
-# Clickbait/curiosity hooks (a date series-marker is appended → "HOOK | June 17, 2026",
-# like the daily-clip channels that suffix an episode number). The hook is the CLICK
+# Clickbait/curiosity hooks (an episode number is appended → "HOOK | 12",
+# like the daily-clip channels that number their uploads). The hook is the CLICK
 # driver and need not be literally accurate. {hook}=power phrase, {n}=clip count,
 # {star}=top streamer (ASCII).
 DEFAULT_TITLE_STYLES = [
@@ -66,18 +66,8 @@ def _star(clips: list[dict]) -> str:
     return nm if nm.isascii() else (best.get("broadcaster_login", "") or "")
 
 
-def _nice_date(date_label: str) -> str:
-    """'2026-06-17' -> 'June 17, 2026' (cross-platform, no leading-zero day)."""
-    from datetime import datetime
-    try:
-        dt = datetime.strptime(date_label, "%Y-%m-%d")
-        return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
-    except ValueError:
-        return date_label
-
-
-def _title(cfg: dict, date_label: str, clips: list[dict], n: int) -> str:
-    """Clickbait hook + date series-marker, rotating daily (≤ 100 chars)."""
+def _title(cfg: dict, date_label: str, clips: list[dict], n: int, episode: int) -> str:
+    """Clickbait hook + episode series-marker, rotating daily (≤ 100 chars)."""
     up = cfg.get("upload", {})
     seed = int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16)
     ctx = {"hook": _hook(clips), "n": n or len(clips),
@@ -86,14 +76,14 @@ def _title(cfg: dict, date_label: str, clips: list[dict], n: int) -> str:
     usable = [s for s in styles if not ("{star}" in s and not ctx["star"])] or DEFAULT_TITLE_STYLES[:2]
     head = re.sub(r"\s{2,}", " ", usable[seed % len(usable)].format(**ctx)).strip()
     if up.get("title_date", True):
-        return f"{head[:72]} | {_nice_date(date_label)}".strip()[:100]
+        return f"{head[:72]} | {episode}".strip()[:100]
     return head[:100]
 
 
 def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
-                   clips: list[dict]) -> dict:
+                   clips: list[dict], episode: int) -> dict:
     emoji = _EMOJI[int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16) % len(_EMOJI)]
-    title = _title(cfg, date_label, clips, len(chapters))
+    title = _title(cfg, date_label, clips, len(chapters), episode)
 
     # Lean mode ships no voiceover, so don't advertise commentary that isn't there —
     # this is the description viewers read under a public video.
@@ -130,7 +120,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     src = work / "vlm_filtered.json"
     clips = (json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
              if src.exists() else [])
-    meta = build_metadata(cfg, date_label, chapters, clips)
+    episode = state.episode_number(date_label)
+    meta = build_metadata(cfg, date_label, chapters, clips, episode)
     out = data / "output" / f"{date_label}.meta.json"
     out.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("Metadata: %s", meta["title"])
