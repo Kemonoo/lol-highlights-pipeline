@@ -4,6 +4,9 @@ Turns each day's top Twitch clips into a finished, uploadable YouTube video — 
 filter with AI, edit, thumbnail, publish — plus vertical Shorts. One command in, one
 ~9-minute video out.
 
+# Video example
+https://youtu.be/OhYVCmSULfs?si=Ss4IasyotYa7DGUl
+
 ```bash
 python -m pipeline.doctor        # check your machine and config
 python -m pipeline.run_daily     # yesterday's clips -> data/output/<date>.mp4
