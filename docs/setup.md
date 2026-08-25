@@ -94,7 +94,7 @@ llm:
 
 ---
 
-## 4. Gemini API key (optional, ~1¢/day)
+## 4. Gemini API key (optional)
 
 Without it the pipeline still produces a video — clips are scored from local signals
 instead. With it, selection gets substantially better, because an LLM actually watches
