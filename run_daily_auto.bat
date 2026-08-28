@@ -38,6 +38,11 @@ REM The ".\" is load-bearing: `call "auto_run.local.cmd"` makes cmd search PATH 
 REM a command by that name rather than running the file next to this one.
 if exist ".\auto_run.local.cmd" call ".\auto_run.local.cmd"
 
+REM A combined run has one coordinator waiting for both the video and WSL worker.
+REM Suppress only this runner's sleep so it cannot suspend Windows while the other
+REM workload is active. Standalone runs retain auto_run.local.cmd behaviour.
+if /I "%NIGHTLY_COORDINATED%"=="1" set "SLEEP_AFTER=0"
+
 if not exist data\logs mkdir data\logs
 
 REM datestamp for the log file (locale-independent via PowerShell)

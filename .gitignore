@@ -41,5 +41,18 @@ _archive/
 # one-off batch scripts (not part of the distributed setup)
 run_days.bat
 
+# this machine's nightly coordinator, bridging this project with an unrelated
+# repo (a memecoin trading system's WSL workstation worker) that happens to
+# share this PC. Machine-local glue, not something the Clips project itself
+# should know about or version. run_daily_auto.bat's NIGHTLY_COORDINATED hook
+# is the one generic, project-agnostic seam this repo owns; everything below
+# is the other side of that seam and lives only on this machine.
+run_combined_nightly.ps1
+run_memecoin_worker_wsl.bat
+run_video_coordinated.bat
+setup_combined_schedule.bat
+setup_combined_schedule.ps1
+README_NIGHTLY_SETUP.txt
+
 # NB: .env.example, LICENSE, pyproject.toml, tests/ and docs/ ARE committed.
 # If you add a personal secret, put it in .env — never in config.yaml.
