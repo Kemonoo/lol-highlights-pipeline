@@ -44,6 +44,16 @@ llm:
       api_key: ${GEMINI_API_KEY}
       thinking: low           # measured: 409 -> 92 tokens and 4.2s -> 2.3s per call
                               # versus default thinking, with identical scores.
+      # Gemini's free tier meters requests PerProjectPerModel, so each id below carries
+      # its OWN daily allowance on the SAME key. When one runs out the stage moves to the
+      # next and re-sends the clip, which is why a 20/day limit is not a 20/day limit.
+      # Verified 2026-09-02: with gemini-3.6-flash 429ing on quota, all three of these
+      # still answered video on the same key. Keep them genuinely different models —
+      # an alias that resolves to the primary is not a separate allowance.
+      overflow_models:
+        - gemini-3.1-flash-lite
+        - gemini-flash-latest
+        - gemini-flash-lite-latest
 
     vlm:                      # stage 3 — per-frame gameplay/kill detection
       provider: ollama        # free + local. The cost cascade depends on this

@@ -63,6 +63,11 @@ class RoleConfig:
     retry_base_s: float = 20.0
     autostart: bool = True            # local backends only — see ollama._start_server
     fallback: dict | None = field(default=None, repr=False)
+    # Extra model ids to move to when this one's DAILY quota is spent. Gemini's free
+    # tier is metered PerProjectPerModel, so a second model id is a second allowance —
+    # verified: with gemini-3.6-flash 429ing on quota, gemini-3.1-flash-lite and
+    # gemini-flash-latest both still answered video on the same key.
+    overflow_models: list = field(default_factory=list)
 
     def describe(self) -> str:
         where = f" @ {self.base_url}" if self.base_url else ""

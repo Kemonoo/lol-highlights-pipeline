@@ -59,6 +59,7 @@ def role_config(cfg: dict, role: str) -> RoleConfig:
         retry_base_s=float(entry.get("retry_base_s", defaults.get("retry_base_s", 20))),
         autostart=bool(entry.get("autostart", defaults.get("autostart", True))),
         fallback=entry.get("fallback"),
+        overflow_models=list(entry.get("overflow_models") or []),
     )
 
 
@@ -94,6 +95,28 @@ def get_provider(cfg: dict, role: str, *, vision: bool = False) -> Provider:
         log.info("role '%s' -> %s", role, provider.rc.describe())
         _cache[key] = provider
     return _cache[key]
+
+
+def get_provider_chain(cfg: dict, role: str, *, vision: bool = False) -> list[Provider]:
+    """The role's provider, followed by one per `overflow_models` entry.
+
+    Exists because Gemini's free tier meters requests PerProjectPerModel: when the
+    primary model's daily allowance is gone, the SAME key still serves a different
+    model id with a fresh allowance. A stage that walks this chain multiplies its free
+    budget by the number of models configured, at no cost and with no loss of
+    capability, rather than degrading to local scoring on request 21.
+
+    Still role-based: the ids live in llm.roles.<role>.overflow_models, never in a stage.
+    """
+    from dataclasses import replace
+    rc = role_config(cfg, role)
+    chain = [build(rc, vision=vision)]
+    for model in rc.overflow_models:
+        if not model or model == rc.model:
+            continue
+        chain.append(build(replace(rc, model=str(model),
+                                   role=f"{role}~{model}"), vision=vision))
+    return chain
 
 
 def get_fallback(cfg: dict, role: str, *, vision: bool = False) -> Provider | None:

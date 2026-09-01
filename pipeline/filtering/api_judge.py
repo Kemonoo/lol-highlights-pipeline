@@ -227,13 +227,15 @@ def run(cfg: dict, state, date_label: str) -> Path:
     # No key, no Gemini, misconfigured role — all the same to this stage: clips already
     # in the cache still resolve, and everything else falls back to local scoring. The
     # pipeline is meant to finish without any API access, just less well curated.
-    from ..providers import ProviderUnavailable, get_provider
+    from ..providers import ProviderUnavailable, get_provider_chain
     try:
-        provider = get_provider(cfg, "judge")
-        provider.require(video=True)
+        chain = get_provider_chain(cfg, "judge")
+        for p in chain:
+            p.require(video=True)
     except ProviderUnavailable as e:
         log.warning("no video judge available (%s) — scoring uncached clips locally", e)
-        provider = None
+        chain = []
+    provider = chain[0] if chain else None
 
     # Daily request budget. The free tier is a hard 20 requests/day/model
     # (quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier) and a run judges
@@ -241,11 +243,40 @@ def run(cfg: dict, state, date_label: str) -> Path:
     # has already spent several attempts proving it. Budgeting instead means the spend is
     # planned: clips are judged best-first (sorted by keep_score above), so what the
     # budget buys is always the top of the list, and the tail degrades knowingly.
+    # Budget is PER MODEL, because the quota is: Gemini meters the free tier
+    # PerProjectPerModel, so each id in the chain carries its own 20/day. Walking the
+    # chain multiplies the free allowance instead of degrading to local scoring.
     budget = int(aj.get("daily_budget", 0) or 0)
-    spent = state.api_spend("judge") if (budget and state is not None) else 0
-    if budget and spent:
-        log.info("judge budget: %d of %d already spent today (resets midnight Pacific)",
-                 spent, budget)
+
+    def bucket(p):
+        return f"judge:{p.rc.model}" if p is not None else "judge"
+
+    def spent_on(p):
+        return state.api_spend(bucket(p)) if (budget and state is not None) else 0
+
+    def advance():
+        """Move to the next model with allowance left. False when the chain is spent."""
+        nonlocal provider
+        while chain:
+            chain.pop(0)
+            if not chain:
+                break
+            if not budget or spent_on(chain[0]) < budget:
+                provider = chain[0]
+                log.warning("judge: switching to %s (its own daily allowance)",
+                            provider.rc.model)
+                return True
+        provider = None
+        return False
+
+    # Skip any leading model whose allowance today is already gone.
+    while budget and chain and spent_on(chain[0]) >= budget:
+        log.info("judge: %s already at its %d/day budget - skipping",
+                 chain[0].rc.model, budget)
+        chain.pop(0)
+    provider = chain[0] if chain else None
+    if provider is None and budget:
+        log.warning("judge: every configured model is at its daily budget")
 
     judged = []
     consecutive_fails = 0
@@ -276,7 +307,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
             local_judge(c, aj)
             judged.append(c)
             continue
-        if budget and spent >= budget:
+        if budget and spent_on(provider) >= budget and not advance():
+            over_budget += 1
+            local_judge(c, aj)
+            judged.append(c)
+            continue
+        if provider is None:
             over_budget += 1
             local_judge(c, aj)
             judged.append(c)
@@ -292,39 +328,55 @@ def run(cfg: dict, state, date_label: str) -> Path:
             local_judge(c, aj)
             judged.append(c)
             continue
-        spent += 1                    # a failed request is still a charged request
-        if state is not None:
-            state.record_api_spend("judge")
-        try:
-            r = judge(small, provider)
-            consecutive_fails = 0
-            time.sleep(3)   # stay within free-tier RPM limits
-        except Exception as e:
-            kind = classify_failure(e)
-            if kind == "refusal":
-                # The model declined THIS clip's content. Says nothing about the next
-                # one, so it must not count toward the stop-calling threshold.
-                refused += 1
-                log.warning("%s: judge refused this clip (%s) - scoring locally",
-                            c["id"], getattr(e, "reason", "") or e)
-            elif kind == "dead":
-                consecutive_fails = max(consecutive_fails, 2)   # stop immediately
-                if "PerDay" in getattr(e, "quota_id", ""):
-                    log.error("judge DAILY QUOTA exhausted (%s) — remaining clips scored "
-                              "locally. Raise api_judge.daily_budget only if the plan "
-                              "allows more; otherwise lower vlm_filter.max_keep so the "
-                              "spend fits.", getattr(e, "quota_id", ""))
+        # Attempt this clip, moving along the model chain if one runs out of allowance
+        # mid-clip. The clip is re-sent to the next model rather than dropped, so a
+        # switch costs nothing but the wasted request that discovered it.
+        r = None
+        while True:
+            if state is not None:     # a failed request is still a charged request
+                state.record_api_spend(bucket(provider))
+            try:
+                r = judge(small, provider)
+                consecutive_fails = 0
+                time.sleep(3)   # stay within free-tier RPM limits
+                break
+            except Exception as e:
+                kind = classify_failure(e)
+                if kind == "refusal":
+                    # The model declined THIS clip's content. Says nothing about the
+                    # next one, so it must not count toward the stop-calling threshold.
+                    refused += 1
+                    log.warning("%s: judge refused this clip (%s) - scoring locally",
+                                c["id"], getattr(e, "reason", "") or e)
+                elif kind == "dead":
+                    if "PerDay" in getattr(e, "quota_id", ""):
+                        # Per-model quota: another id on the same key still has its own
+                        # allowance, so move along the chain and retry THIS clip.
+                        if state is not None and budget:
+                            state.record_api_spend(bucket(provider), budget)
+                        if advance():
+                            consecutive_fails = 0
+                            continue
+                        log.error("judge DAILY QUOTA exhausted on every configured "
+                                  "model (%s) — remaining clips scored locally. Add "
+                                  "ids to llm.roles.judge.overflow_models, or lower "
+                                  "vlm_filter.max_keep.", getattr(e, "quota_id", ""))
+                    else:
+                        log.error("judge credentials rejected (%s) — the paid selection "
+                                  "pass is OFF for this run; remaining clips scored "
+                                  "locally", e)
+                    consecutive_fails = max(consecutive_fails, 2)   # stop calling
                 else:
-                    log.error("judge credentials rejected (%s) — the paid selection pass "
-                              "is OFF for this run; remaining clips scored locally", e)
-            else:
-                consecutive_fails += 1
-                if consecutive_fails >= 2:
-                    log.warning("API failing repeatedly (%s) — quota likely exhausted; "
-                                "keeping remaining clips unjudged (retried next run)", e)
-                else:
-                    log.warning("API judge failed for %s: %s - keeping clip", c["id"], e)
-            r = None
+                    consecutive_fails += 1
+                    if consecutive_fails >= 2:
+                        log.warning("API failing repeatedly (%s) — quota likely "
+                                    "exhausted; keeping remaining clips unjudged "
+                                    "(retried next run)", e)
+                    else:
+                        log.warning("API judge failed for %s: %s - keeping clip",
+                                    c["id"], e)
+                r = None
+                break
         verdict = parse_verdict(r)
         if verdict is None:  # no answer / incomplete answer — not cached, retried next run
             if r:

@@ -632,3 +632,41 @@ So: **a hard 20 requests/day/model**, against a run that judges **14-18 clips**
 > create headroom. For real headroom the levers are a paid key, or lowering
 > `vlm_filter.max_keep` so fewer clips need judging. Left as the owner's call, since
 > lowering max_keep trades selection quality for margin.
+
+### 6. The quota ceiling was not a ceiling: the free tier is metered PER MODEL
+
+The previous entry concluded that 20/day was fixable only with a paid key or a lower
+`vlm_filter.max_keep`. **That was wrong**, and the evidence was already sitting in the
+error body that entry quoted:
+
+```
+quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+                                       ^^^^^^^^
+```
+
+**PerProjectPer*Model*.** A different model id on the SAME key is a separate allowance.
+Verified 2026-09-02 with `gemini-3.6-flash` actively 429ing on quota — all three of
+`gemini-3.1-flash-lite`, `gemini-flash-latest` and `gemini-flash-lite-latest` answered a
+real clip with native video on the same key, in the same minute.
+
+So `llm.roles.<role>.overflow_models` + `providers.get_provider_chain()`: the stage walks
+the chain, and on a PerDay 429 moves to the next id and **re-sends the same clip** rather
+than dropping it. Default chain is 4 models → **~72 judge calls/day against a need of
+14-18**, free, with no loss of capability (all are native-video Gemini models).
+Budget is tracked per model (`state.api_spend("judge:<model>")`).
+
+Verified twice: a simulation where model A allows 3 requests, B allows 3 and C is
+unlimited judged all 9 clips via the API with 0 falling back to local; and a live run
+against the genuinely exhausted primary, which switched to `gemini-3.1-flash-lite`
+mid-run and returned real verdicts.
+
+> Keep the overflow ids genuinely different models. An alias that resolves to the primary
+> is not a separate allowance — the chain drops duplicates, but it cannot detect an alias.
+
+**Also corrected: the GPU is an RTX 3050 with 8 GB, not 4 GB.** CLAUDE.md had said 4 GB,
+which is what made "VRAM exhaustion" the first theory for the transcribe crash in entry 3
+(it was a per-clip cuDNN fault, and the card was at ~2 GB of 8 GB). Installed local
+models include `qwen2.5vl:7b` and `llava:13b`, so a frames-based local judge is a real
+option if Google ever tightens — Ollama cannot ingest video, so it would judge sampled
+frames plus the English transcript instead. Not needed while the chain has this much
+headroom; recorded so the option is not rediscovered from scratch.

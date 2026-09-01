@@ -195,3 +195,32 @@ def test_encoder_args_resolves_from_the_video_config():
     args = encoder_args({"encoder": "libx264", "preset": "slow"})
     assert args[:2] == ["-c:v", "libx264"]
     assert args[args.index("-preset") + 1] == "slow"
+
+
+def test_judge_chain_is_primary_plus_overflow_models():
+    """Gemini meters the free tier PerProjectPerModel, so each extra id is another
+    full daily allowance on the SAME key — verified live: with gemini-3.6-flash 429ing
+    on quota, gemini-3.1-flash-lite still answered video. The chain turns a hard 20/day
+    ceiling into 20 x len(chain), with no loss of capability and no cost."""
+    from pipeline.providers import get_provider_chain
+    cfg = {"llm": {"roles": {"judge": {
+        "provider": "gemini", "model": "m-primary", "api_key": "k",
+        "overflow_models": ["m-second", "m-third"]}}}}
+    assert [p.rc.model for p in get_provider_chain(cfg, "judge")] == [
+        "m-primary", "m-second", "m-third"]
+
+
+def test_chain_ignores_an_overflow_id_that_repeats_the_primary():
+    """An alias that resolves to the primary is not a separate allowance."""
+    from pipeline.providers import get_provider_chain
+    cfg = {"llm": {"roles": {"judge": {
+        "provider": "gemini", "model": "m", "api_key": "k",
+        "overflow_models": ["m", "", "other"]}}}}
+    assert [p.rc.model for p in get_provider_chain(cfg, "judge")] == ["m", "other"]
+
+
+def test_chain_is_just_the_primary_when_no_overflow_configured():
+    from pipeline.providers import get_provider_chain
+    cfg = {"llm": {"roles": {"judge": {
+        "provider": "gemini", "model": "m", "api_key": "k"}}}}
+    assert len(get_provider_chain(cfg, "judge")) == 1

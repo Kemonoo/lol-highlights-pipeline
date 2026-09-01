@@ -16,7 +16,7 @@ Automated daily channel **KEMONO**: top League of Legends Twitch clips → filte
 assembled into a daily YouTube video (countdown format, brand intro, AI thumbnail) +
 derived Shorts → auto-uploaded. Currently **LEAN MODE** (no voiceover/commentary/music
 bed — see the lean-mode note below). Runs unattended at 03:00 on the owner's Windows
-machine (RTX 3050 4GB) via `run_daily_auto.bat` (Task Scheduler; `setup_schedule.bat`
+machine (RTX 3050, 8GB VRAM) via `run_daily_auto.bat` (Task Scheduler; `setup_schedule.bat`
 registers it with `WakeToRun`). The bat wraps the run in `scripts/keep_awake.ps1`
 (a wake-timer wake is an *unattended* wake — Windows re-sleeps it after ~2 min) and,
 when `SLEEP_AFTER=1`, suspends afterwards via `scripts/sleep_prompt.ps1` (skips its
@@ -60,6 +60,9 @@ relative to `pipeline/`).
    (cache `api_partial_v3.json`). No judge available → `local_judge()`, never a hard fail.
    Spend is capped by `api_judge.daily_budget` (free tier = 20 req/day/model, counted per
    PACIFIC day in state.json); clips are judged best-first so the budget buys the top.
+   The quota is metered PerProjectPerModel, so `llm.roles.judge.overflow_models` lists
+   further ids that each carry their OWN allowance on the same key — the stage walks the
+   chain and re-sends the clip, turning 20/day into 20 x len(chain).
    Duration-aware selection: fill toward `video.target_minutes_ideal` with fillers
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
