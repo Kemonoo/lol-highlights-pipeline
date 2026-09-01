@@ -593,3 +593,42 @@ the rendered JPEG.** For this component, render and look before believing it.
 streamer sits in a dark room looking away for the whole clip, so the "after" is barely
 better than the "before". A genuinely expressionless source clip needs a different
 top-clip choice, not a better crop.
+
+### 5. The judge quota ceiling: measured, not guessed
+
+Left open by the previous two entries. First job was establishing what the limit
+actually is, because the error message is genuinely misleading — it reports
+`limit: 20` alongside `Please retry in 21s`, which reads like a per-minute rate limit.
+It is not. Probing the raw 429 body gives the only reliable discriminator:
+
+```
+quotaId:    GenerateRequestsPerDayPerProjectPerModel-FreeTier
+quotaValue: 20
+RetryInfo:  21s          <- misleading; the allowance is gone for the DAY
+```
+
+So: **a hard 20 requests/day/model**, against a run that judges **14-18 clips**
+(measured over the last six runs: 14, 15, 15, 16, 17, 18). Three consequences, all fixed:
+
+1. **The retry ladder was burning the budget to prove the budget was gone.** 429 is in
+   `RETRY_STATUS`, so a per-day exhaustion retried 4x — three extra charged requests,
+   15% of the daily allowance, plus ~120s of backoff, to learn something unlearnable
+   within the run. `raise_for_status()` now reads the quotaId and raises a
+   non-retryable error when it says PerDay. **Verified against the live API: 0.7s
+   instead of ~120s.**
+2. **The wall was hit mid-list at an unpredictable point.** Added
+   `api_judge.daily_budget` (default 18, 0 = unlimited). Clips are already sorted
+   best-first, so a budget means the spend always buys the TOP of the list and the tail
+   degrades knowingly, instead of the cut landing wherever the quota happened to run out.
+3. **Spend was invisible across runs.** `state.api_spend()/record_api_spend()` track it,
+   **keyed to the PACIFIC day** — Google resets at midnight America/Los_Angeles, and a
+   03:00 Europe/Amsterdam run is still in the previous Pacific day, so counting against
+   local dates would have handed exactly the unattended run a second full budget. Failed
+   requests are charged too, because the provider charges them. Verified: 8 clips with
+   `daily_budget: 3` makes 3 calls; the bat's crash-retry then makes 0.
+
+> **The ceiling itself cannot be fixed in code** — 20/day is the free tier. The default
+> budget of 18 preserves current behaviour while making the wall predictable; it does not
+> create headroom. For real headroom the levers are a paid key, or lowering
+> `vlm_filter.max_keep` so fewer clips need judging. Left as the owner's call, since
+> lowering max_keep trades selection quality for margin.

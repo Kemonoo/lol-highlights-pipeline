@@ -73,6 +73,10 @@ def classify_failure(e: Exception) -> str:
         return "refusal"
     if getattr(e, "status", None) in _DEAD_KEY_STATUS:
         return "dead"
+    if "PerDay" in getattr(e, "quota_id", ""):
+        # The daily allowance is gone and does not come back this run, whatever the
+        # response's ~20s RetryInfo suggests.
+        return "dead"
     return "transient"
 
 
@@ -231,9 +235,22 @@ def run(cfg: dict, state, date_label: str) -> Path:
         log.warning("no video judge available (%s) — scoring uncached clips locally", e)
         provider = None
 
+    # Daily request budget. The free tier is a hard 20 requests/day/model
+    # (quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier) and a run judges
+    # 14-18 clips, so the wall gets hit unpredictably — mid-list, after the retry ladder
+    # has already spent several attempts proving it. Budgeting instead means the spend is
+    # planned: clips are judged best-first (sorted by keep_score above), so what the
+    # budget buys is always the top of the list, and the tail degrades knowingly.
+    budget = int(aj.get("daily_budget", 0) or 0)
+    spent = state.api_spend("judge") if (budget and state is not None) else 0
+    if budget and spent:
+        log.info("judge budget: %d of %d already spent today (resets midnight Pacific)",
+                 spent, budget)
+
     judged = []
     consecutive_fails = 0
     refused = 0
+    over_budget = 0
     for c in clips:
         if consecutive_fails >= 2:   # daily quota dead — stop hammering the API
             if not cache.get(c["id"]):
@@ -259,6 +276,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
             local_judge(c, aj)
             judged.append(c)
             continue
+        if budget and spent >= budget:
+            over_budget += 1
+            local_judge(c, aj)
+            judged.append(c)
+            continue
         max_bytes = float(aj.get("max_mb", 90)) * 1024 * 1024
         lq = raw_dir / "lq" / f"{c['id']}.mp4"   # prefilter's low-quality copy
         if lq.exists() and lq.stat().st_size <= max_bytes:
@@ -270,6 +292,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
             local_judge(c, aj)
             judged.append(c)
             continue
+        spent += 1                    # a failed request is still a charged request
+        if state is not None:
+            state.record_api_spend("judge")
         try:
             r = judge(small, provider)
             consecutive_fails = 0
@@ -284,8 +309,14 @@ def run(cfg: dict, state, date_label: str) -> Path:
                             c["id"], getattr(e, "reason", "") or e)
             elif kind == "dead":
                 consecutive_fails = max(consecutive_fails, 2)   # stop immediately
-                log.error("judge credentials rejected (%s) — the paid selection pass is "
-                          "OFF for this run; remaining clips scored locally", e)
+                if "PerDay" in getattr(e, "quota_id", ""):
+                    log.error("judge DAILY QUOTA exhausted (%s) — remaining clips scored "
+                              "locally. Raise api_judge.daily_budget only if the plan "
+                              "allows more; otherwise lower vlm_filter.max_keep so the "
+                              "spend fits.", getattr(e, "quota_id", ""))
+                else:
+                    log.error("judge credentials rejected (%s) — the paid selection pass "
+                              "is OFF for this run; remaining clips scored locally", e)
             else:
                 consecutive_fails += 1
                 if consecutive_fails >= 2:
@@ -362,9 +393,14 @@ def run(cfg: dict, state, date_label: str) -> Path:
     scored_locally = sum(1 for c in judged if c.get("api_focus") == "local")
     if scored_locally:
         say = log.error if scored_locally == len(judged) else log.warning
+        why = []
+        if refused:
+            why.append(f"{refused} refused on content")
+        if over_budget:
+            why.append(f"{over_budget} skipped for daily budget")
         say("JUDGE DEGRADED: %d/%d clips scored locally%s — selection quality is not "
             "what it looks like. Check the key/quota above.", scored_locally, len(judged),
-            f" ({refused} refused on content)" if refused else "")
+            f" ({'; '.join(why)})" if why else "")
     log.info("API judge: %d -> %d kept (%d judged by API, %d local)",
              len(judged), len(kept), len(judged) - scored_locally, scored_locally)
     return work

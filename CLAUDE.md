@@ -58,6 +58,8 @@ relative to `pipeline/`).
    to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
    provider's Files API), scores focus/play_quality/entertainment against a JSON schema
    (cache `api_partial_v3.json`). No judge available → `local_judge()`, never a hard fail.
+   Spend is capped by `api_judge.daily_budget` (free tier = 20 req/day/model, counted per
+   PACIFIC day in state.json); clips are judged best-first so the budget buys the top.
    Duration-aware selection: fill toward `video.target_minutes_ideal` with fillers
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt

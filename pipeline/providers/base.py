@@ -35,10 +35,12 @@ class ProviderError(RuntimeError):
     API after repeated failures, and a per-clip refusal must not trigger that.
     """
 
-    def __init__(self, msg: str, *, status: int | None = None, reason: str = ""):
+    def __init__(self, msg: str, *, status: int | None = None, reason: str = "",
+                 quota_id: str = ""):
         super().__init__(msg)
         self.status = status      # HTTP status, when the failure came from a response
         self.reason = reason      # provider finishReason, e.g. RECITATION
+        self.quota_id = quota_id  # e.g. GenerateRequestsPerDayPerProjectPerModel-FreeTier
 
 
 class ProviderUnavailable(ProviderError):
@@ -91,12 +93,14 @@ def retrying(fn, rc: RoleConfig, what: str):
             time.sleep(wait)
         except Exception as e:                       # non-transient: fail fast
             raise ProviderError(f"{what}: {e}", status=getattr(e, "status", None),
-                                reason=getattr(e, "reason", "")) from e
+                                reason=getattr(e, "reason", ""),
+                                quota_id=getattr(e, "quota_id", "")) from e
     # Preserve the cause's status/reason: callers decide whether a dead key, a rate
     # limit, or a single refused clip should stop them, and cannot if we flatten it.
     raise ProviderError(f"{what}: giving up after {rc.max_retries} attempts ({last})",
                         status=getattr(last, "status", None),
-                        reason=getattr(last, "reason", ""))
+                        reason=getattr(last, "reason", ""),
+                        quota_id=getattr(last, "quota_id", ""))
 
 
 class _Retryable(Exception):
@@ -105,6 +109,22 @@ class _Retryable(Exception):
     def __init__(self, msg: str, *, status: int | None = None):
         super().__init__(msg)
         self.status = status
+
+
+def _quota_id(resp) -> str:
+    """QuotaFailure.violations[].quotaId from a 429 body, or "" if absent.
+
+    Google puts the only reliable per-day/per-minute discriminator here; the human
+    message and the RetryInfo look identical for both.
+    """
+    try:
+        for d in (resp.json().get("error", {}) or {}).get("details", []) or []:
+            for v in d.get("violations", []) or []:
+                if v.get("quotaId"):
+                    return str(v["quotaId"])
+    except Exception:
+        pass
+    return ""
 
 
 def raise_for_status(resp, what: str) -> None:
@@ -118,6 +138,15 @@ def raise_for_status(resp, what: str) -> None:
     except Exception:
         detail = (resp.text or "")[:200]
     msg = f"HTTP {resp.status_code}" + (f" - {detail}" if detail else "")
+
+    # A PER-DAY quota is not a transient condition, however much the response looks like
+    # one: Google returns 429 with a RetryInfo of ~20s next to a QuotaFailure whose
+    # quotaId says PerDay. Taking that retryDelay at face value spends three more of an
+    # allowance that will not refill for hours — on a 20/day free tier that is 15% of the
+    # budget burned proving the budget is gone.
+    quota_id = _quota_id(resp) if resp.status_code == 429 else ""
+    if "PerDay" in quota_id:
+        raise ProviderError(f"{what}: {msg}", status=429, quota_id=quota_id)
     if resp.status_code in RETRY_STATUS:
         raise _Retryable(msg, status=resp.status_code)
     if resp.status_code == 404:

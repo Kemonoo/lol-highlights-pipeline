@@ -342,3 +342,65 @@ def test_generic_hooks_carry_no_trailing_punctuation():
     """Keeps _ask() meaningful and the headline short enough to stay large."""
     from pipeline.production.credits import _GENERIC_HOOKS
     assert all(h[-1] not in "?!." for h in _GENERIC_HOOKS)
+
+
+# ── daily request budget ─────────────────────────────────────────────────────
+# The Gemini free tier is a hard 20 requests/day/model and a run judges 14-18 clips,
+# so the wall was hit mid-list at an unpredictable point, after the retry ladder had
+# already spent several attempts proving the budget was gone.
+
+def test_per_day_quota_is_not_retryable():
+    """The 429 body carries a ~20s RetryInfo next to a PerDay quotaId. Believing the
+    RetryInfo spends three more of an allowance that will not refill for hours."""
+    from pipeline.providers.base import ProviderError, _Retryable, raise_for_status
+
+    class Resp:
+        status_code = 429
+        text = ""
+
+        def json(self):
+            return {"error": {"message": "quota", "details": [
+                {"@type": "...QuotaFailure", "violations": [
+                    {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                     "quotaValue": "20"}]}]}}
+
+    with pytest.raises(ProviderError) as ei:
+        raise_for_status(Resp(), "judge")
+    assert not isinstance(ei.value, _Retryable)
+    assert ei.value.status == 429
+    assert "PerDay" in ei.value.quota_id
+    assert classify_failure(ei.value) == "dead"
+
+
+def test_per_minute_quota_stays_retryable():
+    """A per-minute limit DOES clear on its own — it must keep the retry ladder."""
+    from pipeline.providers.base import _Retryable, raise_for_status
+
+    class Resp:
+        status_code = 429
+        text = ""
+
+        def json(self):
+            return {"error": {"message": "rate", "details": [
+                {"violations": [{"quotaId": "GenerateRequestsPerMinutePerProject"}]}]}}
+
+    with pytest.raises(_Retryable):
+        raise_for_status(Resp(), "judge")
+
+
+def test_spend_is_counted_against_the_pacific_day(tmp_path):
+    """Google resets the daily quota at midnight America/Los_Angeles. A 03:00
+    Amsterdam run is still in the PREVIOUS Pacific day, so counting against local
+    dates would hand it a second full budget."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from pipeline.state import State
+    st = State(tmp_path)
+    assert st.api_spend("judge") == 0
+    st.record_api_spend("judge")
+    st.record_api_spend("judge", 2)
+    assert st.api_spend("judge") == 3
+    assert State(tmp_path).api_spend("judge") == 3          # survives a reload
+    assert st.quota_day() == datetime.now(
+        ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")

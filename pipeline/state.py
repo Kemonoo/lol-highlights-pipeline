@@ -58,6 +58,32 @@ class State:
                 return v["youtube_id"]
         return None
 
+    # ── API request budget ─────────────────────────────────────────────
+    @staticmethod
+    def quota_day() -> str:
+        """Today's date on the clock the provider's daily quota resets on (Pacific).
+
+        Not local midnight: Google's free-tier per-day quota rolls over at midnight
+        America/Los_Angeles, and a 03:00 Europe/Amsterdam run is still in the PREVIOUS
+        Pacific day — so it spends an allowance that anything run the afternoon before
+        has already drawn from. Counting against local dates would silently double the
+        budget on exactly the runs that matter.
+        """
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
+
+    def api_spend(self, bucket: str) -> int:
+        """Requests already charged to `bucket` (e.g. a role name) this quota day."""
+        return int(self._d.get("api_spend", {}).get(self.quota_day(), {}).get(bucket, 0))
+
+    def record_api_spend(self, bucket: str, n: int = 1) -> None:
+        spend = self._d.setdefault("api_spend", {})
+        day = spend.setdefault(self.quota_day(), {})
+        day[bucket] = int(day.get(bucket, 0)) + n
+        for old in [k for k in spend if k < self.quota_day()]:   # keep the file small
+            del spend[old]
+        self.save()
+
     def save(self) -> None:
         self.path.write_text(
             json.dumps(self._d, indent=2, ensure_ascii=False), encoding="utf-8"

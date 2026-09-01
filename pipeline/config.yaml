@@ -120,6 +120,17 @@ api_judge:                    # full-video quality judge — model in llm.roles.
   max_mb: 90                  # inline payload budget (base64-encoded)
   shrink_height: 720          # was 480 — only mattered under the old 20MB cap
   shrink_crf: 28              # was 30; more headroom now that the size cap is 4.5x
+  daily_budget: 18            # max judge REQUESTS per quota-day (0 = unlimited). The
+                              # Gemini free tier is a hard 20/day/model
+                              # (GenerateRequestsPerDayPerProjectPerModel-FreeTier) and a
+                              # run judges 14-18 clips, so without this the wall is hit
+                              # mid-list at an unpredictable point. Clips are judged
+                              # best-first, so the budget always buys the top of the list.
+                              # Counted per Pacific day (when Google resets), not local —
+                              # a 03:00 Amsterdam run is still in the previous Pacific day.
+                              # Failed requests count, because the provider counts them.
+                              # Raise only if your plan actually allows more; on the free
+                              # tier, lower vlm_filter.max_keep instead.
   min_entertainment: 6        # keep gameplay clips at or above this
   min_entertainment_reaction: 7  # reaction-focus clips need a higher bar
   min_play_quality: 7         # or any clip with play this impressive
