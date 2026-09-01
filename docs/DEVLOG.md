@@ -555,3 +555,41 @@ dependency* — so the fix is aimed at the hiding, not just the failing:
 > Still open: free tier is **20 judge requests/day** against ~17 used per run, so there is
 > almost no headroom — an expansion round pushes past it. A paid key or a smaller
 > `vlm_filter.max_keep` are the two levers.
+
+### 4. Thumbnail: the face was never chosen for expression
+
+The local PIL design was doing three things wrong, all visible in the shipped output for
+2026-08-30 and 08-31. (This is NOT the 08-23 gemini/billing issue — `provider: local` is
+correct and stays.)
+
+1. **`_reaction_face()` took a single frame at `best_s` and cropped it.** Whatever
+   expression happened at that instant is what shipped, and on real output that was
+   routinely a flat or averted face. The face is the largest element on the canvas, so
+   it decides the click. Now samples 9 frames across the peak window and ranks them:
+   the per-pixel **median** face across samples approximates the streamer's RESTING
+   face (it is where the clip spends most of its time), so distance from that median
+   finds the animated frame, with Laplacian sharpness breaking ties away from motion
+   blur. No landmark model, no new dependency — the cv2 already used for facecam
+   detection. On 08-31 this turned a flat stare into a genuine open-mouthed laugh.
+2. **The headline was the same two words on 15 of 29 days** (52%) because `_hook()` fell
+   through to a constant `"INSANE PLAYS"`. Widened `_HOOKS` to match the judge's rich
+   `what_happens` text (teamfight/backdoor/misclick/tilted/... — it had been tuned for
+   short Twitch titles), and made the fallback a date-seeded rotation. Repetition
+   52% → 24%, and the most common hook is now `PENTAKILL`, which is earned rather than
+   generic.
+3. **Background was the raw frame**, HUD, minimap and streamer chat included, which at
+   the ~320px the browse feed renders is mud. Added `thumbnail.background_blur`
+   (default 2px). Deliberately blur and **not** darkening — the owner already rejected
+   the darker cinematic grade for crushing the edges, and that decision stands.
+
+**Two regressions caught only by rendering it.** The first attempt produced
+`HE DID WHAT?!?!` — a generic hook ending in punctuation, plus the `?!` variant 1
+appends (`_ask()` now guards this, and the generic hooks carry no trailing punctuation).
+And `background_blur: 4` was too strong: the frame stopped reading as League at all.
+Dropped to 2. **Neither was visible from the code or the tests — only from looking at
+the rendered JPEG.** For this component, render and look before believing it.
+
+**Honest limit:** the picker can only choose the best frame that exists. On 08-30 the
+streamer sits in a dark room looking away for the whole clip, so the "after" is barely
+better than the "before". A genuinely expressionless source clip needs a different
+top-clip choice, not a better crop.

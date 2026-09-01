@@ -423,8 +423,41 @@ def _resolve_mp4(clip: dict, raw_dir: Path) -> Path | None:
     return Path(lp) if lp and Path(lp).exists() else None
 
 
-def _reaction_face(clip: dict, mp4: Path, best_s: float) -> "Image.Image | None":
-    """Crop the streamer's facecam at the peak moment → an expressive reaction face."""
+def _expression_scores(crops: list) -> list:
+    """Score face crops by how far each is from this streamer's RESTING face.
+
+    The neutral face is, by construction, the one the clip spends most of its time in —
+    so the per-pixel median across sampled frames approximates it, and the frame that
+    deviates most from it is the animated one (mouth open, eyes wide, leaning in).
+    Sharpness breaks ties away from motion-blurred frames, which read as smears at
+    feed size. No landmark model, no extra dependency: this runs on the cv2 already
+    used for facecam detection.
+    """
+    import cv2
+    import numpy as np
+
+    small = [cv2.resize(cv2.cvtColor(c, cv2.COLOR_BGR2GRAY), (48, 48)).astype("float32")
+             for c in crops]
+    neutral = np.median(np.stack(small), axis=0)
+    out = []
+    for g in small:
+        # Normalize per frame so a lighting/exposure shift can't masquerade as emotion.
+        d = g - g.mean() - (neutral - neutral.mean())
+        motion = float(np.abs(d).mean())
+        sharp = float(cv2.Laplacian(g, cv2.CV_32F).var())
+        out.append(motion + 0.02 * min(sharp, 300.0))
+    return out
+
+
+def _reaction_face(clip: dict, mp4: Path, best_s: float,
+                   samples: int = 9) -> "Image.Image | None":
+    """Pick the streamer's most EXPRESSIVE facecam frame near the peak moment.
+
+    Was: one frame at best_s. That is whatever expression happened at that instant, and
+    on real output it was routinely a flat or averted face — the single biggest CTR
+    problem in the local design, since the face is the largest element on the canvas.
+    Now: sample a window around the peak and rank by _expression_scores().
+    """
     try:
         import cv2
         from PIL import Image
@@ -435,15 +468,32 @@ def _reaction_face(clip: dict, mp4: Path, best_s: float) -> "Image.Image | None"
         if not region:
             return None
         x, y, w, h = (int(v) for v in region)
-        frame = _extract_frame(mp4, best_s if best_s and best_s > 0 else dur * 0.6)
-        if frame is None:
-            return None
-        fh, fw = frame.shape[:2]
         x, y = max(0, x), max(0, y)
-        crop = frame[y:min(y + h, fh), x:min(x + w, fw)]
-        if crop.size == 0:
+
+        # Reactions land ON and just AFTER the play, so weight the window that way.
+        peak = best_s if best_s and best_s > 0 else dur * 0.6
+        lo, hi = max(0.0, peak - 2.0), min(dur - 0.3, peak + 5.0)
+        if hi <= lo:
+            lo, hi = 0.0, max(dur - 0.3, 0.5)
+        times = [lo + (hi - lo) * i / max(samples - 1, 1) for i in range(samples)]
+
+        crops = []
+        for t in times:
+            frame = _extract_frame(mp4, t)
+            if frame is None:
+                continue
+            fh, fw = frame.shape[:2]
+            crop = frame[y:min(y + h, fh), x:min(x + w, fw)]
+            if crop.size:
+                crops.append(crop)
+        if not crops:
             return None
-        return Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+        if len(crops) == 1:
+            best = crops[0]
+        else:
+            scores = _expression_scores(crops)
+            best = crops[max(range(len(crops)), key=lambda i: scores[i])]
+        return Image.fromarray(cv2.cvtColor(best, cv2.COLOR_BGR2RGB))
     except Exception as e:
         log.debug("reaction face failed: %s", e)
         return None
@@ -473,8 +523,22 @@ def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0) -> "Image.I
     return img.convert("RGBA")
 
 
-def _clip_frame_bg(mp4: Path, best_s: float) -> "Image.Image | None":
-    """A graded still from the actual peak moment — authentic-action background."""
+def _ask(hook: str) -> str:
+    """`hook` + "?!", unless it already ends in punctuation (else: "HE DID WHAT?!?!")."""
+    hook = (hook or "").strip()
+    return hook if hook[-1:] in "?!." else f"{hook}?!"
+
+
+def _clip_frame_bg(mp4: Path, best_s: float, blur: int = 0) -> "Image.Image | None":
+    """A still from the actual peak moment — authentic-action background.
+
+    `blur` exists because a raw gameplay frame carries the full HUD, minimap, health
+    bars and often the streamer's chat overlay. At the ~320px the browse feed actually
+    renders, all of that competes with the headline for the same few pixels. A small
+    blur removes the fine detail while keeping the frame readable as *this* fight —
+    deliberately blur and NOT darkening, since the owner already rejected the darker
+    cinematic grade for crushing the edges (see _prep_bg).
+    """
     try:
         import cv2
         from PIL import Image
@@ -483,7 +547,8 @@ def _clip_frame_bg(mp4: Path, best_s: float) -> "Image.Image | None":
         frame = _extract_frame(mp4, best_s if best_s and best_s > 0 else 2.0)
         if frame is None:
             return None
-        return _prep_bg(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+        return _prep_bg(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
+                        blur=blur)
     except Exception:
         return None
 
@@ -575,7 +640,7 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
     best_s = float(top.get("api_best_moment_s", 0) or 0)
     from .commentary import _ascii_name
     from .credits import _hook
-    hook = _hook(clips)
+    hook = _hook(clips, date_label)
     streamer = _ascii_name(top)
 
     champ_id = _detect_champion(summary, _champion_map(cache_dir))
@@ -583,15 +648,17 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
     splash_bg = _prep_bg(splash) if splash else None
     splash_blur = _prep_bg(splash, blur=10, darken=0.25) if splash else None
 
+    th = cfg.get("thumbnail", {})
     mp4 = _resolve_mp4(top, raw_dir)
-    face = _reaction_face(top, mp4, best_s) if mp4 else None
+    face = (_reaction_face(top, mp4, best_s, int(th.get("face_samples", 9)))
+            if mp4 else None)
     used_facecam = face is not None
     if face is None and top.get("broadcaster_id"):
         face = _twitch_pfp(top["broadcaster_id"], cache_dir)
-    frame_bg = _clip_frame_bg(mp4, best_s) if mp4 else None
+    frame_bg = _clip_frame_bg(mp4, best_s, int(th.get("background_blur", 2))) if mp4 else None
 
     specs = [
-        dict(bg=splash_bg or frame_bg, text=f"{hook}?!", accent=(255, 60, 60), scale=0.86),
+        dict(bg=splash_bg or frame_bg, text=_ask(hook), accent=(255, 60, 60), scale=0.86),
         dict(bg=frame_bg or splash_bg, text=hook, accent=(255, 205, 60), scale=0.82),
         dict(bg=splash_blur or splash_bg, text="INSANE!", accent=(31, 214, 230), scale=0.95),
     ][:max(1, n)]
@@ -942,7 +1009,7 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
 
     from .commentary import _ascii_name
     from .credits import _hook
-    hook = _hook(clips)
+    hook = _hook(clips, date_label)
     streamer = _ascii_name(clip)
     frame = _clip_frame_raw(mp4, best_s)
     if frame is None:
@@ -1024,7 +1091,7 @@ def _generate_legacy(cfg: dict, date_label: str) -> Path | None:
     # Achievement + hook
     achievement = _achievement(summary)
     from .credits import _hook
-    hook = _hook(clips)
+    hook = _hook(clips, date_label)
 
     # Stat line: rank + hook — but never repeat the achievement. The best clip's title
     # drives both the achievement stamp and the hook, so e.g. a "quadra" clip yields

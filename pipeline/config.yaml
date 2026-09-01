@@ -316,6 +316,16 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
                               # pay-as-you-go — image models are not on the free tier.
   face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")
   variants: 3                 # local-provider CTR variants (thumbnail.jpg = primary; rest for A/B)
+  background_blur: 2          # px blur on the gameplay-frame background. A raw frame carries
+                              # the HUD, minimap, health bars and often the streamer's chat
+                              # overlay; at the ~320px the browse feed really renders, that
+                              # detail competes with the headline. Blur (not darkening — the
+                              # darker grade was rejected for crushing the edges) keeps it
+                              # readable as this fight without fighting the text. 0 = off.
+  face_samples: 9             # frames sampled around the peak to find the streamer's most
+                              # EXPRESSIVE facecam moment. Was a single frame at the peak,
+                              # which routinely landed on a flat or averted face — the face
+                              # is the biggest element on the canvas, so it decides the CTR.
   # gemini: enhance the facecam into an over-the-top excited reaction on a green screen,
   # chroma-key it out, composite over the REAL clip gameplay (slight blur), then overlay a
   # centred metallic gold announcement (PENTAKILL/QUADRA in Montserrat Bold, assets/fonts),

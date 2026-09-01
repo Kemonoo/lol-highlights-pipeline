@@ -14,12 +14,35 @@ from pathlib import Path
 log = logging.getLogger("pipeline.credits")
 
 # strongest specific moment -> punchy hook word (checked in order, most impressive first)
+#
+# Matched against the judge's `what_happens` description, which is far richer than the
+# Twitch title it used to rely on — so it is worth listing the things that description
+# actually says. Before this list was widened, the generic fallback fired on 15 of 29
+# days: over half the uploads carried a thumbnail reading the exact same two words,
+# which is the opposite of what a browse-feed thumbnail is for.
 _HOOKS = [
     ("penta", "PENTAKILL"), ("quadra", "QUADRA KILL"), ("1v5", "1V5 OUTPLAY"),
     ("1v4", "1V4 CLUTCH"), ("1v3", "1V3 OUTPLAY"), ("triple", "TRIPLE KILL"),
     ("ace", "TEAM ACE"), ("steal", "INSANE STEAL"), ("clutch", "CLUTCH PLAY"),
-    ("flash", "FLASH OUTPLAY"), ("outplay", "CRAZY OUTPLAY"), ("1v", "OUTNUMBERED"),
+    ("flash", "FLASH OUTPLAY"), ("outplay", "CRAZY OUTPLAY"),
+    ("backdoor", "BACKDOOR!"), ("baron", "BARON STEAL"), ("nexus", "NEXUS RACE"),
+    ("comeback", "INSANE COMEBACK"), ("1v9", "1V9 CARRY"), ("solo kill", "SOLO KILL"),
+    ("tower dive", "TOWER DIVE"), ("teamfight", "CHAOS TEAMFIGHT"),
+    ("team fight", "CHAOS TEAMFIGHT"), ("dragon", "DRAGON FIGHT"),
+    ("first blood", "FIRST BLOOD"), ("misclick", "HE MISCLICKED"),
+    ("fat-finger", "HE MISCLICKED"), ("flames", "TILTED"), ("rages", "TILTED"),
+    ("frustrat", "TILTED"), ("laughs", "HE LOST IT"), ("panic", "PURE PANIC"),
+    ("survives", "HOW DID HE LIVE"), ("escapes", "HOW DID HE LIVE"),
+    ("1v2", "OUTNUMBERED"), ("1v", "OUTNUMBERED"),
 ]
+
+# Used only when nothing above matches. A CONSTANT here is the failure mode this
+# replaces, so it rotates by date — deterministic, so re-rendering a day is stable.
+# Keep these SHORT and free of trailing punctuation: the thumbnail fits the headline to
+# the space left of the face, so every extra word shrinks the type, and callers append
+# their own "?!".
+_GENERIC_HOOKS = ["INSANE PLAYS", "NO WAY", "HE DID THAT",
+                  "ACTUALLY INSANE", "WATCH THIS", "UNREAL"]
 _EMOJI = ["😱", "🔥", "💀", "😳", "🤯"]
 
 # Clickbait/curiosity hooks (an episode number is appended → "HOOK | 12",
@@ -46,15 +69,23 @@ def _best(clips: list[dict]) -> dict | None:
     return max(clips, key=lambda c: c.get("api_rank_score", 0), default=None) if clips else None
 
 
-def _hook(clips: list[dict]) -> str:
-    """Short title hook from the best clip's content."""
+def _hook(clips: list[dict], date_label: str = "") -> str:
+    """Short title hook from the best clip's content.
+
+    `date_label` only picks which generic hook is used when the clip's description
+    matches nothing specific; passing it keeps consecutive uploads from sharing a
+    thumbnail. Seeded by date rather than random so re-rendering a day is stable.
+    """
     best = _best(clips)
     text = ((best.get("vlm_summary", "") + " " + best.get("title", "")).lower()
             if best else "")
     for word, hook in _HOOKS:
         if word in text:
             return hook
-    return "INSANE PLAYS"
+    if not date_label:
+        return _GENERIC_HOOKS[0]
+    seed = int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16)
+    return _GENERIC_HOOKS[seed % len(_GENERIC_HOOKS)]
 
 
 def _star(clips: list[dict]) -> str:
@@ -70,7 +101,7 @@ def _title(cfg: dict, date_label: str, clips: list[dict], n: int, episode: int) 
     """Clickbait hook + episode series-marker, rotating daily (≤ 100 chars)."""
     up = cfg.get("upload", {})
     seed = int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16)
-    ctx = {"hook": _hook(clips), "n": n or len(clips),
+    ctx = {"hook": _hook(clips, date_label), "n": n or len(clips),
            "star": _star(clips), "emoji": _EMOJI[seed % len(_EMOJI)]}
     styles = up.get("title_styles") or DEFAULT_TITLE_STYLES
     usable = [s for s in styles if not ("{star}" in s and not ctx["star"])] or DEFAULT_TITLE_STYLES[:2]

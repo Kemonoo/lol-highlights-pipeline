@@ -307,3 +307,38 @@ def test_provider_error_preserves_status_through_retry_exhaustion():
     with pytest.raises(ProviderError) as ei:
         retrying(boom, rc, "judge")
     assert ei.value.status == 429
+
+
+# ── thumbnail hook text ──────────────────────────────────────────────────────
+
+def _clips(summary: str):
+    return [{"api_rank_score": 9, "vlm_summary": summary, "title": ""}]
+
+
+def test_hook_prefers_the_specific_moment_over_the_generic():
+    from pipeline.production.credits import _hook
+    assert _hook(_clips("he scores a Quadra Kill"), "2026-08-01") == "QUADRA KILL"
+    assert _hook(_clips("a chaotic team fight near dragon"), "2026-08-01") == "CHAOS TEAMFIGHT"
+
+
+def test_generic_hook_rotates_by_date_but_is_stable_per_date():
+    """A constant fallback put the same two words on 15 of 29 thumbnails."""
+    from pipeline.production.credits import _hook
+    c = _clips("nothing notable happens at all")
+    picks = {_hook(c, f"2026-08-{d:02d}") for d in range(1, 20)}
+    assert len(picks) > 1                                    # not a constant
+    assert _hook(c, "2026-08-07") == _hook(c, "2026-08-07")   # deterministic
+
+
+def test_hook_question_suffix_does_not_double_punctuation():
+    """Variant 1 appends '?!'; a hook already ending in punctuation gave 'WHAT?!?!'."""
+    from pipeline.production.thumbnail import _ask
+    assert _ask("INSANE PLAYS") == "INSANE PLAYS?!"
+    assert _ask("BACKDOOR!") == "BACKDOOR!"
+    assert _ask("HE DID WHAT?!") == "HE DID WHAT?!"
+
+
+def test_generic_hooks_carry_no_trailing_punctuation():
+    """Keeps _ask() meaningful and the headline short enough to stay large."""
+    from pipeline.production.credits import _GENERIC_HOOKS
+    assert all(h[-1] not in "?!." for h in _GENERIC_HOOKS)
