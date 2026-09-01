@@ -119,7 +119,10 @@ class GeminiProvider(Provider):
         parts = (cand.get("content") or {}).get("parts") or []
         text = "".join(p.get("text", "") for p in parts)
         if not text and cand.get("finishReason") not in (None, "STOP"):
-            raise ProviderError(f"empty response (finishReason: {cand['finishReason']})")
+            # reason= lets callers see this is about THIS request's content (RECITATION,
+            # SAFETY, MAX_TOKENS) rather than the key or the quota being dead.
+            raise ProviderError(f"empty response (finishReason: {cand['finishReason']})",
+                                reason=str(cand["finishReason"]))
         return text
 
     # ── file upload ───────────────────────────────────────────────────────────

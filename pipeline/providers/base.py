@@ -27,7 +27,18 @@ log = logging.getLogger("pipeline.providers")
 
 
 class ProviderError(RuntimeError):
-    """A call failed after exhausting retries."""
+    """A call failed after exhausting retries.
+
+    Carries the HTTP status and the provider's own refusal reason where there was one,
+    so callers can tell "this key is dead" from "this one clip was refused" without
+    grepping the message text. api_judge needs that distinction: it stops calling the
+    API after repeated failures, and a per-clip refusal must not trigger that.
+    """
+
+    def __init__(self, msg: str, *, status: int | None = None, reason: str = ""):
+        super().__init__(msg)
+        self.status = status      # HTTP status, when the failure came from a response
+        self.reason = reason      # provider finishReason, e.g. RECITATION
 
 
 class ProviderUnavailable(ProviderError):
@@ -79,12 +90,21 @@ def retrying(fn, rc: RoleConfig, what: str):
                      what, e, attempt, rc.max_retries, wait)
             time.sleep(wait)
         except Exception as e:                       # non-transient: fail fast
-            raise ProviderError(f"{what}: {e}") from e
-    raise ProviderError(f"{what}: giving up after {rc.max_retries} attempts ({last})")
+            raise ProviderError(f"{what}: {e}", status=getattr(e, "status", None),
+                                reason=getattr(e, "reason", "")) from e
+    # Preserve the cause's status/reason: callers decide whether a dead key, a rate
+    # limit, or a single refused clip should stop them, and cannot if we flatten it.
+    raise ProviderError(f"{what}: giving up after {rc.max_retries} attempts ({last})",
+                        status=getattr(last, "status", None),
+                        reason=getattr(last, "reason", ""))
 
 
 class _Retryable(Exception):
     """Internal marker: this failure is worth another attempt."""
+
+    def __init__(self, msg: str, *, status: int | None = None):
+        super().__init__(msg)
+        self.status = status
 
 
 def raise_for_status(resp, what: str) -> None:
@@ -99,15 +119,15 @@ def raise_for_status(resp, what: str) -> None:
         detail = (resp.text or "")[:200]
     msg = f"HTTP {resp.status_code}" + (f" - {detail}" if detail else "")
     if resp.status_code in RETRY_STATUS:
-        raise _Retryable(msg)
+        raise _Retryable(msg, status=resp.status_code)
     if resp.status_code == 404:
         raise ProviderError(
             f"{what}: {msg}\n"
             "  A 404 here almost always means the model id was retired. Model ids live "
             "in llm.roles.* in config.yaml; check "
             "https://ai.google.dev/gemini-api/docs/deprecations for Gemini."
-        )
-    raise ProviderError(f"{what}: {msg}")
+        , status=404)
+    raise ProviderError(f"{what}: {msg}", status=resp.status_code)
 
 
 def parse_json(text: str) -> dict | None:

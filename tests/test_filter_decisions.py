@@ -7,7 +7,8 @@ API key, and no ffmpeg. A regression here silently changes what gets published.
 """
 import pytest
 
-from pipeline.filtering.api_judge import (SCHEMA, decide_api, local_judge,
+from pipeline.filtering.api_judge import (SCHEMA, classify_failure, decide_api,
+                                          local_judge,
                                           parse_verdict)
 from pipeline.filtering.vlm_filter import decide
 
@@ -263,3 +264,46 @@ def test_absent_best_moment_is_allowed_and_defaults_to_zero():
 def test_schema_requires_every_field_it_declares():
     """Guards the actual bug: `properties` without `required` lets the model omit."""
     assert set(SCHEMA["required"]) == set(SCHEMA["properties"])
+
+
+# ── classifying judge failures ───────────────────────────────────────────────
+# api_judge stops calling the API after repeated failures. Counting every exception
+# the same way meant two network timeouts, or two clips the model declined on content
+# grounds, silently downgraded the REST of the run to local scoring.
+
+def _err(**kw):
+    from pipeline.providers.base import ProviderError
+    return ProviderError("boom", **kw)
+
+
+def test_content_refusal_is_about_one_clip_not_the_key():
+    """RECITATION/SAFETY is this clip's content; the next clip may be fine."""
+    assert classify_failure(_err(reason="RECITATION")) == "refusal"
+    assert classify_failure(_err(reason="SAFETY")) == "refusal"
+
+
+def test_rejected_credentials_stop_the_run_immediately():
+    """401/403 will not heal mid-run — 14 straight August days were downgraded by these."""
+    assert classify_failure(_err(status=401)) == "dead"
+    assert classify_failure(_err(status=403)) == "dead"
+
+
+def test_rate_limits_and_network_errors_stay_transient():
+    """429/503 are worth counting toward the threshold, not treating as a dead key."""
+    assert classify_failure(_err(status=429)) == "transient"
+    assert classify_failure(_err(status=503)) == "transient"
+    assert classify_failure(RuntimeError("read timed out")) == "transient"
+
+
+def test_provider_error_preserves_status_through_retry_exhaustion():
+    """The give-up path used to flatten the cause to a string, losing the status the
+    caller needs to tell a dead key from a rate limit."""
+    from pipeline.providers.base import ProviderError, RoleConfig, retrying, _Retryable
+    rc = RoleConfig(role="judge", provider="gemini", max_retries=1, retry_base_s=0)
+
+    def boom():
+        raise _Retryable("HTTP 429 - quota", status=429)
+
+    with pytest.raises(ProviderError) as ei:
+        retrying(boom, rc, "judge")
+    assert ei.value.status == 429

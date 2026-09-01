@@ -55,6 +55,27 @@ SCHEMA = {
 # verdict of zero — it is no verdict at all (see parse_verdict).
 _REQUIRED_SCORES = ("play_quality", "entertainment")
 
+# A bad/disabled key does not heal partway through a run, so stop calling immediately
+# rather than burning the retry ladder on every remaining clip. (Measured: 401s and
+# "prepayment credits are depleted" 429s silently downgraded 14 consecutive August days
+# to local_judge — every clip, no alarm.)
+_DEAD_KEY_STATUS = {401, 403}
+
+
+def classify_failure(e: Exception) -> str:
+    """'refusal' (this clip only) | 'dead' (stop calling) | 'transient' (count it).
+
+    The old code counted every exception the same way, so two network timeouts — or two
+    clips the model declined on content grounds — silently switched the REST OF THE RUN
+    to local scoring. A per-clip refusal says nothing about the next clip.
+    """
+    if getattr(e, "reason", ""):          # RECITATION / SAFETY: about this clip's content
+        return "refusal"
+    if getattr(e, "status", None) in _DEAD_KEY_STATUS:
+        return "dead"
+    return "transient"
+
+
 PROMPT = """You are selecting clips for a daily "League of Legends best moments" YouTube video aimed at an English-speaking audience. Watch this Twitch clip (it has the streamer's audio).
 
 Judge it honestly — most clips are boring and should be dropped. A clip is only worth keeping if a highlights viewer would enjoy it without any context: an impressive outplay, a chaotic teamfight, a multikill, a hilarious fail, or a genuinely funny gameplay moment. A streamer getting embarrassingly outplayed, destroyed, or dying in a comical way IS entertaining fail content — score its entertainment accordingly. Streamers talking, reacting to chat, queueing, or ordinary uneventful kills/deaths are NOT highlights.
@@ -212,6 +233,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     judged = []
     consecutive_fails = 0
+    refused = 0
     for c in clips:
         if consecutive_fails >= 2:   # daily quota dead — stop hammering the API
             if not cache.get(c["id"]):
@@ -253,12 +275,24 @@ def run(cfg: dict, state, date_label: str) -> Path:
             consecutive_fails = 0
             time.sleep(3)   # stay within free-tier RPM limits
         except Exception as e:
-            consecutive_fails += 1
-            if consecutive_fails >= 2:
-                log.warning("API failing repeatedly (%s) — quota likely exhausted; "
-                            "keeping remaining clips unjudged (retried next run)", e)
+            kind = classify_failure(e)
+            if kind == "refusal":
+                # The model declined THIS clip's content. Says nothing about the next
+                # one, so it must not count toward the stop-calling threshold.
+                refused += 1
+                log.warning("%s: judge refused this clip (%s) - scoring locally",
+                            c["id"], getattr(e, "reason", "") or e)
+            elif kind == "dead":
+                consecutive_fails = max(consecutive_fails, 2)   # stop immediately
+                log.error("judge credentials rejected (%s) — the paid selection pass is "
+                          "OFF for this run; remaining clips scored locally", e)
             else:
-                log.warning("API judge failed for %s: %s - keeping clip", c["id"], e)
+                consecutive_fails += 1
+                if consecutive_fails >= 2:
+                    log.warning("API failing repeatedly (%s) — quota likely exhausted; "
+                                "keeping remaining clips unjudged (retried next run)", e)
+                else:
+                    log.warning("API judge failed for %s: %s - keeping clip", c["id"], e)
             r = None
         verdict = parse_verdict(r)
         if verdict is None:  # no answer / incomplete answer — not cached, retried next run
@@ -321,5 +355,16 @@ def run(cfg: dict, state, date_label: str) -> Path:
     src.write_text(
         json.dumps({"date": date_label, "clips": kept}, indent=2, ensure_ascii=False),
         encoding="utf-8")
-    log.info("API judge: %d -> %d kept", len(judged), len(kept))
+    # Degradation has to be LOUD. A dead key or exhausted quota just routes every clip
+    # to local_judge(), which keeps publishing a plausible-looking video with no taste
+    # pass at all — that ran for 14 consecutive August days (08-05..08-19, every clip,
+    # 401s and depleted prepayment credits) and nothing in the log said so at a glance.
+    scored_locally = sum(1 for c in judged if c.get("api_focus") == "local")
+    if scored_locally:
+        say = log.error if scored_locally == len(judged) else log.warning
+        say("JUDGE DEGRADED: %d/%d clips scored locally%s — selection quality is not "
+            "what it looks like. Check the key/quota above.", scored_locally, len(judged),
+            f" ({refused} refused on content)" if refused else "")
+    log.info("API judge: %d -> %d kept (%d judged by API, %d local)",
+             len(judged), len(kept), len(judged) - scored_locally, scored_locally)
     return work

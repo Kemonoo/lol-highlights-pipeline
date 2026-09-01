@@ -507,3 +507,51 @@ Fix, two parts:
 **Lesson worth generalizing: an incremental cache must never double as a done-marker.**
 The two look identical on disk and differ exactly when something went wrong. Worth
 auditing the other stages for the same shape.
+
+### 3. Follow-ups the same day: the GPU crash root-caused, and a 14-day silent outage
+
+**The transcribe crash is a specific-clip cuDNN fault, not VRAM.** Reproduced it exactly:
+the repro died on the *same clip* the 2026-09-01 production run died on (30.016s, `es`
+0.95). Then isolated it — that clip **alone, as the first call, crashes**, so it is the
+input, not accumulated state:
+
+| | result |
+|---|---|
+| clip on `cuda/int8_float16`, `cuda/int8`, `cuda/float16` | **exit 127, every time** |
+| same clip on `cpu/int8` | fine, 25 words |
+| rest of that day (8 clips) on cuda | all fine |
+
+So: **~1 clip in 9 that day; ~2% of clips overall**, which predicts `1-0.98^12 ≈ 22%` of
+runs dying — matching the observed 7 of 32 exactly. Exit **127** is the same code as the
+2026-06-19 cuDNN incident ("Could not load symbol cudnnGetLibConfig, error 127"), so this
+looks like a lazily-loaded cuDNN kernel that only some input shapes reach. **Corrected a
+wrong assumption from earlier in the session: the card reports 8192 MiB with ~2 GB in
+use, so this was never an OOM** and the "4GB card" framing in CLAUDE.md is misleading.
+The committed `cpu_fallback_after_crash` remedy is now validated against the real
+crashing input. Not built: per-clip subprocess isolation, which would cost the poison
+clip instead of the whole run — worth it only if one wasted run per ~5 days starts to hurt.
+
+**The judge was fully dead for 14 consecutive days and nothing said so.** 08-05 → 08-19,
+**every clip on every one of those days was scored by `local_judge`** (`api_focus ==
+"local"`, 0 API verdicts in those logs). Causes, both permanent: `HTTP 401 - Request had
+invalid authentication credentials` and `HTTP 429 - Your prepayment credits are depleted`.
+Across August, **288 of 521 clips (55%) never saw the paid taste pass.** The videos
+published normally and looked fine.
+
+This is the 2026-06-19 lesson repeating verbatim — *a graceful fallback can hide a dead
+dependency* — so the fix is aimed at the hiding, not just the failing:
+
+- **`classify_failure()`**: `refusal` (RECITATION/SAFETY — this clip's content, must not
+  count) / `dead` (401/403 — stop calling at once) / `transient` (429/503/timeouts —
+  count as before). Previously *every* exception counted the same, so two refusals or two
+  network timeouts silently switched the rest of the run to local scoring.
+- **`ProviderError` now carries `status` and `reason`**, and `retrying()` propagates them
+  through the give-up path instead of flattening the cause to a string. Callers could not
+  otherwise tell a dead key from a rate limit without grepping message text.
+- **A loud end-of-stage alarm**: `JUDGE DEGRADED: n/m clips scored locally` (ERROR when
+  all of them, WARNING when some), and the summary line now reads
+  `X judged by API, Y local`. This is the line that would have caught the 14 days.
+
+> Still open: free tier is **20 judge requests/day** against ~17 used per run, so there is
+> almost no headroom — an expansion round pushes past it. A paid key or a smaller
+> `vlm_filter.max_keep` are the two levers.
