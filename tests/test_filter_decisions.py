@@ -7,7 +7,8 @@ API key, and no ffmpeg. A regression here silently changes what gets published.
 """
 import pytest
 
-from pipeline.filtering.api_judge import decide_api, local_judge
+from pipeline.filtering.api_judge import (SCHEMA, decide_api, local_judge,
+                                          parse_verdict)
 from pipeline.filtering.vlm_filter import decide
 
 VF = {"kill_audio_min": 0.30, "hype_only_min": 0.55, "japanese_needs_kills": True}
@@ -215,3 +216,50 @@ def test_detect_trusts_a_real_negative(monkeypatch, tmp_path):
                       VF, None)
     assert clip["vlm_gameplay"] is False
     assert clip["gameplay_votes"] == "0of3"
+
+
+# ── parsing the judge's response ──────────────────────────────────────────────
+# Gemini returns a partial object unless the schema marks the fields required. The
+# scores it drops are `entertainment` and `best_moment_s`, and reading them with
+# `.get(field, 0)` turned "no answer" into the harshest score on the scale — which
+# both dropped clips outright and deflated api_rank_score on the ones it kept.
+
+def test_complete_verdict_parses():
+    v = parse_verdict({"clip_focus": "Gameplay", "play_quality": 8,
+                       "entertainment": 7, "what_happens": "a quadra",
+                       "best_moment_s": 12.4})
+    assert v == {"api_focus": "gameplay", "api_play_quality": 8,
+                 "api_entertainment": 7, "api_what_happens": "a quadra",
+                 "api_best_moment_s": 12}
+
+
+@pytest.mark.parametrize("missing", ["entertainment", "play_quality"])
+def test_missing_score_is_not_a_verdict_of_zero(missing):
+    """The regression: a real 08-01 quadra+ace came back with no `entertainment` and
+    was recorded as ent0_pq8 — scored as maximally boring and ranked 4.8 instead of 8."""
+    r = {"clip_focus": "gameplay", "play_quality": 8, "entertainment": 7,
+         "what_happens": "scores a Quadra Kill and secures an Ace", "best_moment_s": 9}
+    del r[missing]
+    assert parse_verdict(r) is None
+
+
+def test_missing_verdict_routes_to_local_scoring():
+    """None must reach local_judge(), not be silently treated as a zero-score verdict."""
+    c = {"api_focus": "unjudged", "multikill": True, "audio_score": 0.6,
+         "motion_score": 0.2}
+    assert parse_verdict(None) is None
+    decide_api(c, AJ)
+    assert c["api_focus"] == "local" and c["api_decision"] == "KEEP"
+
+
+def test_absent_best_moment_is_allowed_and_defaults_to_zero():
+    """Unlike the scores, best_moment_s only positions a replay — callers already
+    read 0 as 'no timestamp', so it must not invalidate an otherwise good verdict."""
+    v = parse_verdict({"clip_focus": "gameplay", "play_quality": 8,
+                       "entertainment": 7, "what_happens": "x"})
+    assert v is not None and v["api_best_moment_s"] == 0
+
+
+def test_schema_requires_every_field_it_declares():
+    """Guards the actual bug: `properties` without `required` lets the model omit."""
+    assert set(SCHEMA["required"]) == set(SCHEMA["properties"])

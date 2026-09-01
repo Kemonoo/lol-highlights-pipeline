@@ -126,7 +126,7 @@ anywhere saves progress.
 data/raw/<date>/     clips.json + downloaded mp4s (+ lq/ low-quality scoring copies)
 data/work/<date>/    prefiltered.json -> vlm_scored/vlm_filtered.json -> api_scored.json
                      -> transcripts.json -> commentary.json -> vo/ -> segments/
-                     caches: vlm_partial_v3.json, api_partial_v2.json
+                     caches: vlm_partial_v3.json, api_partial_v3.json
                      report.html  <- the visual audit of every decision
 data/output/         <date>.mp4 + <date>.meta.json
 ```

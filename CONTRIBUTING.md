@@ -55,7 +55,7 @@ Not because they're bad ideas generally — because they'd undo a deliberate dec
 ## Cache versioning
 
 Changing **detection** semantics — a prompt, a crop region, what a model is asked —
-means bumping the cache filename (`vlm_partial_v3.json` → `v4`, `api_partial_v2` → `v3`).
+means bumping the cache filename (`vlm_partial_v3.json` → `v4`, `api_partial_v3` → `v4`).
 Changing only **decision** rules never does; those recompute from cache every run.
 
 Getting this backwards mixes old and new model outputs and produces decisions that

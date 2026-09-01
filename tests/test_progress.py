@@ -171,3 +171,18 @@ def test_render_produces_a_bar_and_survives_empty_state(cfg):
 
     rows, started, last = collect(cfg, "1999-01-01")
     assert "1999-01-01" in render(rows, "1999-01-01", started, last, color=False)
+
+
+# ── the transcribe done-marker ────────────────────────────────
+
+def test_partial_transcripts_report_running_not_done(cfg):
+    """transcripts.json is flushed per clip, so it exists as soon as the FIRST clip
+    lands. Treating it as the stage output made a mid-stage crash look complete: the
+    retry skipped the rest and the video shipped with captions on only some clips
+    (all 7 August GPU-crash days, worst case 2 of 9). Only the explicit done-marker,
+    written after every clip has been attempted, counts as done."""
+    write(cfg, "work/2026-07-27/transcripts.json", {"clip_a": {"text": "hi"}})
+    assert states(cfg)["transcribe"] == RUNNING
+
+    write(cfg, "work/2026-07-27/transcripts.done.json", {"clips": 1})
+    assert states(cfg)["transcribe"] == DONE

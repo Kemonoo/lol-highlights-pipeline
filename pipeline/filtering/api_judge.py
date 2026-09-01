@@ -6,7 +6,7 @@ play actually good?" — catches boring-kills, talk-driven hype, misplay deaths.
 
 Per clip: shrink to `shrink_height` (720p by default), send the whole video with its
 audio to the `judge` role, get a schema-constrained verdict, cache it
-(api_partial_v2.json — interruption-safe). Clips too large to inline go through the
+(api_partial_v3.json — interruption-safe). Clips too large to inline go through the
 provider's file-upload path rather than being degraded further.
 Decision rules (pure code, tunable in config):
     KEEP if clip_focus in (gameplay, reaction) and entertainment >= min_entertainment
@@ -31,6 +31,12 @@ log = logging.getLogger("pipeline.api_judge")
 
 # Structured output: the judge's answer drives selection and ordering, so a malformed
 # response costs a clip. The provider maps this onto native JSON-schema decoding.
+#
+# `required` is load-bearing, not decoration. Without it Gemini treats every property as
+# optional and intermittently returns only {clip_focus, play_quality, what_happens} —
+# measured at 57% of 233 cached verdicts, and 4/8 in a controlled retest that dropped to
+# 0/8 once this list was added. The two fields it omits are always `entertainment` and
+# `best_moment_s`, i.e. exactly the ones selection and ranking depend on.
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -41,7 +47,13 @@ SCHEMA = {
         "what_happens": {"type": "string"},
         "best_moment_s": {"type": "number"},
     },
+    "required": ["clip_focus", "play_quality", "entertainment",
+                 "what_happens", "best_moment_s"],
 }
+
+# Scores the verdict is worthless without. A response missing any of them is not a
+# verdict of zero — it is no verdict at all (see parse_verdict).
+_REQUIRED_SCORES = ("play_quality", "entertainment")
 
 PROMPT = """You are selecting clips for a daily "League of Legends best moments" YouTube video aimed at an English-speaking audience. Watch this Twitch clip (it has the streamer's audio).
 
@@ -117,6 +129,33 @@ def local_judge(clip: dict, aj: dict) -> None:
     clip["api_reason"] = f"local_k{kills}{'m' if multi else ''}_a{audio:.2f}_mo{motion:.3f}"
 
 
+def parse_verdict(r: dict | None) -> dict | None:
+    """Map a judge response onto api_* fields, or None if it isn't a usable verdict.
+
+    The old code read every score with `.get(field, 0)`. On a 0-10 scale 0 is not a
+    neutral "unknown" — it is the harshest score there is, so a field the model simply
+    never sent became "maximally boring" and was indistinguishable from a real verdict.
+    That silently dropped clips (the ent>=6 keep path can never fire at 0) and deflated
+    api_rank_score by up to 4 points on clips it did keep, scrambling the countdown.
+
+    Returning None instead routes the clip to local_judge() — the same path used when
+    the API is unreachable, which is the honest description of what happened.
+    """
+    if not r:
+        return None
+    if any(r.get(k) is None for k in _REQUIRED_SCORES):
+        return None
+    return {
+        "api_focus": str(r.get("clip_focus", "other")).lower(),
+        "api_entertainment": int(r["entertainment"]),
+        "api_play_quality": int(r["play_quality"]),
+        "api_what_happens": str(r.get("what_happens", "")),
+        # best_moment_s only positions the replay/Shorts trim; 0 is a fine default and
+        # callers already treat it as "no timestamp".
+        "api_best_moment_s": int(r.get("best_moment_s") or 0),
+    }
+
+
 def decide_api(clip: dict, aj: dict) -> None:
     focus = clip.get("api_focus", "other")
     if focus in ("unjudged", "local"):    # not a real Gemini verdict — score locally
@@ -156,7 +195,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     tmp = work / "api_tmp"
     tmp.mkdir(exist_ok=True)
 
-    partial_path = work / "api_partial_v2.json"
+    partial_path = work / "api_partial_v3.json"
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
 
@@ -221,18 +260,16 @@ def run(cfg: dict, state, date_label: str) -> Path:
             else:
                 log.warning("API judge failed for %s: %s - keeping clip", c["id"], e)
             r = None
-        if r is None:  # failures not cached -> retried next run
+        verdict = parse_verdict(r)
+        if verdict is None:  # no answer / incomplete answer — not cached, retried next run
+            if r:
+                log.warning("%s: judge omitted %s - scoring locally", c["id"],
+                            ", ".join(k for k in _REQUIRED_SCORES if r.get(k) is None))
             local_judge(c, aj)
             judged.append(c)
             continue
-        c["api_focus"] = str(r.get("clip_focus", "other")).lower()
-        c["api_entertainment"] = int(r.get("entertainment", 0) or 0)
-        c["api_play_quality"] = int(r.get("play_quality", 0) or 0)
-        c["api_what_happens"] = str(r.get("what_happens", ""))
-        c["api_best_moment_s"] = int(r.get("best_moment_s", 0) or 0)
-        cache[c["id"]] = {k: c[k] for k in
-                          ("api_focus", "api_entertainment", "api_play_quality",
-                           "api_what_happens", "api_best_moment_s")}
+        c.update(verdict)
+        cache[c["id"]] = dict(verdict)
         partial_path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
         decide_api(c, aj)
         if c.get("api_what_happens"):

@@ -262,6 +262,9 @@ Also: `transcribe.device: auto`. The old CPU pin was working around an unattende
 in cuDNN — root cause was simply **missing cuDNN 9** (`pip install nvidia-cudnn-cu12`).
 `auto` verifies ctranslate2 *and* cuDNN before selecting CUDA, so it can't crash mid-run
 the way it did.
+> **Superseded 2026-09-01 — that last sentence was wrong.** The probe is a *load-time*
+> check that the libraries exist; it says nothing about the GPU surviving inference, and
+> it did not. See the 2026-09-01 entry: 7 of 32 August runs were killed mid-transcribe.
 
 **`python -m pipeline.doctor`** reports all of the above and runs as a preflight on every
 run. First cut of the preflight was wrong in an instructive way: it skipped the actual
@@ -426,3 +429,81 @@ one"** — an artifact adds real failure surface (page weight, JS, the runtime f
 for a task a plain file view already solves. Reach for an artifact when the interaction
 itself needs a browser (the live slider was the actual justification here) — but even
 then, don't make it the only path: render static alternatives too, if it's cheap.
+
+
+## 2026-09-01 — Two silent-damage bugs found by reading a month of logs
+
+Both had been shipping degraded videos for weeks without a single ERROR line. Neither
+was visible from the pipeline's own output; both were found by aggregating `data/logs/`
+and the cached JSON across all of August.
+
+### 1. The judge never sent `entertainment` on half the clips
+
+`api_judge.SCHEMA` declared `properties` but no **`required`**. Gemini treats that as
+"every field optional" and intermittently returned only
+`{clip_focus, play_quality, what_happens}`. Measured: **133 of 233 cached verdicts (57%)
+had `entertainment == 0` — and `best_moment_s == 0` on the exact same 133**, while
+`what_happens` was never empty. Two fields vanish together; the prose one never does.
+
+The amplifier was `int(r.get("entertainment", 0) or 0)`. On a 0-10 scale 0 is not a
+neutral "unknown", it is the harshest score available, so "the model didn't answer"
+became "maximally boring" and was indistinguishable from a real verdict on disk
+(`gameplay_ent0_pq8` looks like a judgement).
+
+Damage, both halves of it:
+- **Dropped clips.** Keep is `ent>=6 or pq>=7`; with ent pinned to 0 only mechanically
+  impressive plays could survive. 50% of DROPPED clips had ent==0 vs 14% of kept, and
+  **73 clips were dropped sitting at `pq=6`** — one point under the rescue bar with
+  entertainment unknown. Hence **14 of the last 16 runs came in under the 8-min target**
+  ("Only 3.2 min of keepable content", 2026-08-31) while the day's pool was blamed.
+- **Mis-ranked the clips it kept.** `rank = 0.4*ent + 0.6*pq`, so a real 08-01 quadra+ace
+  scored `0.4*0 + 0.6*8 = 4.8` instead of ~8. It was kept, but sorted mid-pack — and
+  `countdown_rank` sorts on that score, so **the "#1 clip of the day" was frequently not
+  the best clip**. This half is the one that also degraded the videos that came out at
+  full length.
+
+Fix: `required` on all five fields (verified it survives `to_gemini_schema()`), plus a
+pure `parse_verdict()` that returns `None` on a missing score → `local_judge()`, so
+absent can never again be read as zero. Cache bumped `api_partial_v2` → **v3** (detection
+semantics changed; the 133 poisoned verdicts must be re-judged).
+
+Confirmed live, same clip and prompt, only `required` differing: **4/8 responses
+incomplete without it, 0/8 with it**; a previously-`ent0_pq8` clip came back
+`ent=7 pq=6 bm=10`, rank 4.8 → 6.4.
+
+> **Quota note found while testing:** free tier is **20 judge requests/day** and a run
+> judges ~17. That is the source of the 429/503s in the logs, and an expansion round can
+> exceed it — at which point `consecutive_fails >= 2` trips the sticky fallback and
+> downgrades the *rest of the run* to `local_judge()`. Not addressed yet.
+> Also unaddressed: `finishReason: RECITATION` is a per-clip content refusal but counts
+> toward that same quota-dead heuristic, so two unlucky clips can do the same thing.
+
+### 2. A GPU crash in transcribe made the video ship with missing captions
+
+`transcribe` was killed **mid-inference on 7 of 32 August runs** (08-06, 10, 11, 13, 20,
+22, 09-01) — always right after "Detected language", always on `cuda/int8_float16` on the
+4GB card. **No Python exception**: `run_daily` catches `Exception` and `transcribe` catches
+per-clip, and neither logged anything on any of the 7. The interpreter is gone, so
+**nothing in-process can catch it** — that is why there is no try/except in the fix.
+
+The real damage was not the 10-minute retry. `transcripts.json` is flushed **per clip**
+(deliberately — a crash loses no work), but `_stage_outputs` used that same file as the
+"stage done" marker. So the retry saw it, logged *"already done — skipping"*, and **never
+transcribed the remaining clips**. Perfect correlation across August: **all 7 crash days
+shipped partial captions, all 22 clean days were complete** — 08-31 had captions on
+**2 of 9 clips**. In lean mode the burned captions are the entire mechanism carrying the
+video without narration, so those uploads were substantially broken and nothing said so.
+
+Fix, two parts:
+- **`transcripts.done.json`** — a real done-marker written only after every clip has been
+  attempted; `transcripts.json` stays the incremental cache. Same split `shorts.py`
+  already uses (renders vs. its own `done.json`). `progress.py` had the same conflation
+  and now reports RUNNING (not DONE) on a partial cache.
+- **`transcribe.cpu_fallback_after_crash`** (default true) — drop a breadcrumb before
+  touching the GPU, clear it on clean completion. A run that finds one knows the last
+  attempt was killed there and uses `cpu/int8`. Converts crash→retry→crash into
+  crash→retry-on-CPU→**completes**, and part 1 means the retry actually finishes the job.
+
+**Lesson worth generalizing: an incremental cache must never double as a done-marker.**
+The two look identical on disk and differ exactly when something went wrong. Worth
+auditing the other stages for the same shape.

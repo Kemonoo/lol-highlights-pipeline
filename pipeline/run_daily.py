@@ -92,7 +92,10 @@ def _stage_outputs(cfg: dict, d: str) -> dict:
         "prefilter": work / "prefiltered.json",
         "vlm_filter": work / "vlm_filtered.json",
         "api_judge": work / "api_scored.json",
-        "transcribe": work / "transcripts.json",
+        # NOT transcripts.json: that is an incremental per-clip cache which exists as
+        # soon as the first clip lands, so a mid-stage crash looked "done" and the
+        # retry skipped the remaining clips (they shipped with no captions).
+        "transcribe": work / "transcripts.done.json",
         "commentary": work / "commentary.json",
         "tts": work / "vo" / "timings.json",
         "assemble": data / "output" / f"{d}.mp4",

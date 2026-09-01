@@ -15,6 +15,9 @@ Stage cache: data/work/<date>/transcripts.json
 A result is cached even when empty (no speech) so reruns skip it; only exceptions
 are left uncached for retry. Never blocks the pipeline.
 
+Done-marker: data/work/<date>/transcripts.done.json, written only once every clip has
+been attempted. The cache above is flushed per clip and so cannot double as one.
+
 Requires: pip install faster-whisper
 """
 import json
@@ -30,11 +33,11 @@ _model_key = None
 def _get_model(name: str, device: str = "cpu", compute_type: str = "int8"):
     """Build + cache the faster-whisper model once.
 
-    Defaults to CPU/int8: the CUDA path needs a matching cuDNN, which the unattended
-    Task Scheduler session was missing ("Could not load symbol cudnnGetLibConfig",
-    error 127) — a hard crash that killed the whole run. CPU is slow-ish but bulletproof
-    and lean mode only transcribes the 3 Shorts clips. Set transcribe.device: cuda to opt
-    back into the GPU once cuDNN is sorted."""
+    Callers pass the device resolved by hardware.whisper_device() (`transcribe.device`,
+    default `auto`). This try/except only covers CONSTRUCTION failures — a missing cuDNN
+    raises here and falls back cleanly. It does not cover a GPU that dies during
+    inference, which is a process kill, not an exception; run() handles that case by
+    remembering the crash and choosing CPU on the next attempt."""
     global _model, _model_key
     key = (name, device, compute_type)
     if _model is not None and _model_key == key:
@@ -115,10 +118,23 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cache = load(work)
     model_name = tc.get("model", "small")
     max_s = tc.get("max_seconds")
-    # `auto` picks CUDA only when the whole stack (ctranslate2 + cuDNN 9) checks out,
-    # so an unattended run can't crash in cuDNN the way it used to.
+    # `auto` verifies ctranslate2 + cuDNN 9 are INSTALLED, which is a load-time check —
+    # it cannot prevent the GPU dying mid-inference. Measured: 7 of 32 August runs were
+    # killed inside model.transcribe() on cuda/int8_float16 (4GB card), always right
+    # after language detection, with no Python exception to catch — the interpreter is
+    # gone, so no try/except here can help. What we CAN do is not repeat it: leave a
+    # breadcrumb before touching the GPU, and if it is still there next run, the last
+    # attempt died on the GPU, so use the CPU path that has never crashed.
     from ..hardware import whisper_device
     device, compute = whisper_device(cfg)
+    guard = work / ".transcribe_gpu_crash"
+    if device != "cpu" and tc.get("cpu_fallback_after_crash", True):
+        if guard.exists():
+            log.warning("transcribe: previous attempt was killed on %s - "
+                        "using cpu/int8 this run (slower, but it finishes)", device)
+            device, compute = "cpu", "int8"
+        else:
+            guard.write_text(device, encoding="utf-8")
     skip = {l.lower() for l in tc.get("skip_languages", [])}
 
     try:
@@ -145,8 +161,19 @@ def run(cfg: dict, state, date_label: str) -> Path:
                      r["lang_prob"], len(r["words"]), r["text"][:60] or "(no speech)")
     except KeyboardInterrupt:
         log.warning("transcribe interrupted - %d clip(s) cached", len(cache))
+        guard.unlink(missing_ok=True)   # a deliberate stop is not a GPU crash
         raise
 
-    if not out.exists():                            # ensure the stage marker exists
+    if not out.exists():                            # ensure the cache file exists
         out.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    guard.unlink(missing_ok=True)
+    # Done-marker, written only after every clip has been attempted. transcripts.json
+    # itself cannot serve as one: it is flushed per clip so a crash loses no work, so it
+    # exists even when the stage died a third of the way in — and run_daily's "output
+    # exists = stage done" check then SKIPPED the rest on the retry. Measured over
+    # August: all 7 crash days shipped partial captions (08-31 had 2 of 9 clips), all 22
+    # clean days were complete. In lean mode the captions are what carries the video.
+    # Same split shorts.py already uses (renders vs. its own done.json).
+    (work / "transcripts.done.json").write_text(
+        json.dumps({"clips": len(cache), "device": device}), encoding="utf-8")
     return work

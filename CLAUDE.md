@@ -57,7 +57,7 @@ relative to `pipeline/`).
 4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
    to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
    provider's Files API), scores focus/play_quality/entertainment against a JSON schema
-   (cache `api_partial_v2.json`). No judge available → `local_judge()`, never a hard fail.
+   (cache `api_partial_v3.json`). No judge available → `local_judge()`, never a hard fail.
    Duration-aware selection: fill toward `video.target_minutes_ideal` with fillers
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
@@ -169,8 +169,8 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   a fallback path away.
 - **Detection/decision split**: model outputs cached per clip; keep/reject rules
   recompute from cache on every run. When changing DETECTION semantics (prompts,
-  regions), bump the cache filename version (`vlm_partial_v3` → v4, `api_partial_v2`
-  → v3). When changing only decision rules, never bump.
+  regions), bump the cache filename version (`vlm_partial_v3` → v4, `api_partial_v3`
+  → v4). When changing only decision rules, never bump.
 - **Cost cascade**: free local checks discard ~90%; paid Gemini only sees survivors
   (~1¢/day). Keep it that way.
 - **Gemini image thumbnail (Nano Banana) guardrails**: image generation needs a

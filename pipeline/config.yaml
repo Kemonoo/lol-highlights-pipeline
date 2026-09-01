@@ -147,6 +147,14 @@ transcribe:                   # streamer speech -> English captions (faster-whis
                               # missing cuDNN 9, fixed with `pip install nvidia-cudnn-cu12`.
                               # `python -m pipeline.doctor` checks for it.
   compute_type: auto          # auto | int8 (cpu) | int8_float16 (cuda)
+  cpu_fallback_after_crash: true  # The cuDNN/ctranslate2 probe behind `auto` is a
+                              # load-time check; the GPU can still die mid-inference,
+                              # and it does (7 of 32 August runs, killed with no Python
+                              # exception — nothing in-process can catch that). When on,
+                              # the stage drops a breadcrumb before touching the GPU and
+                              # clears it on success, so if a run finds one it knows the
+                              # last attempt was killed there and uses cpu/int8 instead.
+                              # Costs a slower stage on the retry; buys a finished video.
 
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true
