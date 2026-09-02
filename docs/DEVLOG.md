@@ -761,3 +761,50 @@ next occurrence a non-event.**
 session, sitting in a list of selection lengths. It was read as "a thin day" and passed
 over while chasing the entertainment-score bug. A zero is not a small number — it is a
 different kind of event, and it deserved its own look.
+
+### 9. Videos were short because of a cap upstream of the judge, not the judge
+
+Owner: videos run short; the ideal range is 8-10 min; a hard minimum-length stop would
+be too harsh. Agreed on the last point — the fix is to aim longer, not to abort short.
+
+The target was **already** `target_minutes_ideal: 8` / `max: 10`. Runs were not reaching
+it, and the funnel says why:
+
+```
+day        prefilter -> vlm_keep -> judged -> kept = minutes
+2026-08-25     40         27         18        8     4.3
+2026-08-28     40         26         18       13     7.3
+2026-09-01     40         26         18       15     8.1
+                                     ^^ always exactly 18
+```
+
+`vlm_filter.max_keep: 18` was the binding constraint. vlm_filter kept 22-30 clips a day
+and this cap threw the surplus away **before the judge ever saw it — 87 viable
+candidates discarded over 11 days.** At a ~67% judge keep-rate and ~32s per kept clip,
+18 yields ~6.5 min; 24 yields ~8.6.
+
+Raising it is nearly free: all prefiltered clips are VLM-scored and downloaded anyway
+(`max_keep` is a slice applied *after* scoring), so the only extra cost is judge
+requests — which stopped being scarce the moment the role gained `overflow_models`
+(80/day capacity against 24 needed). **Quality is unaffected: the judge still applies the
+same bar, it just gets more to choose from.**
+
+Replaying the real cached verdicts at both caps showed the honest limit, though: **4 of
+11 days did not move at all**, because `vlm_keep` was only 22-23 — fewer survivors than
+the new cap. Those days were limited further upstream by `prefilter.max_keep: 40` at a
+~65% VLM pass rate. So that went to **52** (~34 survivors, enough to fill the judge every
+day).
+
+> **The real cost is runtime, and it is not small.** vlm_filter runs a local VLM at
+> ~2.0 min/clip and is already 79 of the run's 110 minutes; +12 clips is **+24 min**,
+> finishing ~05:15 instead of ~04:50. Reverting `prefilter.max_keep` to 40 buys that
+> back at the price of short videos on thin days.
+
+Also **deleted `video.target_minutes_min`** rather than wiring it up. It had never been
+read by any code. As a hard floor it would have aborted real days that shipped 3-5 min of
+genuinely good clips, which is worse than a short video; the failure it looked like it
+guarded — a broken extractor yielding nothing — is covered properly by `video.min_clips`.
+
+Invariant worth remembering, since it is easy to break silently:
+`api_judge.daily_budget x len(judge chain) >= vlm_filter.max_keep`, currently 20 x 4 = 80
+against 24. Set the budget below that and the video quietly gets short again.

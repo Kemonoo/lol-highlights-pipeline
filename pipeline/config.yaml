@@ -101,7 +101,15 @@ prefilter:                    # thresholds from twitch_clips training
   audio_exclude: 0.22
   audio_pass: 0.52
   motion_exclude: 0.015
-  max_keep: 40                # best N clips proceed to VLM stage
+  max_keep: 52                # best N clips proceed to VLM stage. Raised from 40 because
+                              # vlm_filter only passes ~65% of these, which on thin days
+                              # left 22-23 survivors — fewer than vlm_filter.max_keep, so
+                              # raising THAT alone changed nothing on 4 of 11 replayed
+                              # days. 52 x 0.65 ~= 34 survivors, enough to fill the judge
+                              # every day. COST: vlm_filter runs at ~2.0 min/clip locally
+                              # and is already the bulk of the run (79 of 110 min), so
+                              # this adds ~24 min, finishing ~05:15 instead of ~04:50.
+                              # Drop it back to 40 if that matters more than length.
   # Keep English + the languages faster-whisper translates well (non-English speech is
   # transcribed → English and captioned). ja/zh stay out (JP talk-context, ZH low-signal).
   include_languages: [en, fr, de, es, ru, pt, it, pl, cs, sk, ko]
@@ -109,7 +117,18 @@ prefilter:                    # thresholds from twitch_clips training
 
 vlm_filter:                   # model choice lives in llm.roles.vlm
   enabled: true
-  max_keep: 18                # clips passed to the API judge
+  max_keep: 24                # clips passed to the API judge. THIS is what sets video
+                              # length, not the judge: vlm_filter keeps 22-30 clips on a
+                              # normal day and this cap threw the rest away before the
+                              # judge ever saw them (87 viable candidates discarded over
+                              # 11 days). At a ~67% judge keep-rate and ~32s per kept
+                              # clip, 18 yields ~6.5 min against an 8-10 min target; 24
+                              # yields ~8.6. Free to raise: all 40 prefiltered clips are
+                              # VLM-scored and downloaded anyway, so this only slices the
+                              # result — the extra cost is judge REQUESTS, which stopped
+                              # being scarce once the role gained overflow_models.
+                              # Quality is unaffected: the judge still applies the same
+                              # bar, it just gets more to choose from.
   # ── stepwise judgment (see vlm_filter.py docstring) ──
   gameplay_frames: 3          # frames for the binary gameplay majority vote
   killfeed_every_s: 5         # seconds between kill-feed crop checks
@@ -130,7 +149,13 @@ api_judge:                    # full-video quality judge — model in llm.roles.
   max_mb: 90                  # inline payload budget (base64-encoded)
   shrink_height: 720          # was 480 — only mattered under the old 20MB cap
   shrink_crf: 28              # was 30; more headroom now that the size cap is 4.5x
-  daily_budget: 18            # max judge REQUESTS per quota-day (0 = unlimited). The
+  daily_budget: 20            # max judge REQUESTS per quota-day, PER MODEL (0 = unlimited).
+                              # Set to the real free-tier ceiling so the chain rotates
+                              # exactly at the boundary instead of discovering it with a
+                              # wasted 429. This is PER MODEL, so the invariant that keeps
+                              # the budget from silently capping video length is
+                              # daily_budget x len(judge chain) >= vlm_filter.max_keep —
+                              # here 20 x 4 = 80 against 24 needed. The
                               # Gemini free tier is a hard 20/day/model
                               # (GenerateRequestsPerDayPerProjectPerModel-FreeTier) and a
                               # run judges 14-18 clips, so without this the wall is hit
@@ -270,9 +295,15 @@ video:
                               # it PUBLICLY, and exited 0. A broken extractor is an
                               # external event that WILL recur, so this makes it loud.
                               # 0 disables the check.
-  target_minutes_min: 5
+  # Target length. Reaching this is a question of how many candidates the judge is
+  # given, not of a floor: see vlm_filter.max_keep, which is what actually sets it.
+  # There is deliberately NO minimum-length setting. `target_minutes_min` used to sit
+  # here and was never read by any code; wiring it up would have aborted real days that
+  # shipped 3-5 min of genuinely good clips, which is worse than a short video. The
+  # failure it looked like it guarded against — a broken extractor yielding nothing — is
+  # covered properly by video.min_clips.
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
-  target_minutes_max: 10
+  target_minutes_max: 10      # trim the weakest clips back down to this
   music_enabled: false         # LEAN MODE: no background music (Synapse-style — the clip's own
                                # crowd/streamer audio carries it). true = loop a music_track bed.
   music_path: ""               # overridden by random pick from music_tracks; set directly to
