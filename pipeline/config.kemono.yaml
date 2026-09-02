@@ -53,3 +53,9 @@ thumbnail:
   provider: local                 # gemini needs a BILLED API key (free tier quota is 0 for
                                    # image models - verified 2026-08-23, every call 429s).
                                    # Switch back to gemini if billing ever gets enabled.
+
+cleanup:
+  keep_output_days: 7             # this channel uploads publicly, so YouTube holds the
+                                  # canonical copy; a week is enough to catch a bad render
+                                  # and re-cut it. Masters are ~550-850 MB each, i.e. about
+                                  # 200 GB/year of local disk if never pruned.

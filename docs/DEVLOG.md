@@ -670,3 +670,35 @@ models include `qwen2.5vl:7b` and `llava:13b`, so a frames-based local judge is 
 option if Google ever tightens — Ollama cannot ingest video, so it would judge sampled
 frames plus the English transcript instead. Not needed while the chain has this much
 headroom; recorded so the option is not rediscovered from scratch.
+
+### 7. data/output was never pruned (14.7 GB, ~200 GB/year)
+
+`cleanup.py` deliberately kept `data/output/` forever while pruning raw clips and
+scratch renders. At 26 videos it was **14.7 GB**, growing ~550-850 MB a night — the one
+item from the original log audit still unaddressed, and the sort of thing that
+eventually breaks the unattended run by filling the disk rather than by failing.
+
+`cleanup.keep_output_days` (default **0 = keep forever**) prunes published masters.
+Two conditions, both required, and the second is the point:
+
+- older than `keep_output_days`, and
+- `state.uploaded_id(date)` returns a YouTube id — i.e. a copy **provably** exists off
+  this machine.
+
+Everything else cleanup removes is reproducible (raw clips re-download, segments
+re-render). A finished master is not, and on a clone with `upload.enabled: false` it is
+the only copy in existence. So age alone must never be sufficient: a failed upload, or a
+machine that does not upload at all, keeps its video regardless of how old it gets.
+`<date>.meta.json` is never pruned — it is the record of who was credited, which
+credits.py exists to guarantee, and it costs kilobytes.
+
+Default stays 0 in config.yaml (a fresh clone must not delete its own work uninvited);
+the owner's `config.kemono.yaml` sets **7**, since that channel publishes publicly and a
+week is enough to catch a bad render and re-cut it. Dry run on the real directory: 19 of
+26 masters removable, **10.5 GB**, all with confirmed video ids; the 7 kept are all
+inside the window, none held back for want of an upload.
+
+> Noticed in the dry run and NOT acted on: `2026-08-13.mp4` is **6 MB** where every other
+> master is 300-850 MB. It was published (`lL0xezmbDZg`), so the pruner will take it, but
+> a 6 MB daily video is almost certainly a broken render that went out anyway — worth a
+> look at that day's log before it disappears.

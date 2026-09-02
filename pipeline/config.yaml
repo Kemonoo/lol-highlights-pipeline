@@ -371,6 +371,16 @@ shorts:
 cleanup:
   enabled: true
   keep_raw_days: 1            # keep raw MP4s for this many days back (for feedback reprocessing)
+  keep_output_days: 0         # keep the finished data/output/<date>.mp4 for this many days,
+                              # then delete it. 0 = keep forever (the default: on a clone
+                              # with uploading disabled the master is the ONLY copy, and
+                              # nothing should delete your work uninvited).
+                              # A master is only ever removed when state.json holds a
+                              # confirmed YouTube id for that date — i.e. a copy provably
+                              # exists off this machine — so a failed or disabled upload
+                              # keeps its video regardless of age. <date>.meta.json is
+                              # never pruned: it is the record of who was credited.
+                              # At ~550-850 MB per video this is ~200 GB/year if left off.
 
 permissions:
   require_permission: false   # when true, only broadcasters approved in state.json are used
