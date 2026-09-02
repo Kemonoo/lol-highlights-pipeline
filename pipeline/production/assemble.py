@@ -387,6 +387,25 @@ def run(cfg: dict, state, date_label: str) -> Path:
         src = work / "prefiltered.json"
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
 
+    # Refuse to build a video that has no video in it.
+    #
+    # Every stage handles "zero items" gracefully, which is how a thin day still ships —
+    # but nothing used to ask whether a video actually existed before publishing one.
+    # On 2026-08-13 yt-dlp's Twitch extractor broke (KeyError('data')) and ALL 181
+    # downloads failed; prefilter scored 181 -> 0 kept, the judge selected 0 clips, and
+    # assemble cheerfully produced a 14.9s intro-plus-outro with no clips, no chapters
+    # and nobody credited — which credits.py titled and upload.py published PUBLICLY,
+    # with the run exiting 0. A broken extractor is an external event that WILL recur;
+    # failing here makes the next one a loud non-event instead of a bad upload.
+    min_clips = int(v.get("min_clips", 3) or 0)
+    if min_clips and len(clips) < min_clips:
+        raise RuntimeError(
+            f"only {len(clips)} clip(s) selected for {date_label} "
+            f"(video.min_clips={min_clips}) - refusing to assemble. This is normally an "
+            f"INPUT failure rather than a thin day: check the log above for download "
+            f"errors (a broken yt-dlp extractor is the usual cause - try "
+            f"`pip install -U yt-dlp`). Lower video.min_clips to allow a video this short.")
+
     seg_dir = work / "segments"
     seg_dir.mkdir(exist_ok=True)
     vo_dir = work / "vo"

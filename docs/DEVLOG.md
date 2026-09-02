@@ -702,3 +702,54 @@ inside the window, none held back for want of an upload.
 > master is 300-850 MB. It was published (`lL0xezmbDZg`), so the pruner will take it, but
 > a 6 MB daily video is almost certainly a broken render that went out anyway — worth a
 > look at that day's log before it disappears.
+
+### 8. A 15-second empty video went out public, and nothing noticed
+
+Found while dry-running the output pruner: `2026-08-13.mp4` was **6 MB** where every
+other master is 300-850 MB. It is 14.9 seconds of brand intro plus outro — no clips, no
+chapters, nobody credited — and it was **published publicly** as `lL0xezmbDZg`.
+
+The cause was entirely external:
+
+```
+download failed for .../CrunchyBumblingCookieBIRB-...:
+  ERROR: An extractor error has occurred. (caused by KeyError('data'))
+```
+
+**yt-dlp's Twitch extractor broke, and all 181 downloads failed.** From there every
+stage did exactly what it was designed to do on an empty input:
+
+```
+Prefilter 2026-08-13: 181 scored -> 0 passed -> 0 kept
+Filter: 0 -> 0 kept
+Selection: 0 clips, 0.0 min
+Assembled 2026-08-13.mp4 (0.0 min, 0 clips)
+Uploaded 2026-08-13.mp4 as https://youtu.be/lL0xezmbDZg (public)
+shorts: 0 processed
+```
+
+Run exited **0**. Graceful zero-item handling is what lets a thin day still ship, so no
+individual stage was wrong — but nothing asked whether a video actually existed before
+publishing one, and `grep` found no such check in assemble.py or upload.py.
+
+`video.min_clips` (default 3) now fails the run at assemble, and upload re-checks the
+chapter count independently. The second check is not redundant: assemble is skipped when
+its output already exists, so a master built by an older version would otherwise sail
+straight to YouTube on the next run, and publishing is the irreversible step. The error
+names the likely cause and the fix (`pip install -U yt-dlp`), because that is what a
+person reading the log at 3am needs.
+
+Three other days also logged `Selection: 0 clips` (08-05, 08-14, 08-28) without
+publishing an empty video — something else stopped them, but the guard genuinely was not
+there. **yt-dlp breaking on Twitch is recurring and external; the guard is what makes the
+next occurrence a non-event.**
+
+> Two loose ends left deliberately: the live video `lL0xezmbDZg` is still public (the
+> owner's channel, the owner's call), and **`video.target_minutes_min: 5` has never been
+> read by any code** — dead since it was written, and evidently intended as this very
+> guard. Not silently repurposed; wire it up or delete it.
+
+**Process note:** `Selection: 0 clips, 0.0 min` was visible in the FIRST log scan of this
+session, sitting in a list of selection lengths. It was read as "a thin day" and passed
+over while chasing the entertainment-score bug. A zero is not a small number — it is a
+different kind of event, and it deserved its own look.

@@ -91,7 +91,10 @@ relative to `pipeline/`).
    per run as a module-level singleton) / edge-tts fallback. Word timestamps; `_intro`
    handled like any line; per-clip failures are skipped, not fatal; timings flushed
    incrementally. `tts.enabled` config switch → `work/<date>/vo/<clip_id>.mp3`
-8. `production/assemble.py` — ffmpeg only (no moviepy): KEMONO brand intro (or text card)
+8. `production/assemble.py` — ffmpeg only (no moviepy). REFUSES to build below
+   `video.min_clips` (default 3), and upload re-checks it: a broken yt-dlp extractor
+   once produced 0 clips and the pipeline published a 15s intro+outro publicly.
+   KEMONO brand intro (or text card)
    → segments (animated PROJECT-style streamer nameplate bottom-left via
    `production/nameplate.py` when `video.nameplate.enabled`, else the plain drawtext
    lower-third; both fall back gracefully), #N countdown badge, drawtext English captions

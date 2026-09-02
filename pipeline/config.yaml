@@ -260,6 +260,16 @@ video:
   outro_music: true             # outro = KEMONO logo over an NCS track's drop (even in lean mode)
   outro_seconds: 12             # length of the music outro
   outro_music_start: 0.33       # fallback drop position (frac of track) if energy detection fails
+  min_clips: 3                # refuse to assemble OR publish a video with fewer clips
+                              # than this. Every stage handles "zero items" gracefully,
+                              # which is how a thin day still ships - but nothing used to
+                              # ask whether a video actually existed before publishing
+                              # one. On 2026-08-13 yt-dlp's Twitch extractor broke and
+                              # all 181 downloads failed; the run assembled a 15-second
+                              # intro-plus-outro with no clips and no credits, published
+                              # it PUBLICLY, and exited 0. A broken extractor is an
+                              # external event that WILL recur, so this makes it loud.
+                              # 0 disables the check.
   target_minutes_min: 5
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10

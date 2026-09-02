@@ -99,6 +99,19 @@ def run(cfg: dict, state, date_label: str) -> None:
         raise FileNotFoundError(f"{meta_f} — run credits first")
     meta = json.loads(meta_f.read_text(encoding="utf-8").rstrip("\x00"))
 
+    # Defence in depth for the stage-skip path: assemble is skipped when its output
+    # already exists, so an empty master built before this guard existed (or by an older
+    # version) would otherwise sail straight to YouTube on the next run. Publishing is
+    # the irreversible step, so check here too rather than trust an upstream guard.
+    min_clips = int(cfg.get("video", {}).get("min_clips", 3) or 0)
+    chapters_f = data / "work" / date_label / "chapters.json"
+    if min_clips and chapters_f.exists():
+        n = len(json.loads(chapters_f.read_text(encoding="utf-8").rstrip("\x00")))
+        if n < min_clips:
+            raise RuntimeError(
+                f"{video.name} has only {n} chapter(s) (video.min_clips={min_clips}) - "
+                f"refusing to publish. Delete the master and re-run to rebuild it.")
+
     yt = build("youtube", "v3", credentials=_credentials(ROOT, data))
     body = {
         "snippet": {
