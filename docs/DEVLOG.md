@@ -744,10 +744,18 @@ publishing an empty video — something else stopped them, but the guard genuine
 there. **yt-dlp breaking on Twitch is recurring and external; the guard is what makes the
 next occurrence a non-event.**
 
-> Two loose ends left deliberately: the live video `lL0xezmbDZg` is still public (the
-> owner's channel, the owner's call), and **`video.target_minutes_min: 5` has never been
-> read by any code** — dead since it was written, and evidently intended as this very
-> guard. Not silently repurposed; wire it up or delete it.
+> **Resolved 2026-09-02**: the owner asked for it, so `lL0xezmbDZg` was deleted from
+> YouTube via the Data API (`videos().delete`, covered by the existing force-ssl scope)
+> after confirming id/title/`PT15S`/public/4 views against the API first. Verified gone
+> on a follow-up read — note the read immediately after the delete still returned the
+> item, so YouTube's propagation lags a moment; do not treat that as failure and retry.
+> The local 6 MB master was removed too. `state.json` keeps its entry: the upload DID
+> happen, the record is history, and it also stops any future re-upload of that date.
+>
+> Still open: **`video.target_minutes_min: 5` has never been read by any code** — dead
+> since it was written, and evidently intended as this very guard. Not silently
+> repurposed (a 5-minute floor would have blocked real days that shipped 3.2-4.5 min);
+> wire it up as a warning or delete the key.
 
 **Process note:** `Selection: 0 clips, 0.0 min` was visible in the FIRST log scan of this
 session, sitting in a list of selection lengths. It was read as "a thin day" and passed
