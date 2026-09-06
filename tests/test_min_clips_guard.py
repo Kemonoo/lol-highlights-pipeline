@@ -52,6 +52,31 @@ def test_min_clips_zero_disables_the_guard(tmp_path):
     assert "refusing to assemble" not in str(ei.value)
 
 
+def test_upload_guard_runs_without_the_optional_google_client(tmp_path, monkeypatch):
+    """The guard must not sit behind the `[upload]` extra's import.
+
+    CI installs only `[dev]`, so googleapiclient is absent there; when the import came
+    first, this path raised "YouTube upload needs its extra" instead of the real reason
+    the video cannot be published, and the guard was untestable without the extra.
+    Cheap local preconditions belong before optional heavy dependencies.
+    """
+    import sys
+    monkeypatch.setitem(sys.modules, "googleapiclient", None)
+    monkeypatch.setitem(sys.modules, "googleapiclient.discovery", None)
+
+    from pipeline.publishing.upload import run
+    w = tmp_path / "work" / "2026-08-13"
+    w.mkdir(parents=True)
+    (w / "chapters.json").write_text(json.dumps([{"rank": 0}]), encoding="utf-8")
+    out = tmp_path / "output"
+    out.mkdir()
+    (out / "2026-08-13.mp4").write_bytes(b"x")
+    (out / "2026-08-13.meta.json").write_text(json.dumps({"title": "t"}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="refusing to publish"):
+        run({"paths": {"data_abs": str(tmp_path)}, "video": {"min_clips": 3},
+             "upload": {"enabled": True, "allow_reupload": True}}, None, "2026-08-13")
+
+
 @pytest.mark.parametrize("nchapters", [0, 2])
 def test_upload_refuses_an_empty_master_from_the_stage_skip_path(tmp_path, nchapters):
     """Defence in depth. assemble is skipped when its output already exists, so a

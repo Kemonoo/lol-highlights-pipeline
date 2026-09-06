@@ -82,14 +82,10 @@ def run(cfg: dict, state, date_label: str) -> None:
                      "(set upload.allow_reupload to force)", date_label, existing)
             return
 
-    try:
-        from googleapiclient.discovery import build
-        from googleapiclient.http import MediaFileUpload
-    except ImportError as e:
-        raise RuntimeError(
-            'YouTube upload needs its extra: pip install -e ".[upload]"') from e
-
-    from ..config import ROOT
+    # Local preconditions first, THEN the optional dependency. Order matters twice over:
+    # a caller with no `[upload]` extra installed still gets the real reason it cannot
+    # publish rather than a packaging error, and the checks stay testable without the
+    # Google client (CI installs only `[dev]`).
     data = Path(cfg["paths"]["data_abs"])
     video = data / "output" / f"{date_label}.mp4"
     meta_f = data / "output" / f"{date_label}.meta.json"
@@ -97,7 +93,6 @@ def run(cfg: dict, state, date_label: str) -> None:
         raise FileNotFoundError(f"{video} — run assemble first")
     if not meta_f.exists():
         raise FileNotFoundError(f"{meta_f} — run credits first")
-    meta = json.loads(meta_f.read_text(encoding="utf-8").rstrip("\x00"))
 
     # Defence in depth for the stage-skip path: assemble is skipped when its output
     # already exists, so an empty master built before this guard existed (or by an older
@@ -112,6 +107,16 @@ def run(cfg: dict, state, date_label: str) -> None:
                 f"{video.name} has only {n} chapter(s) (video.min_clips={min_clips}) - "
                 f"refusing to publish. Delete the master and re-run to rebuild it.")
 
+    meta = json.loads(meta_f.read_text(encoding="utf-8").rstrip("\x00"))
+
+    try:
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+    except ImportError as e:
+        raise RuntimeError(
+            'YouTube upload needs its extra: pip install -e ".[upload]"') from e
+
+    from ..config import ROOT
     yt = build("youtube", "v3", credentials=_credentials(ROOT, data))
     body = {
         "snippet": {

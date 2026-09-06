@@ -7,9 +7,13 @@ API key, and no ffmpeg. A regression here silently changes what gets published.
 """
 import pytest
 
-from pipeline.filtering.api_judge import (SCHEMA, classify_failure, decide_api,
-                                          local_judge,
-                                          parse_verdict)
+from pipeline.filtering.api_judge import (
+    SCHEMA,
+    classify_failure,
+    decide_api,
+    local_judge,
+    parse_verdict,
+)
 from pipeline.filtering.vlm_filter import decide
 
 VF = {"kill_audio_min": 0.30, "hype_only_min": 0.55, "japanese_needs_kills": True}
@@ -298,7 +302,7 @@ def test_rate_limits_and_network_errors_stay_transient():
 def test_provider_error_preserves_status_through_retry_exhaustion():
     """The give-up path used to flatten the cause to a string, losing the status the
     caller needs to tell a dead key from a rate limit."""
-    from pipeline.providers.base import ProviderError, RoleConfig, retrying, _Retryable
+    from pipeline.providers.base import ProviderError, RoleConfig, _Retryable, retrying
     rc = RoleConfig(role="judge", provider="gemini", max_retries=1, retry_base_s=0)
 
     def boom():
