@@ -134,6 +134,18 @@ def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
     attribution = cfg.get("video", {}).get("music_attribution", "")
     if attribution:
         lines += ["", attribution]
+
+    # Riot's "Legal Jibber Jabber" fan-content policy permits this channel's use of their
+    # assets (champion splash art via Data Dragon in the brand intro and thumbnails) AND
+    # permits ad revenue on the videos — but only on condition that a conspicuous notice
+    # in this exact form accompanies the project. Verified against riotgames.com/en/legal
+    # on 2026-09-06; the wording is theirs, don't paraphrase it.
+    riot = cfg.get("upload", {}).get("riot_fan_notice", True)
+    if riot:
+        brand = (cfg.get("video", {}).get("brand", {}) or {}).get("name") or "This channel"
+        lines += ["", f"{brand} was created under Riot Games' \"Legal Jibber Jabber\" "
+                      "policy using assets owned by Riot Games. "
+                      "Riot Games does not endorse or sponsor this project."]
     lines += ["", "#LeagueOfLegends #LoL #lolhighlights #lolbestmoments"]
 
     streamers = sorted({ch["broadcaster"] for ch in chapters if ch["broadcaster"]})

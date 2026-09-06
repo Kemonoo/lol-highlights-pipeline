@@ -347,6 +347,13 @@ video:
     sfx_delay_ms: 120         # SFX onset after the clip starts
 
 upload:
+  riot_fan_notice: true       # append Riot's required fan-content notice to every video
+                              # description. Their "Legal Jibber Jabber" policy permits
+                              # both the use of their assets (champion splash art via Data
+                              # Dragon, used by the brand intro and thumbnails) and ad
+                              # revenue on the videos, but ONLY with a conspicuous notice
+                              # in their exact wording. Turn this off only if you have
+                              # removed every Riot asset from the pipeline.
   # SAFE BY DEFAULT: a fresh clone renders videos but never publishes them.
   # Turn this on deliberately, and move privacy off `private` only once you have
   # watched a few finished videos and are happy to put them on your channel.
