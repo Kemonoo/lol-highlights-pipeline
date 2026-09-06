@@ -28,6 +28,15 @@ video:
   outro_music: true              # ...but the outro still lands on an NCS drop
   nameplate:
     accent: cyan
+  countdown:                       # owner's pick. Impact is a Windows system font, so it
+    font: C:/Windows/Fonts/impact.ttf   # stays in this overlay rather than config.yaml,
+    size: 132                      # which has to keep working on a fresh clone anywhere
+                                   # (countdown.py falls back to Arial Black / Impact /
+                                   # DejaVu if a configured face is missing).
+    y_frac: 0.14                   # measured against the LoL HUD: the top strip
+                                   # (score + FPS row) ends ~y=60 and the killfeed starts
+                                   # ~y=240, so 0.14 centres the badge at y=151, clear of
+                                   # both. Impact is static, so font_weight does nothing.
 
 # Curated out after labelling: JP event / custom-tournament channels whose clips are
 # talk-context rather than highlights. Yours will differ — this list is a finding
