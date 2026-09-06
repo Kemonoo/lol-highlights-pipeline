@@ -271,7 +271,28 @@ video:
     intro_seconds: 2.8
     # See config.kemono.yaml for the fully-branded example this repo actually runs.
   lower_third_seconds: 5.5    # how long the streamer card stays on screen
-  countdown_enabled: true     # clips play worst->best with a #N badge (retention format)
+  countdown_enabled: true
+  countdown:                    # the #N badge, rendered by production/countdown.py as a
+                                # transparent overlay rather than a drawtext filter.
+                                # WHY: assets/fonts/Montserrat-Bold.ttf is a VARIABLE font
+                                # whose default weight is 100 ("Montserrat Thin"). PIL can
+                                # set the weight axis; ffmpeg drawtext cannot — so the old
+                                # badge rendered in Thin and looked spindly no matter how
+                                # heavy the outline got. PIL rendering fixes the weight and
+                                # makes position and animation free.
+    font: assets/fonts/Montserrat-Bold.ttf
+    font_weight: 800            # ignored for static fonts; 100-900 on the variable one.
+                                # For a chunkier look try C:/Windows/Fonts/ariblk.ttf
+                                # (Arial Black) or comicbd.ttf, both heavy by default.
+    size: 132
+    stroke: 9                   # black outline px — this is what keeps it readable on a
+                                # bright gameplay frame without a coloured box
+    color: [255, 255, 255]
+    y_frac: 0.17                # vertical centre as a fraction of frame height. The old
+                                # drawtext badge sat at y=52px (0.05) which read as
+                                # crowding the HUD.
+    margin_x: 96                # px from the right edge
+    hold_seconds: 3.4           # visible time before it fades out     # clips play worst->best with a #N badge (retention format)
   caption_y_frac: 0.70        # vertical position of the burned English captions, as a
                               # fraction of frame height (0.70 = 70% down). The LoL HUD
                               # owns the bottom ~13% and streamer overlays sit just above

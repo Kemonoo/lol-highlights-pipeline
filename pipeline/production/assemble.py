@@ -82,19 +82,6 @@ def _font(text: str, v: dict) -> str:
     return cands[-1].replace(":", r"\:")
 
 
-def _brand_font(v: dict) -> str:
-    """The brand face (Montserrat Bold, shipped in assets/fonts) for on-screen furniture
-    like the countdown badge, falling back to the OS candidates if it is missing.
-
-    Everything else branded — thumbnail, nameplate, intro wordmark — already uses it;
-    the badge was the one element still drawing in whatever bold the OS provided."""
-    from ..config import ROOT
-    p = ROOT / "assets" / "fonts" / "Montserrat-Bold.ttf"
-    if p.exists():
-        return str(p).replace("\\", "/").replace(":", r"\:")
-    return _font("#", v)
-
-
 def _esc(text: str) -> str:
     return "".join(ch for ch in text if ch not in "\\'%:,[]=;").strip()
 
@@ -252,7 +239,8 @@ def _wants_replay(clip: dict, v: dict) -> bool:
 
 def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                nameplate: Path | None = None, sfx: Path | None = None,
-               captions: list | None = None, tail_fade: float | None = None) -> None:
+               captions: list | None = None, tail_fade: float | None = None,
+               badge: Path | None = None) -> None:
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = _duration(mp4)
     lt_end = min(v.get("lower_third_seconds", 5.5) + 0.6, max(dur - 1, 2))
@@ -274,26 +262,6 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
             f"box=1:boxcolor=0x0b0e14@0.72:boxborderw=12:"
             f"x=66:y='h-156+24*(1-{slide})':alpha='{slide}*{fadeout}'"
         )
-    rank = clip.get("countdown_rank")
-    if v.get("countdown_enabled", True) and rank:
-        # Two drawtexts, not one. A single '#19' in the OS default font with a 5px
-        # Twitch-purple stroke gave the '#' the same weight as the number and matched
-        # nothing else in the brand. The number now uses the brand face (Montserrat
-        # Bold, as the thumbnail/nameplate/intro do), the '#' is smaller and dimmer so
-        # it reads as a prefix, and the heavy coloured outline becomes a soft dark
-        # shadow that survives a busy gameplay frame without shouting.
-        fb = _brand_font(v)
-        a = ("alpha='if(lt(t,0.4),t/0.4,"
-             "if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'")
-        num, hsz = str(rank), 52
-        vf += (
-            f",drawtext=fontfile='{fb}':text='{num}':fontsize=118:fontcolor=white:"
-            f"shadowcolor=black@0.75:shadowx=4:shadowy=4:borderw=3:bordercolor=black@0.55:"
-            f"x=w-text_w-64:y=52:{a}"
-            f",drawtext=fontfile='{fb}':text='#':fontsize={hsz}:fontcolor=white@0.72:"
-            f"shadowcolor=black@0.7:shadowx=3:shadowy=3:"
-            f"x=w-text_w-64-{len(num)*66}:y=76:{a}"
-        )
     cap = _caption_dt(captions, v)               # burned English speech captions
     if cap:
         vf += "," + cap
@@ -314,19 +282,30 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
         vo_i = idx; idx += 1; args += ["-i", str(vo)]
     if nameplate is not None:
         np_i = idx; idx += 1; args += ["-i", str(nameplate)]
+    cd_i = None
+    if badge is not None and badge.exists():
+        cd_i = idx; idx += 1; args += ["-i", str(badge)]
     if sfx is not None:
         sfx_i = idx; idx += 1; args += ["-i", str(sfx)]
 
     fc = []
-    # video: base render, then overlay the alpha nameplate for its intro window
+    # video: base render, then the alpha overlays (nameplate, countdown badge), each
+    # only for its own window. Chained rather than nested so either can be absent.
+    fc.append(f"[0:v]{vf}[vb]")
+    stage = "vb"
     if np_i is not None:
         npc = v.get("nameplate", {})
         np_end = float(npc.get("hold_seconds", 5.0)) + 0.6
-        fc.append(f"[0:v]{vf}[vb]")
-        fc.append(f"[vb][{np_i}:v]overlay=0:0:eof_action=pass:"
-                  f"enable='lte(t,{np_end:.2f})'[v]")
-    else:
-        fc.append(f"[0:v]{vf}[v]")
+        fc.append(f"[{stage}][{np_i}:v]overlay=0:0:eof_action=pass:"
+                  f"enable='lte(t,{np_end:.2f})'[vnp]")
+        stage = "vnp"
+    if cd_i is not None:
+        cdc = v.get("countdown", {}) or {}
+        cd_end = float(cdc.get("hold_seconds", 3.4)) + 0.8
+        fc.append(f"[{stage}][{cd_i}:v]overlay=0:0:eof_action=pass:"
+                  f"enable='lte(t,{cd_end:.2f})'[vcd]")
+        stage = "vcd"
+    fc.append(f"[{stage}]null[v]")
 
     # audio: clip (ducked under VO) → mix VO → mix SFX → fade
     if vo_i is not None:
@@ -381,14 +360,15 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
 
 def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                    nameplate: Path | None = None, sfx: Path | None = None,
-                   captions: list | None = None, tail_fade: float | None = None) -> None:
+                   captions: list | None = None, tail_fade: float | None = None,
+                   badge: Path | None = None) -> None:
     """Main part + optional replay, concatenated into one segment file.
 
     `tail_fade` lengthens the closing fade, used on the LAST clip so the video eases
     into the outro instead of cutting from a peak straight into music."""
     main = out.with_suffix(".main.mp4")
     _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx, captions=captions,
-               tail_fade=tail_fade if not _wants_replay(clip, v) else None)
+               tail_fade=tail_fade if not _wants_replay(clip, v) else None, badge=badge)
     want_replay = _wants_replay(clip, v)
     replay = out.with_suffix(".replay.mp4")
     if want_replay and _replay_part(clip, mp4, replay, v):
@@ -525,12 +505,15 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 np_path = _np.build(cfg, c)
             try:
                 caps = transcripts.get(c["id"], {}).get("words")   # burned English captions
+                from . import countdown as _cd
+                badge = _cd.build(cfg, c.get("countdown_rank"))
                 is_last = c is clips[-1]
                 render_segment(c, mp4, svo, seg, v, nameplate=np_path,
                                sfx=sfx_path if np_path else None, captions=caps,
                                tail_fade=(float(v.get("outro_handoff_fade", 1.2))
                                           if is_last and v.get("outro_enabled", True)
-                                          else None))
+                                          else None),
+                               badge=badge)
                 mark(seg, svo)
             except Exception as e:
                 log.warning("segment failed for %s: %s", c["id"], e)
