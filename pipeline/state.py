@@ -58,6 +58,18 @@ class State:
                 return v["youtube_id"]
         return None
 
+    def recent_titles(self, n: int = 3) -> list:
+        """Titles of the last n uploads, newest first — so a new title can avoid
+        opening with the same word as the one before it."""
+        out = []
+        for v in reversed(self._d.get("videos", [])):
+            t = v.get("title")
+            if t and t not in out:
+                out.append(t)
+            if len(out) >= n:
+                break
+        return out
+
     # ── API request budget ─────────────────────────────────────────────
     @staticmethod
     def quota_day() -> str:

@@ -284,6 +284,18 @@ video:
   outro_enabled: true
   outro_music: true             # outro = KEMONO logo over an NCS track's drop (even in lean mode)
   outro_seconds: 12             # length of the music outro
+  outro_fade_in: 2.5            # seconds the outro music takes to reach full volume.
+                                # Was effectively 0.5s AND the fade was applied before
+                                # loudnorm, which normalised most of it back out, so the
+                                # music arrived at full level right after the last clip's
+                                # peak. Measured on 2026-09-05: the final clip crested at
+                                # -13.9 LUFS (a pentakill), hard cut, outro back to -19.6
+                                # 0.6s later. It read as a jumpscare rather than an ending.
+  outro_music_leadin: 2.5       # start the track this many seconds BEFORE its detected
+                                # drop, so the outro opens in the build and the drop lands
+                                # after the fade completes. 0 = start on the drop (old).
+  outro_handoff_fade: 1.2       # the LAST clip fades out over this instead of the usual
+                                # 0.35s, so picture and sound ease into the outro together.
   outro_music_start: 0.33       # fallback drop position (frac of track) if energy detection fails
   min_clips: 3                # refuse to assemble OR publish a video with fewer clips
                               # than this. Every stage handles "zero items" gracefully,

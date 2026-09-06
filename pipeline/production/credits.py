@@ -57,6 +57,13 @@ DEFAULT_TITLE_STYLES = [
     "How Is This Even Possible?! {emoji} LoL Daily Top {n}",
     "{hook} {emoji} The Best League of Legends Moments Today",
     "{star} Went CRAZY… {emoji} LoL Best Moments (Top {n})",
+    # Hook TRAILING rather than leading. Without one of these, a day whose opening word
+    # is blocked (because yesterday used it) loses the hook entirely — and a pentakill
+    # two days running is real information worth keeping, just not worth repeating as
+    # the first word. Appositive form, so it stays grammatical for every hook in _HOOKS
+    # ("PENTAKILL", "TILTED", "HOW DID HE LIVE" all read fine after a dash).
+    "{emoji} LoL Daily Top {n} — {hook}",
+    "LoL Best Moments of the Day {emoji} {hook}",
 ]
 
 
@@ -97,24 +104,50 @@ def _star(clips: list[dict]) -> str:
     return nm if nm.isascii() else (best.get("broadcaster_login", "") or "")
 
 
-def _title(cfg: dict, date_label: str, clips: list[dict], n: int, episode: int) -> str:
-    """Clickbait hook + episode series-marker, rotating daily (≤ 100 chars)."""
+def _opening_word(title: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "", (title or "").split(" ")[0]).lower()
+
+
+def _title(cfg: dict, date_label: str, clips: list[dict], n: int, episode: int,
+           recent_titles: list | None = None) -> str:
+    """Clickbait hook + episode series-marker, rotating daily (≤ 100 chars).
+
+    `recent_titles` stops consecutive uploads opening on the same word. The hook itself
+    is left alone — a pentakill really is the best thing that happened, and two in a row
+    is a fact about the clips, not a bug — but two videos both LEADING with "PENTAKILL"
+    look like a duplicate in the subscriptions feed. So the hook stays and the sentence
+    around it changes: pick a style that opens differently.
+    """
     up = cfg.get("upload", {})
     seed = int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16)
     ctx = {"hook": _hook(clips, date_label), "n": n or len(clips),
            "star": _star(clips), "emoji": _EMOJI[seed % len(_EMOJI)]}
     styles = up.get("title_styles") or DEFAULT_TITLE_STYLES
     usable = [s for s in styles if not ("{star}" in s and not ctx["star"])] or DEFAULT_TITLE_STYLES[:2]
-    head = re.sub(r"\s{2,}", " ", usable[seed % len(usable)].format(**ctx)).strip()
+
+    def render(style: str) -> str:
+        return re.sub(r"\s{2,}", " ", style.format(**ctx)).strip()
+
+    order = [usable[(seed + i) % len(usable)] for i in range(len(usable))]
+    head = render(order[0])
+    avoid = {_opening_word(t) for t in (recent_titles or [])[:1] if t}
+    if avoid:
+        for style in order:
+            cand = render(style)
+            if _opening_word(cand) not in avoid:
+                head = cand
+                break
     if up.get("title_date", True):
         return f"{head[:72]} | {episode}".strip()[:100]
     return head[:100]
 
 
 def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
-                   clips: list[dict], episode: int) -> dict:
+                   clips: list[dict], episode: int,
+                   recent_titles: list | None = None) -> dict:
     emoji = _EMOJI[int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16) % len(_EMOJI)]
-    title = _title(cfg, date_label, clips, len(chapters), episode)
+    title = _title(cfg, date_label, clips, len(chapters), episode,
+                   recent_titles=recent_titles)
 
     # Lean mode ships no voiceover, so don't advertise commentary that isn't there —
     # this is the description viewers read under a public video.
@@ -164,7 +197,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     clips = (json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
              if src.exists() else [])
     episode = state.episode_number(date_label)
-    meta = build_metadata(cfg, date_label, chapters, clips, episode)
+    meta = build_metadata(cfg, date_label, chapters, clips, episode,
+                          recent_titles=state.recent_titles() if state else None)
     out = data / "output" / f"{date_label}.meta.json"
     out.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("Metadata: %s", meta["title"])

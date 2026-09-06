@@ -82,6 +82,19 @@ def _font(text: str, v: dict) -> str:
     return cands[-1].replace(":", r"\:")
 
 
+def _brand_font(v: dict) -> str:
+    """The brand face (Montserrat Bold, shipped in assets/fonts) for on-screen furniture
+    like the countdown badge, falling back to the OS candidates if it is missing.
+
+    Everything else branded — thumbnail, nameplate, intro wordmark — already uses it;
+    the badge was the one element still drawing in whatever bold the OS provided."""
+    from ..config import ROOT
+    p = ROOT / "assets" / "fonts" / "Montserrat-Bold.ttf"
+    if p.exists():
+        return str(p).replace("\\", "/").replace(":", r"\:")
+    return _font("#", v)
+
+
 def _esc(text: str) -> str:
     return "".join(ch for ch in text if ch not in "\\'%:,[]=;").strip()
 
@@ -180,12 +193,29 @@ def _branded_music_outro(out: Path, v: dict, cfg: dict, music: str) -> None:
     logo = brand.build_logo(cfg)
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = float(v.get("outro_seconds", 12))
-    start = _find_drop(music, dur, float(v.get("outro_music_start", 0.33)))
+    drop = _find_drop(music, dur, float(v.get("outro_music_start", 0.33)))
+
+    # Lead-in: start BEFORE the drop, not on it. _find_drop returns the track's energy
+    # peak, so cutting there put the loudest moment of the music 0.5s after the last
+    # clip's own peak. Measured on 2026-09-05: the final clip crested at -13.9 LUFS (a
+    # pentakill), hard-cut, and the outro was back at full -19.6 LUFS 0.6s later — a
+    # ~24 LU swing inside a second, which reads as a jumpscare rather than an ending.
+    # Backing up into the track's build means the drop lands a beat AFTER the fade
+    # completes, which is what the build is for.
+    lead = float(v.get("outro_music_leadin", 2.5))
+    start = max(0.0, drop - lead)
+    fade_in = float(v.get("outro_fade_in", 2.5))
+    fade_in = max(0.1, min(fade_in, dur / 2))
+
     zoom = (f"scale={w*2}:-1,zoompan=z='min(zoom+0.0009,1.08)':d={int(dur*fps)}:"
             f"s={w}x{h}:fps={fps}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
-    vf = f"{zoom},fade=t=in:st=0:d=0.5,fade=t=out:st={dur-0.6:.2f}:d=0.6,format=yuv420p"
-    af = (f"aresample=44100,afade=t=in:st=0:d=0.5,afade=t=out:st={dur-1.0:.2f}:d=1.0,"
-          f"loudnorm=I=-16:TP=-1.5:LRA=11")
+    vf = (f"{zoom},fade=t=in:st=0:d={min(fade_in, 1.5):.2f},"
+          f"fade=t=out:st={dur-0.6:.2f}:d=0.6,format=yuv420p")
+    # loudnorm BEFORE the fade: it measures the whole segment and re-gains it, so a fade
+    # applied first gets partly normalised back out. Fading last is what actually ramps.
+    af = (f"aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,"
+          f"afade=t=in:st=0:d={fade_in:.2f}:curve=ihsin,"
+          f"afade=t=out:st={dur-1.0:.2f}:d=1.0")
     _ff(["-loop", "1", "-i", str(logo),
          "-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", str(music),
          "-filter_complex", f"[0:v]{vf}[v];[1:a]{af}[a]",
@@ -215,9 +245,14 @@ def render_outro(out: Path, streamers: list[str], v: dict, cfg: dict) -> None:
 
 # ── per-clip segment (main + optional slow-mo replay) ─────────────────────────
 
+def _wants_replay(clip: dict, v: dict) -> bool:
+    return bool(v.get("replay_enabled", False)
+                and clip.get("api_rank_score", 0) >= v.get("replay_min_score", 7))
+
+
 def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                nameplate: Path | None = None, sfx: Path | None = None,
-               captions: list | None = None) -> None:
+               captions: list | None = None, tail_fade: float | None = None) -> None:
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = _duration(mp4)
     lt_end = min(v.get("lower_third_seconds", 5.5) + 0.6, max(dur - 1, 2))
@@ -241,17 +276,35 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
         )
     rank = clip.get("countdown_rank")
     if v.get("countdown_enabled", True) and rank:
-        fb = _font("#", v)
+        # Two drawtexts, not one. A single '#19' in the OS default font with a 5px
+        # Twitch-purple stroke gave the '#' the same weight as the number and matched
+        # nothing else in the brand. The number now uses the brand face (Montserrat
+        # Bold, as the thumbnail/nameplate/intro do), the '#' is smaller and dimmer so
+        # it reads as a prefix, and the heavy coloured outline becomes a soft dark
+        # shadow that survives a busy gameplay frame without shouting.
+        fb = _brand_font(v)
+        a = ("alpha='if(lt(t,0.4),t/0.4,"
+             "if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'")
+        num, hsz = str(rank), 52
         vf += (
-            f",drawtext=fontfile='{fb}':text='#{rank}':fontsize=110:fontcolor=white:"
-            f"borderw=5:bordercolor=0x9146FF:x=w-text_w-64:y=56:"
-            f"alpha='if(lt(t,0.4),t/0.4,if(lt(t,3.6),1,max(0,1-(t-3.6)/0.4)))'"
+            f",drawtext=fontfile='{fb}':text='{num}':fontsize=118:fontcolor=white:"
+            f"shadowcolor=black@0.75:shadowx=4:shadowy=4:borderw=3:bordercolor=black@0.55:"
+            f"x=w-text_w-64:y=52:{a}"
+            f",drawtext=fontfile='{fb}':text='#':fontsize={hsz}:fontcolor=white@0.72:"
+            f"shadowcolor=black@0.7:shadowx=3:shadowy=3:"
+            f"x=w-text_w-64-{len(num)*66}:y=76:{a}"
         )
     cap = _caption_dt(captions, v)               # burned English speech captions
     if cap:
         vf += "," + cap
-    vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
-    afade = f"afade=t=in:st=0:d=0.3,afade=t=out:st={max(dur-0.35,0):.2f}:d=0.35"
+    # 0.35s everywhere, except the clip that hands over to the outro: cutting from a
+    # peak (a pentakill scream) straight into music reads as a jumpscare, so the last
+    # clip eases out over `outro_handoff_fade` instead.
+    fo = float(tail_fade if tail_fade else 0.35)
+    fo = max(0.2, min(fo, max(dur - 0.5, 0.2)))
+    vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-fo,0):.2f}:d={fo:.2f}"
+    afade = (f"afade=t=in:st=0:d=0.3,"
+             f"afade=t=out:st={max(dur-fo,0):.2f}:d={fo:.2f}:curve=ihsin")
 
     # assign input indices in the order the inputs are appended below
     args = ["-i", str(mp4)]
@@ -328,12 +381,15 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
 
 def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                    nameplate: Path | None = None, sfx: Path | None = None,
-                   captions: list | None = None) -> None:
-    """Main part + optional replay, concatenated into one segment file."""
+                   captions: list | None = None, tail_fade: float | None = None) -> None:
+    """Main part + optional replay, concatenated into one segment file.
+
+    `tail_fade` lengthens the closing fade, used on the LAST clip so the video eases
+    into the outro instead of cutting from a peak straight into music."""
     main = out.with_suffix(".main.mp4")
-    _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx, captions=captions)
-    want_replay = (v.get("replay_enabled", False)
-                   and clip.get("api_rank_score", 0) >= v.get("replay_min_score", 7))
+    _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx, captions=captions,
+               tail_fade=tail_fade if not _wants_replay(clip, v) else None)
+    want_replay = _wants_replay(clip, v)
     replay = out.with_suffix(".replay.mp4")
     if want_replay and _replay_part(clip, mp4, replay, v):
         lst = out.with_suffix(".txt")
@@ -469,8 +525,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 np_path = _np.build(cfg, c)
             try:
                 caps = transcripts.get(c["id"], {}).get("words")   # burned English captions
+                is_last = c is clips[-1]
                 render_segment(c, mp4, svo, seg, v, nameplate=np_path,
-                               sfx=sfx_path if np_path else None, captions=caps)
+                               sfx=sfx_path if np_path else None, captions=caps,
+                               tail_fade=(float(v.get("outro_handoff_fade", 1.2))
+                                          if is_last and v.get("outro_enabled", True)
+                                          else None))
                 mark(seg, svo)
             except Exception as e:
                 log.warning("segment failed for %s: %s", c["id"], e)
