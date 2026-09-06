@@ -33,10 +33,11 @@ video:
     size: 132                      # which has to keep working on a fresh clone anywhere
                                    # (countdown.py falls back to Arial Black / Impact /
                                    # DejaVu if a configured face is missing).
-    y_frac: 0.14                   # measured against the LoL HUD: the top strip
-                                   # (score + FPS row) ends ~y=60 and the killfeed starts
-                                   # ~y=240, so 0.14 centres the badge at y=151, clear of
-                                   # both. Impact is static, so font_weight does nothing.
+    y_frac: 0.105                  # centre y=113. Sits in the HUD gap: the score+FPS rows
+                                   # end ~y=55 and the blue-bordered killfeed portraits
+                                   # start ~y=240. 0.14 left it almost touching the
+                                   # killfeed; 0.09 crowds the FPS row. Impact is a static
+                                   # font, so font_weight does nothing for it.
 
 # Curated out after labelling: JP event / custom-tournament channels whose clips are
 # talk-context rather than highlights. Yours will differ — this list is a finding

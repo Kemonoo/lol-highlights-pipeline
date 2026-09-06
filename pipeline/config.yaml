@@ -291,7 +291,8 @@ video:
     y_frac: 0.17                # vertical centre as a fraction of frame height. The old
                                 # drawtext badge sat at y=52px (0.05) which read as
                                 # crowding the HUD.
-    margin_x: 96                # px from the right edge
+    margin_x: 64                # px from the right edge (matches where the old drawtext
+                                # badge sat — there was no reason to move it inward)
     hold_seconds: 3.4           # visible time before it fades out     # clips play worst->best with a #N badge (retention format)
   caption_y_frac: 0.70        # vertical position of the burned English captions, as a
                               # fraction of frame height (0.70 = 70% down). The LoL HUD
