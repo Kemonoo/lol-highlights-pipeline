@@ -808,3 +808,62 @@ guarded — a broken extractor yielding nothing — is covered properly by `vide
 Invariant worth remembering, since it is easy to break silently:
 `api_judge.daily_budget x len(judge chain) >= vlm_filter.max_keep`, currently 20 x 4 = 80
 against 24. Set the budget below that and the video quietly gets short again.
+
+---
+
+## 2026-09-09 — Two transcriptions on screen at once; caption grouping
+
+### The purple caption is the streamer's, not ours (settled)
+
+Raised before, dismissed before, never actually verified. It is **burned into the Twitch
+source**, and here is the proof rather than the assertion:
+
+* `data/raw/2026-09-08/SmokyHomelyWitchMVGame-*.mp4` at t=25.5s — the *untouched
+  download*, before the pipeline opens it — already shows `me whatever you` with a purple
+  word-highlight at y≈0.90.
+* The same moment in `data/output/2026-09-08.mp4` shows that line **plus** our white
+  `YOU` at y=0.70. Two renderers, one of them ours.
+* Their ASR and ours disagree on words (`Tavis` vs whisper's `Tabis`), which no single
+  renderer would do.
+
+It is a live-caption widget (Streamlabs-style), and it is **common**: sampling one frame
+per clip *while the streamer was speaking* found it on **8 of the 17** clips in the
+2026-09-08 video, including a Portuguese one. Nothing can remove it — it is pixels.
+
+So `video.skip_caption_when_source_has_one`: when the source already has a caption **and**
+the speech is already English, we draw nothing. Non-English keeps ours, because theirs is
+in their language and ours is the translation — two lines is the accepted cost there.
+The burned caption's language is never read off the screen: a widget transcribes its own
+streamer, so whisper's detected language is the same language, for free.
+
+> **Sampling at speech times is the whole trick.** The first version sampled evenly across
+> the clip and scored **2/4** — a coin flip — because a caption widget draws nothing during
+> silence, so most sampled frames had no caption *even on clips that have the widget*.
+> whisper already knows when speech happens. Sampling inside dense word runs makes a
+> widget clip show a caption in nearly every frame and a clean clip in none, which is a
+> gap wide enough to threshold on (`source_caption_min_ratio: 0.75`). The threshold is
+> deliberately high and asymmetric: a false positive costs a clip its captions, a false
+> negative only keeps the old behaviour.
+
+### Our own captions: overlapping, and unreadably fast
+
+Both defects were **arithmetic, not rendering**, and both are now in `_caption_groups`
+(pure, unit-tested, no ffmpeg):
+
+* **Overlap.** Every word was shown for `max(0.15, end - start)`. whisper routinely emits
+  0.06s words back to back — `to` 3.06-3.14, `deal` 3.14-3.28 — so the 0.15s floor pushed
+  a word's window past the *next* word's start and drawtext drew both, centred, on top of
+  each other. Group windows are now clamped to end before the next one begins, so
+  disjointness is structural rather than a consequence of the numbers happening to work.
+* **Pace.** One word per 0.15s is ~7 words/second. Captions now group into 1-3 words
+  (`caption_max_words`), breaking on silence, sentence punctuation, or 1.9s — which is
+  what the streamers' own widgets do, and it buys reading time for free.
+
+`publishing/shorts.py::_caption_filters` had the same two bugs verbatim and now shares
+`_caption_groups`.
+
+Also: `_esc` strips `'` (it needs escaping in a filtergraph), so `he's` rendered as `HES`.
+Captions now substitute U+2019 first, which passes through untouched.
+
+**Cost:** ~6 local VLM calls per clip, ~+10 min on the nightly run. Cached per date in
+`work/<date>/burned_captions.json`; unavailable Ollama = caption everything, as before.

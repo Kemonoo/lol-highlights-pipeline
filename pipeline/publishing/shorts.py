@@ -235,22 +235,33 @@ def _cap_font() -> str:
     return _CAP_FONTS[-1].replace(":", r"\:")
 
 
-def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64) -> str:
-    """One drawtext per word (only one visible at a time), centred, white with a black
-    outline, its BOTTOM sitting `cap_mv` px above the frame bottom. Returns a comma-joined
-    filterchain. drawtext+fontfile renders everywhere (no fontconfig/libass font matching)."""
+def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64,
+                     v: dict | None = None) -> str:
+    """One drawtext per caption PHRASE (only one visible at a time), centred, white with a
+    black outline, its BOTTOM sitting `cap_mv` px above the frame bottom. Returns a
+    comma-joined filterchain. drawtext+fontfile renders everywhere (no fontconfig/libass
+    font matching).
+
+    Grouping and the disjoint-window guarantee come from assemble._caption_groups — this
+    had the same one-word-at-a-time flashing and the same overlap arithmetic as the
+    long-form captions, so it gets the same fix and the same config keys."""
+    from ..production.assemble import _caption_groups
+    v = v or {}
     font = _cap_font()
     y = TARGET_H - cap_mv - fontsize
     seg = []
-    for w in words:
-        word = _clean_overlay(w.get("word", "")).upper()
-        if not word:
+    for g in _caption_groups(words,
+                             max_words=int(v.get("caption_max_words", 3)),
+                             max_gap=float(v.get("caption_group_gap", 0.65)),
+                             max_seconds=float(v.get("caption_max_seconds", 1.9)),
+                             min_seconds=float(v.get("caption_min_seconds", 0.62))):
+        text = _clean_overlay(g["text"].replace("'", "’")).upper()
+        if not text:
             continue
-        t0 = float(w["start"]); t1 = max(t0 + 0.15, float(w["end"]))
         seg.append(
-            f"drawtext=fontfile='{font}':text='{word}':fontsize={fontsize}:fontcolor=white:"
+            f"drawtext=fontfile='{font}':text='{text}':fontsize={fontsize}:fontcolor=white:"
             f"borderw=7:bordercolor=black:x=(w-text_w)/2:y={y}:"
-            f"enable='between(t,{t0:.2f},{t1:.2f})'")
+            f"enable='between(t,{g['start']:.2f},{g['end']:.2f})'")
     return ",".join(seg)
 
 

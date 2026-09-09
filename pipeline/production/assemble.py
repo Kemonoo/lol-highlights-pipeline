@@ -86,29 +86,114 @@ def _esc(text: str) -> str:
     return "".join(ch for ch in text if ch not in "\\'%:,[]=;").strip()
 
 
+_SENT_END = ".!?"
+
+
+def _is_english(lang: str | None) -> bool:
+    """Whisper reports 'en', but also 'en-US' / 'English' depending on the backend."""
+    s = (lang or "").strip().lower().replace("_", "-")
+    return s == "english" or s == "en" or s.startswith("en-")
+
+
+def _ends_sentence(word: str) -> bool:
+    """True if `word` closes a sentence — trailing quotes/brackets don't hide the mark."""
+    return word.rstrip("\"'’)]").endswith(tuple(_SENT_END))
+
+
+def _caption_groups(words: list | None, max_words: int = 3, max_gap: float = 0.65,
+                    max_seconds: float = 1.9, min_seconds: float = 0.62,
+                    pad: float = 0.06) -> list[dict]:
+    """Group per-word timestamps into short readable phrases with DISJOINT windows.
+
+    Two defects in the old one-word-at-a-time chain are fixed here, and both were
+    arithmetic rather than rendering:
+
+    * Overlap. Each word was shown for `max(0.15, end - start)`. Whisper routinely
+      emits words 0.06s long back to back ("to" 3.06-3.14, "deal" 3.14-3.28), so the
+      0.15s floor pushed a word's window past the start of the next one and drawtext
+      happily drew both — one on top of the other, since both are centred.
+    * Unreadable pace. Even without overlap, one word per 0.15s is ~7 words/second;
+      nobody reads that. Grouping is what the streamers' own caption widgets do, and
+      it buys reading time for free because a 3-word phrase holds for the sum of its
+      words' durations.
+
+    Groups break on: `max_words`, a silence longer than `max_gap`, a total longer than
+    `max_seconds`, or sentence-ending punctuation. Windows are then clamped so a group
+    always ends `pad` before the next one begins — that is the structural guarantee
+    that nothing ever overlaps, whatever whisper reports.
+    """
+    if not words:
+        return []
+    clean = []
+    for w in words:
+        text = (w.get("word") or "").strip()
+        if not text:
+            continue
+        try:
+            t0, t1 = float(w["start"]), float(w["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        clean.append({"word": text, "start": t0, "end": max(t0, t1)})
+    if not clean:
+        return []
+    clean.sort(key=lambda x: x["start"])
+
+    groups: list[dict] = []
+    cur: list[dict] = []
+    for w in clean:
+        if cur:
+            gap = w["start"] - cur[-1]["end"]
+            span = w["end"] - cur[0]["start"]
+            if (len(cur) >= max_words or gap > max_gap or span > max_seconds
+                    or _ends_sentence(cur[-1]["word"])):
+                groups.append(cur)
+                cur = []
+        cur.append(w)
+    if cur:
+        groups.append(cur)
+
+    out = []
+    for i, g in enumerate(groups):
+        t0 = g[0]["start"]
+        t1 = max(g[-1]["end"], t0 + min_seconds)
+        if i + 1 < len(groups):
+            t1 = min(t1, groups[i + 1][0]["start"] - pad)
+        if t1 - t0 < 0.08:                       # too crushed to be readable, drop it
+            continue
+        out.append({"text": " ".join(x["word"] for x in g), "start": t0, "end": t1})
+    return out
+
+
 def _caption_dt(words: list | None, v: dict, fontsize: int = 52) -> str:
-    """drawtext chain (one word visible at a time) for burned English captions on a
-    clip — bottom-centre, above the in-game HUD. '' when no words.
+    """drawtext chain (one short phrase visible at a time) for burned English captions
+    on a clip — bottom-centre, above the in-game HUD. '' when no words.
 
     Height is `caption_y_frac` of frame height. There is no universally safe band: the
     LoL HUD owns the bottom ~13%, and streamers stack their own overlays (rank badges,
     respawn timers, and increasingly their own live captions) immediately above it.
     The old fixed 0.78 landed on top of those often enough to look broken.
     """
-    if not words:
+    groups = _caption_groups(
+        words,
+        max_words=int(v.get("caption_max_words", 3)),
+        max_gap=float(v.get("caption_group_gap", 0.65)),
+        max_seconds=float(v.get("caption_max_seconds", 1.9)),
+        min_seconds=float(v.get("caption_min_seconds", 0.62)))
+    if not groups:
         return ""
     f = _font("x", v)
     y = int(v["height"] * float(v.get("caption_y_frac", 0.70)))
     seg = []
-    for w in words:
-        word = _esc((w.get("word") or "").upper())
-        if not word:
+    for g in groups:
+        # ' is stripped by _esc (it would need escaping in the filtergraph), which turned
+        # "he's" into "hes"; the typographic apostrophe passes through untouched.
+        text = _esc(g["text"].replace("'", "’").upper())
+        if not text:
             continue
-        t0 = float(w["start"]); t1 = max(t0 + 0.15, float(w["end"]))
         seg.append(
-            f"drawtext=fontfile='{f}':text='{word}':fontsize={fontsize}:fontcolor=white:"
+            f"drawtext=fontfile='{f}':text='{text}':fontsize={fontsize}:fontcolor=white:"
             f"borderw=6:bordercolor=black:x=(w-text_w)/2:y={y}:"
-            f"enable='between(t,{t0:.2f},{t1:.2f})'")
+            f"enable='between(t,{g['start']:.2f},{g['end']:.2f})'")
     return ",".join(seg)
 
 
@@ -449,6 +534,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
     from ..enrichment.transcribe import load as _load_transcripts
     transcripts = _load_transcripts(work)   # clip_id -> {lang, text, words}
 
+    # Streamers increasingly burn their own live captions into the stream. We can't
+    # remove those, so where one exists AND the speech is already English, ours is a
+    # second transcription of the same words — skip it. See enrichment/burned_captions.
+    from ..enrichment.burned_captions import detect as _detect_burned
+    has_source_caption = _detect_burned(cfg, date_label, clips, transcripts)
+
     # animated streamer nameplate (per clip) + its synthesized flush-in SFX
     np_cfg = v.get("nameplate", {}) or {}
     sfx_path = None
@@ -504,7 +595,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 from . import nameplate as _np
                 np_path = _np.build(cfg, c)
             try:
-                caps = transcripts.get(c["id"], {}).get("words")   # burned English captions
+                tr = transcripts.get(c["id"], {})
+                caps = tr.get("words")            # burned English captions
+                if has_source_caption.get(c["id"]) and _is_english(tr.get("lang")):
+                    caps = None                   # their caption already says this
                 from . import countdown as _cd
                 badge = _cd.build(cfg, c.get("countdown_rank"))
                 is_last = c is clips[-1]

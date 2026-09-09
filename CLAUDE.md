@@ -98,7 +98,10 @@ relative to `pipeline/`).
    → segments (animated PROJECT-style streamer nameplate bottom-left via
    `production/nameplate.py` when `video.nameplate.enabled`, else the plain drawtext
    lower-third; both fall back gracefully), #N countdown badge, drawtext English captions
-   burned on FOREIGN-language clips (from transcripts.json — English clips get none), VO
+   grouped into 1-3 word phrases with DISJOINT windows (`_caption_groups`; one word at a
+   time both overlapped and ran ~7 words/s — see DEVLOG 2026-09-09), skipped entirely when
+   `enrichment/burned_captions.py` finds the streamer's OWN live-caption widget baked into
+   the source AND the speech is already English, VO
    ducking, 0.3s fades, 0.5x REPLAY part for clips with api_rank_score ≥ replay_min_score
    using api_best_moment_s) → outro (when `video.outro_music`: KEMONO logo over the
    energy-detected drop of an NCS track, `_find_drop`; else text card) → concat
@@ -241,9 +244,10 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   intact behind those switches — don't delete it. NB: clips are NO LONGER English-only —
   `prefilter.include_languages` includes EU langs + ko, and EVERY clip gets burned English
   captions (transcribe → assemble) so the video carries without narration and works muted.
-  Caption height is `video.caption_y_frac` (0.70); note some streamers burn their OWN
-  live captions into the source, which we cannot remove — ours sits above them by
-  owner decision. The OUTRO still uses music
+  Caption height is `video.caption_y_frac` (0.70). ~Half of all clips carry the streamer's
+  OWN live-caption widget burned into the source (verified 2026-09-09: 8 of 17), which we
+  cannot remove — so where one exists and the speech is English we draw NOTHING, and where
+  the speech is foreign ours sits above theirs as the translation. The OUTRO still uses music
   (`video.outro_music`: KEMONO logo over an NCS drop) even though the bed is off. Trade-off:
   no commentary weakens the YouTube "reused content"/YPP hedge — grow-first, revisit an
   originality layer before monetizing. Per-streamer credits always generated.

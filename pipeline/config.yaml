@@ -299,6 +299,38 @@ video:
                               # owns the bottom ~13% and streamer overlays sit just above
                               # it, so lower values are safer than they look. Raise
                               # toward 0.78 only if your clips have a clean lower third.
+  caption_max_words: 3        # words per on-screen caption phrase. 1 = the old one-word
+                              # flash, which at whisper's word durations runs ~7 words/s
+                              # — far too fast to read. 2-3 matches what the streamers'
+                              # own caption widgets do.
+  caption_group_gap: 0.65     # a silence longer than this (s) always starts a new phrase
+  caption_max_seconds: 1.9    # a phrase never holds longer than this (s)
+  caption_min_seconds: 0.62   # ...nor briefer, unless the next phrase needs the room:
+                              # phrase windows are clamped to stay disjoint, which is
+                              # what stops two captions being drawn on top of each other
+  skip_caption_when_source_has_one: true
+                              # many streamers burn their OWN live captions into the
+                              # stream. When one is detected AND the speech is already
+                              # English, drawing ours too just shows the same words
+                              # twice, so we draw nothing. Non-English speech still gets
+                              # our line: theirs is in their language, ours translates.
+                              # false = always caption (needs no vlm role).
+  source_caption_samples: 6   # frames compared per clip. They are sampled WHILE THE
+                              # STREAMER IS SPEAKING and again during SILENCE (from the
+                              # whisper word timings): a caption widget draws only during
+                              # speech, while HUD/chat/sub-goals/logos are there either
+                              # way and cancel out of the difference. No model involved —
+                              # ~6s per clip, no GPU, no network.
+  source_caption_threshold: 0.038
+                              # how much more outlined text the band must carry during
+                              # speech than silence before we believe there is a caption.
+                              # Calibrated on 17 hand-labelled clips from 2026-09-08:
+                              # 7 of the 8 captioned clips scored 0.040-0.094 and every
+                              # clean clip scored below 0.033, so this catches 7/8 with
+                              # ZERO false positives. Deliberately set for precision —
+                              # a false positive costs a clip its captions, a false
+                              # negative only leaves the old behaviour. Lower it toward
+                              # 0.02 to catch more at the risk of the reverse.
   replay_enabled: false       # off: the judge's best_moment_s timestamp lands after the
                               # play too often — needs frame-accurate detection (future)
   replay_min_score: 7         # clips ranked this high get a slow-mo best-moment replay
