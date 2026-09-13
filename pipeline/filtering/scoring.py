@@ -1,11 +1,16 @@
 """Audio/motion scoring and keyword filters for the prefilter stage.
 
-Scoring functions were originally trained on ~200+ labeled LoL Twitch clips
-using logistic regression. The thresholds (AUDIO_EXCLUDE etc.) live in
-pipeline/config.yaml under the `prefilter` section so they can be tuned
-without touching code. These functions only implement the signal extraction.
+The features and their weights are HAND-DESIGNED, not learned: the audio score is a
+fixed 0.30/0.28/0.22/0.20 blend of four loudness/variability features, and motion is a
+mean frame difference. The thresholds (AUDIO_EXCLUDE etc.) live in pipeline/config.yaml
+under the `prefilter` section and are hand-set too — they have not changed since the
+first commit. tools/train_classifier.py fits a logistic regression on hand-labelled
+clips, but only to REPORT which signals matter and suggest thresholds; the pipeline
+never loads its model.json. How many clips were labelled for it is not recorded, and
+its dataset (data/training/, gitignored) no longer exists. These functions only
+implement the signal extraction.
 
-To retrain or re-evaluate thresholds:
+To re-check the thresholds against fresh labels:
     python -m pipeline.tools.train_classifier
     python -m pipeline.tools.eval_filter
 To collect new training data:

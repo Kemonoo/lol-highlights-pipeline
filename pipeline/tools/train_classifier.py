@@ -4,6 +4,10 @@ Reads labeled dataset_*.json files produced by collect_training_data.py +
 review_clips.py, prints feature importance, and shows threshold suggestions
 that can be set in pipeline/config.yaml (prefilter.audio_exclude, etc.).
 
+ADVISORY ONLY: this writes data/training/model.json, but nothing in the pipeline loads
+it. The live prefilter uses the hand-set thresholds in config.yaml; this tool exists to
+check them against labels, not to produce the model that runs.
+
 Training data lives in data/training/ (gitignored).
 
 Usage:

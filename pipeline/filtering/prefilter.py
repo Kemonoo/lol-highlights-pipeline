@@ -1,7 +1,8 @@
 """Stage 2 — Cheap local pre-filter (no API costs).
 
 Uses keyword / tournament / audio-hype / motion scoring from
-pipeline/filtering/scoring.py (functions originally trained on labeled clips).
+pipeline/filtering/scoring.py (hand-designed signals with hand-set thresholds; see
+that module's docstring for what the labelled-clip regression did and did not do).
 Operates on the already-downloaded MP4s (extracts audio via ffmpeg).
 Also applies the broadcaster blacklist (co-streamers, watch parties).
 

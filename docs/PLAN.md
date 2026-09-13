@@ -31,7 +31,7 @@ original commentary — which only fits long-form. Shorts are a derived byproduc
 | 0 | Viewer feedback loop (YouTube comments → actionable signals) | `pipeline/feedback/feedback.py` | ✅ working |
 | 1 | Fetch clips (Twitch Helix top-clips or challenger broadcaster list) | `pipeline/ingestion/fetch.py` | ✅ working |
 | 2 | Pre-filter: broadcaster blacklist + keywords + audio hype + motion | `pipeline/filtering/prefilter.py` | ✅ working |
-| 3 | Stepwise local VLM filter: gameplay vote, pro-play, kill-feed detection, HTML report | `pipeline/filtering/vlm_filter.py` + `kill_detect.py` | ✅ tuned (precision 0.25→1.0) |
+| 3 | Stepwise local VLM filter: gameplay vote, pro-play, kill-feed detection, HTML report | `pipeline/filtering/vlm_filter.py` + `kill_detect.py` | ✅ tuned against 25 hand labels (small set; see DEVLOG 2026-09-13) |
 | 4 | Gemini full-video judge: quality/focus scoring, duration-aware selection | `pipeline/filtering/api_judge.py` | ✅ working, ~1¢/day |
 | 5 | Match linker: clip timestamp → real match data (KDA, champion, rank) | `pipeline/enrichment/match_linker.py` | ❌ stub — Phase 2 |
 | 6 | HUD OCR: kill feed / scoreboard / multikill banners from frames | `pipeline/enrichment/hud_ocr.py` | ❌ stub — Phase 2 |
@@ -51,7 +51,7 @@ original commentary — which only fits long-form. Shorts are a derived byproduc
 
 **Phase 1 — end-to-end automated pipeline** ✅ complete
 - Fetch → filter → TTS → assemble → upload working end-to-end
-- VLM filter tuned against labeled clips (precision 1.0)
+- VLM filter tuned against a small set of hand-labelled clips (see DEVLOG 2026-09-13)
 - Commentary grounded, style rotation to avoid monotony
 - Shorts with face-cam split layout, Whisper speech captions (auto-translated to English)
 - Task Scheduler daily automation (`setup_schedule.bat`)

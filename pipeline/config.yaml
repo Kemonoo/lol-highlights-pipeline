@@ -96,7 +96,7 @@ twitch:
   window_hours: 24
   timezone: Europe/Amsterdam
 
-prefilter:                    # thresholds from twitch_clips training
+prefilter:                    # hand-set thresholds (see filtering/scoring.py docstring)
   enabled: true
   audio_exclude: 0.22
   audio_pass: 0.52

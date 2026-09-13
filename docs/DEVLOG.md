@@ -32,7 +32,8 @@ so far (see *Viewer feedback*).
 
 ### Pre-repo (~2026-06-09) — filtering era
 Cost-cascade filter built and tuned against hand labels (`tools/label_clips.py` +
-`eval_filter.py`): v2→v4 took precision 0.25→1.0. Blacklist seeded from owner labels (JP
+`eval_filter.py`): v2→v4 took precision 0.25→1.0 (on a very small set — see the
+2026-09-13 correction at the end of this file). Blacklist seeded from owner labels (JP
 event/custom-tournament channels). This is why the filter is a *decision/detection split*
 with per-clip caches — retuning rules costs seconds, not GPU time. Don't collapse it.
 
@@ -867,3 +868,37 @@ Captions now substitute U+2019 first, which passes through untouched.
 
 **Cost:** ~6 local VLM calls per clip, ~+10 min on the nightly run. Cached per date in
 `work/<date>/burned_captions.json`; unavailable Ollama = caption everything, as before.
+
+---
+
+## 2026-09-13 — Correcting the record on labelling and "training"
+
+Several docs described the filter as more data-driven than the evidence supports. Checked
+against the files themselves, not other docs:
+
+* **"Trained on ~200+ labeled clips using logistic regression"** (`scoring.py`) — not
+  verifiable, and overstated either way. The collector *downloaded* 200 clips/day for 8
+  days; how many were then labelled is recorded nowhere, and the dataset
+  (`data/training/`, gitignored) no longer exists. The owner recalls ~50, which matches
+  `train_classifier.py`'s own "aim for at least 50" guidance.
+* **Nothing learned is running.** `train_classifier.py` fits a logistic regression and
+  prints feature weights + a suggested threshold, and writes `model.json` — which no part
+  of the pipeline loads. The prefilter thresholds (0.22 / 0.52 / 0.015) are hand-set and
+  unchanged since the first commit; the audio score's internal weights are hand-picked.
+  Every model the pipeline actually runs (whisper, qwen3-vl, Gemini, Haar cascade) is
+  pretrained and used as-is.
+* **"Precision 0.25 → 1.0"** — the only surviving labels are
+  `work/2026-06-09/labels.json`: **25 clips (21 bad, 3 good, 1 ok)**, of which only 9
+  reached the VLM stage. Re-running `eval_filter --date 2026-06-09` with today's rules
+  gives **precision 0.33 on 9 clips**. The original figure was a real result on a tiny
+  set with the rules of the time; it is not a benchmark.
+
+What those 25 labels *do* show, and why the blacklist + JP rule exist: all 4 keepers had
+English titles, 19 of 21 rejects had Japanese/Chinese titles, and 14 were tagged
+`pro-play` — Japanese custom/event tournaments with spectator UI, plus talk-only clips.
+
+The keyword bypass (a title containing "penta"/"1v5"/... passes before the audio check)
+has existed since the first commit; the owner remembers it being motivated by a silent,
+focused pentakill getting cut, but that incident is not recorded. Known gap: the bypass
+depends on the TITLE — a silent pentakill with an unrelated title is still cut by
+`prefilter.audio_exclude` before any vision model sees it.

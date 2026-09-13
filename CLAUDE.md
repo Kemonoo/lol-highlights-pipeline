@@ -148,7 +148,8 @@ server, keys G/O/B → work/<date>/labels.json), `tools/eval_filter.py` (precisi
 labels), `tools/gen_music.py` (numpy-synthesized copyright-free music bed → assets/music/bg.mp3),
 `tools/collect_training_data.py` (standalone Twitch fetch + feature extraction →
 data/training/dataset_*.json), `tools/review_clips.py` (Tkinter labeling UI for training
-data), `tools/train_classifier.py` (logistic regression on labeled clips),
+data), `tools/train_classifier.py` (logistic regression on labeled clips — ADVISORY: prints
+feature weights + threshold suggestions; the pipeline never loads its model.json),
 `tools/debug_facecam.py` (facecam-detection debug visualizer),
 `tools/gen_sfx.py` (numpy-synthesized nameplate notification SFX → assets/sfx/nameplate.wav).
 `production/nameplate.py` renders the per-clip animated streamer card with PIL (write-on
@@ -233,7 +234,10 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
 - **Known open disagreement**: judge underrates "streamer gets outplayed" fail clips
   (labeled good, ent2). Candidate future signal; don't silently "fix".
 - **Eval loop**: labels via `label_clips.py`, score via `eval_filter.py`. v2→v4 filter
-  took precision 0.25→1.0 on 2026-06-09. Filter changes should be re-evaled vs labels.
+  took precision 0.25→1.0 on 2026-06-09 — but on a tiny set (25 labels, of which only
+  ~9 reached the VLM stage, 1-3 of them good), and it does not reproduce: today's rules
+  on the same saved day score 0.33 on 9 clips. Treat it as "tuning helped", not a
+  benchmark. Filter changes should be re-evaled vs labels.
 - **Feedback conservatism**: viewer comments only become actionable on repetition
   (min_agreement). Auto-update (when enabled) may touch config.yaml/blacklist/prompt
   strings ONLY — never code structure. kill_detect short-circuits once kills are
