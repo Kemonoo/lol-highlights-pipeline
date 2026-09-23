@@ -935,3 +935,19 @@ The project website was redesigned (dark, Dovetail-style) and `docs/SITE.md` add
 ledger of every fact the site states with its source, plus a **Pending** list that
 pipeline work appends to, so site updates don't need a re-read of the codebase. The
 site still narrates the 09-21 night (17 clips) until a 222/22 night is re-exported.
+
+## 2026-09-24 — VLM crop regions; thumbnail layout
+
+Owner review of the site's crop examples: the banner crop (0.05–0.22) cut off the crest
+above PENTAKILL!/ACE!, and the kill-feed crop (0.08–0.45) ended exactly on the 4th kill
+of a quadra. Now banner [0.35, 0.0, 0.65, 0.17] and kill feed bottom 0.52 (+1/5 of its
+height), checked by drawing both on real frames from the 09-21 master. Detection
+semantics changed, so the cache is `vlm_partial_v4.json` (per the detection/decision
+rule); old nights keep their v3 files.
+
+Thumbnails (local provider): the owner liked the teal variant's big streamer circle
+(0.95 of the height) and wanted the clip's champion shown sharp, not blurred. All three
+variants now use the big circle (`thumbnail.face_scale`), and the splash is zoomed
+(`splash_zoom` 1.35) and slid left (`splash_focus_x` 0.24) so the champion sits in the
+open area beside the circle instead of behind it; the left text gradient is lighter
+(140 vs 210). Variant 2 keeps the gameplay-frame background.

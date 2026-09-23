@@ -42,7 +42,7 @@ Every model call is cached per clip. The keep/reject rules are **pure functions
 recomputed from that cache on every run**:
 
 ```
-vlm_filter.detect()   → model calls → vlm_partial_v3.json   (expensive, cached)
+vlm_filter.detect()   → model calls → vlm_partial_v4.json   (expensive, cached)
 vlm_filter.decide()   → pure code, reads the cache          (free, re-runs every time)
 ```
 
@@ -53,7 +53,7 @@ Three consequences:
 2. **The rules are unit-testable.** `tests/test_filter_decisions.py` covers them with no
    network, no GPU, and no FFmpeg — which is why the whole suite runs in CI.
 3. **Cache versioning is load-bearing.** Changing *detection* semantics (prompts, crop
-   regions) means bumping the cache filename (`vlm_partial_v3` → `v4`). Changing only
+   regions) means bumping the cache filename (`vlm_partial_v4` → `v4`). Changing only
    *decision* rules never does. Getting this backwards silently mixes old and new model
    outputs.
 
@@ -126,7 +126,7 @@ anywhere saves progress.
 data/raw/<date>/     clips.json + downloaded mp4s (+ lq/ low-quality scoring copies)
 data/work/<date>/    prefiltered.json -> vlm_scored/vlm_filtered.json -> api_scored.json
                      -> transcripts.json -> commentary.json -> vo/ -> segments/
-                     caches: vlm_partial_v3.json, api_partial_v3.json
+                     caches: vlm_partial_v4.json, api_partial_v3.json
                      report.html  <- the visual audit of every decision
 data/output/         <date>.mp4 + <date>.meta.json
 ```

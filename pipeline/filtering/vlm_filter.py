@@ -1,6 +1,6 @@
 """Stage 3 — Stepwise VLM filter, v4.
 
-Detection (model calls, cached per clip in vlm_partial_v3.json):
+Detection (model calls, cached per clip in vlm_partial_v4.json):
   Step 1  gameplay check    3 frames, binary, majority vote
   Step 2  pro-play check    1 frame, binary
   Step 3  kill detection    kill-feed / announcement / event-log crops (kill_detect.py)
@@ -252,7 +252,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         crops_dir = work / "crops"
         crops_dir.mkdir(exist_ok=True)
 
-    partial_path = work / "vlm_partial_v3.json"
+    partial_path = work / "vlm_partial_v4.json"
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
 

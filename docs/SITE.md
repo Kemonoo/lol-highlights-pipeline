@@ -25,6 +25,12 @@ of video, 17 clips).
   real night run with the new settings, then a re-export (see "Regenerating assets").
   Note: Twitch can return a clip or two fewer than asked (219 of 220 on 09-21), so check
   the real count before writing "222" anywhere.
+- 2026-09-24 — VLM crop regions changed (banner 0.0–0.17, kill feed down to 0.52) and
+  the cache is now `vlm_partial_v4.json`. Affects the crop images (S3 figure) once a new
+  night is exported; the exporter reads v4 and falls back to v3.
+- 2026-09-24 — local thumbnails: every variant uses the big streamer circle and a sharp,
+  zoomed champion splash (no blurred variant). Affects row S7 wording ("three
+  colourways" still true) and `thumb_1..3.jpg` on the next export.
 - 2026-09-23 — `tools/review_queue` (manual review of filter decisions) exists; the site
   doesn't mention it. Optional.
 

@@ -54,7 +54,7 @@ relative to `pipeline/`).
    role, STEPWISE
    (one simple question per image — small models fail multi-question prompts): gameplay
    vote (3 frames), pro-play check, kill-feed/banner/event-log crop analysis. Detection
-   cached (`vlm_partial_v3.json`); decisions are PURE CODE recomputed from cache every run
+   cached (`vlm_partial_v4.json`); decisions are PURE CODE recomputed from cache every run
    (`decide()`) so rule tuning costs zero GPU time → `vlm_scored.json`,
    `vlm_filtered.json`, `report.html` (visual audit), `crops/` (region calibration)
 4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
@@ -188,7 +188,7 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   a fallback path away.
 - **Detection/decision split**: model outputs cached per clip; keep/reject rules
   recompute from cache on every run. When changing DETECTION semantics (prompts,
-  regions), bump the cache filename version (`vlm_partial_v3` → v4, `api_partial_v3`
+  regions), bump the cache filename version (`vlm_partial_v4` → v5, `api_partial_v3`
   → v4). When changing only decision rules, never bump.
 - **Cost cascade**: free local checks discard ~90%; paid Gemini only sees survivors
   (~1¢/day). Keep it that way.

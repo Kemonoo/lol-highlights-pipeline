@@ -137,8 +137,11 @@ vlm_filter:                   # model choice lives in llm.roles.vlm
   save_crops: true            # save kill-feed/banner crops for region calibration
   japanese_needs_kills: true  # JP-title clips can't pass on audio hype alone
   regions:                    # frame fractions [x1, y1, x2, y2] — measured from a real
-    killfeed: [0.82, 0.08, 1.0, 0.45]   # 1080p screenshot; CALIBRATE via crops/
-    banner: [0.35, 0.05, 0.65, 0.22]    # center multikill announcement
+    killfeed: [0.82, 0.08, 1.0, 0.52]   # 1080p screenshot; CALIBRATE via crops/. Bottom
+                                        # was 0.45: a 4-kill feed ended right on the edge
+                                        # (2026-09-24), so +1/5 of the height for a 5th
+    banner: [0.35, 0.0, 0.65, 0.17]     # center multikill announcement. Was 0.05-0.22,
+                                        # which cut the crest above PENTAKILL!/ACE!
     eventlog: [0.0, 0.75, 0.30, 1.0]    # bottom-left "has slain ..." text
 
 api_judge:                    # full-video quality judge — model in llm.roles.judge

@@ -56,7 +56,7 @@ def test_disabled_stages_report_skipped_not_pending(cfg):
 def test_partial_cache_means_running(cfg):
     write(cfg, "raw/2026-07-27/clips.json", {"clips": [{}] * 219})
     write(cfg, "work/2026-07-27/prefiltered.json", {"clips": [{}] * 40})
-    write(cfg, "work/2026-07-27/vlm_partial_v3.json", {f"c{i}": {} for i in range(12)})
+    write(cfg, "work/2026-07-27/vlm_partial_v4.json", {f"c{i}": {} for i in range(12)})
     s = states(cfg)
     assert s["fetch"] == DONE
     assert s["prefilter"] == DONE
@@ -64,14 +64,14 @@ def test_partial_cache_means_running(cfg):
 
 
 def test_output_file_marks_the_stage_done(cfg):
-    write(cfg, "work/2026-07-27/vlm_partial_v3.json", {"c": {}})
+    write(cfg, "work/2026-07-27/vlm_partial_v4.json", {"c": {}})
     write(cfg, "work/2026-07-27/vlm_scored.json", {"clips": []})
     assert states(cfg)["vlm_filter"] == DONE
 
 
 def test_progress_totals_come_from_the_previous_stage(cfg):
     write(cfg, "work/2026-07-27/prefiltered.json", {"clips": [{}] * 40})
-    write(cfg, "work/2026-07-27/vlm_partial_v3.json", {f"c{i}": {} for i in range(12)})
+    write(cfg, "work/2026-07-27/vlm_partial_v4.json", {f"c{i}": {} for i in range(12)})
     rows, _, _ = collect(cfg, "2026-07-27")
     vlm = next(r for r in rows if r["name"] == "vlm_filter")
     assert (vlm["have"], vlm["total"]) == (12, 40)
@@ -80,7 +80,7 @@ def test_progress_totals_come_from_the_previous_stage(cfg):
 def test_a_half_written_cache_does_not_crash_the_reporter(cfg):
     """Caches are flushed after every clip, so a read can land mid-write."""
     from pathlib import Path
-    p = Path(cfg["paths"]["data_abs"]) / "work/2026-07-27/vlm_partial_v3.json"
+    p = Path(cfg["paths"]["data_abs"]) / "work/2026-07-27/vlm_partial_v4.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text('{"c1": {"a": 1}, "c2":', encoding="utf-8")     # truncated JSON
     assert states(cfg)["vlm_filter"] == PENDING                   # counts 0, no raise
@@ -89,7 +89,7 @@ def test_a_half_written_cache_does_not_crash_the_reporter(cfg):
 def test_nul_padded_cache_is_tolerated(cfg):
     """work/ files can carry NUL padding from a filesystem-sync quirk."""
     from pathlib import Path
-    p = Path(cfg["paths"]["data_abs"]) / "work/2026-07-27/vlm_partial_v3.json"
+    p = Path(cfg["paths"]["data_abs"]) / "work/2026-07-27/vlm_partial_v4.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"c1": {}, "c2": {}}) + "\x00\x00", encoding="utf-8")
     rows, _, _ = collect(cfg, "2026-07-27")
@@ -164,7 +164,7 @@ def test_a_rendered_but_unuploaded_date_is_not_marked_done(cfg):
 
 def test_render_produces_a_bar_and_survives_empty_state(cfg):
     write(cfg, "work/2026-07-27/prefiltered.json", {"clips": [{}] * 40})
-    write(cfg, "work/2026-07-27/vlm_partial_v3.json", {f"c{i}": {} for i in range(20)})
+    write(cfg, "work/2026-07-27/vlm_partial_v4.json", {f"c{i}": {} for i in range(20)})
     rows, started, last = collect(cfg, "2026-07-27")
     text = render(rows, "2026-07-27", started, last, color=False)
     assert "20/40" in text and "vlm_filter" in text

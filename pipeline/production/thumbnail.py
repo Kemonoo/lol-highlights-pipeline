@@ -499,7 +499,8 @@ def _reaction_face(clip: dict, mp4: Path, best_s: float,
         return None
 
 
-def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0) -> "Image.Image":
+def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0,
+             zoom: float = 1.0, focus_x: float = 0.5) -> "Image.Image":
     """Fit an image to the thumbnail canvas; brightened + punchier, no darkening grade.
 
     The previous cinematic-grade + strong vignette treatment read as too dark (owner
@@ -509,9 +510,13 @@ def _prep_bg(img: "Image.Image", blur: int = 0, darken: float = 0.0) -> "Image.I
     from PIL import Image, ImageEnhance, ImageFilter
     img = img.convert("RGB")
     sw, sh = img.size
-    scale = max(THUMB_W / sw, THUMB_H / sh)
+    scale = max(THUMB_W / sw, THUMB_H / sh) * max(1.0, zoom)
     img = img.resize((int(sw * scale), int(sh * scale)), Image.LANCZOS)
-    ox, oy = (img.width - THUMB_W) // 2, (img.height - THUMB_H) // 2
+    # focus_x = where on the canvas the source's horizontal centre should land (0.5 =
+    # centred). Needs zoom > 1 to have any room to move.
+    ox = min(max(0, int(img.width / 2 - focus_x * THUMB_W)), img.width - THUMB_W)
+    # splash arts put the champion's head high; when zoomed, keep more of the top
+    oy = int((img.height - THUMB_H) * (0.3 if zoom > 1 else 0.5))
     img = img.crop((ox, oy, ox + THUMB_W, oy + THUMB_H))
     img = ImageEnhance.Brightness(img).enhance(1.2)
     img = ImageEnhance.Color(img).enhance(1.35)
@@ -589,7 +594,9 @@ def _compose_ctr(bg: "Image.Image | None", face: "Image.Image | None", big_text:
     gd = ImageDraw.Draw(grad)
     fade = int(W * 0.72)
     for x in range(fade):
-        gd.line([(x, 0), (x, H)], fill=(0, 0, 0, int(210 * (1 - x / fade) ** 1.25)))
+        # 140 (was 210): enough to hold the headline, light enough that the champion
+        # splash behind it stays visible
+        gd.line([(x, 0), (x, H)], fill=(0, 0, 0, int(140 * (1 - x / fade) ** 1.25)))
     canvas.alpha_composite(grad)
 
     face_left = W - 40
@@ -643,12 +650,15 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
     hook = _hook(clips, date_label)
     streamer = _ascii_name(top)
 
+    th = cfg.get("thumbnail", {})
     champ_id = _detect_champion(summary, _champion_map(cache_dir))
     splash = _fetch_splash(champ_id, cache_dir) if champ_id else None
-    splash_bg = _prep_bg(splash) if splash else None
-    splash_blur = _prep_bg(splash, blur=10, darken=0.25) if splash else None
+    # Splash arts centre their champion, which is exactly where the big streamer circle
+    # sits. Zoom in a little and slide the champion into the open area left of it.
+    splash_bg = (_prep_bg(splash, zoom=float(th.get("splash_zoom", 1.35)),
+                          focus_x=float(th.get("splash_focus_x", 0.24)))
+                 if splash else None)
 
-    th = cfg.get("thumbnail", {})
     mp4 = _resolve_mp4(top, raw_dir)
     face = (_reaction_face(top, mp4, best_s, int(th.get("face_samples", 9)))
             if mp4 else None)
@@ -657,10 +667,16 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
         face = _twitch_pfp(top["broadcaster_id"], cache_dir)
     frame_bg = _clip_frame_bg(mp4, best_s, int(th.get("background_blur", 2))) if mp4 else None
 
+    # Owner pick (2026-09-24): the big streamer circle of the old teal variant (0.95 of the
+    # height) on every variant, over the clip's champion splash shown SHARP — the blurred,
+    # darkened splash hid the one thing that says which champion the clip is about.
+    # Variant 2 keeps the real gameplay frame so the A/B set still has one "this fight"
+    # background.
+    big = float(th.get("face_scale", 0.95))
     specs = [
-        dict(bg=splash_bg or frame_bg, text=_ask(hook), accent=(255, 60, 60), scale=0.86),
-        dict(bg=frame_bg or splash_bg, text=hook, accent=(255, 205, 60), scale=0.82),
-        dict(bg=splash_blur or splash_bg, text="INSANE!", accent=(31, 214, 230), scale=0.95),
+        dict(bg=splash_bg or frame_bg, text=_ask(hook), accent=(255, 60, 60), scale=big),
+        dict(bg=frame_bg or splash_bg, text=hook, accent=(255, 205, 60), scale=big),
+        dict(bg=splash_bg or frame_bg, text="INSANE!", accent=(31, 214, 230), scale=big),
     ][:max(1, n)]
 
     out_dir.mkdir(parents=True, exist_ok=True)

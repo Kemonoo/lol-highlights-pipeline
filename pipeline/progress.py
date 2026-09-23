@@ -3,7 +3,7 @@
 Answers "how far along is it, and is it still moving?" without reading the log.
 
 Progress is read entirely from what a run leaves on disk: the per-clip caches
-(`vlm_partial_v3.json`, `api_partial_v3.json`, ...), the per-stage output files that
+(`vlm_partial_v4.json`, `api_partial_v3.json`, ...), the per-stage output files that
 `run_daily` uses to decide what to skip, and `run.json` — a small manifest the run
 writes at startup recording which stages it is actually configured to perform.
 
@@ -126,7 +126,7 @@ def collect(cfg: dict, date_label: str) -> tuple[list[dict], float, float]:
             have=_count(work / "prefilter_partial.json"),
             note=f"{kept_prefilter} kept" if kept_prefilter else "scoring"),
         row("vlm_filter", done=work / "vlm_scored.json",
-            have=_count(work / "vlm_partial_v3.json"), total=kept_prefilter,
+            have=_count(work / "vlm_partial_v4.json"), total=kept_prefilter,
             note=f"{kept_vlm} kept" if kept_vlm else ""),
         row("api_judge", done=work / "api_scored.json",
             have=_count(work / "api_partial_v3.json"),

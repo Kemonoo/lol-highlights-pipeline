@@ -382,7 +382,9 @@ def main():
     api = load(work / "api_partial_v3.json") if (work / "api_partial_v3.json").exists() else {}
     media = export_media(args, work, raw, night, clips, chapters, transcripts, burned, api)
     hero_id = next(c["clip_id"] for c in chapters if c["rank"] == media["hero_rank"])
-    vlm = load(work / "vlm_partial_v3.json").get(hero_id, {}) if (work / "vlm_partial_v3.json").exists() else {}
+    vp = next((work / f"vlm_partial_v{v}.json" for v in (4, 3)
+               if (work / f"vlm_partial_v{v}.json").exists()), None)   # v4 from 2026-09-24
+    vlm = load(vp).get(hero_id, {}) if vp else {}
     ann = (vlm.get("announcements") or [None])[0]
 
     d = Date.fromisoformat(args.date)
