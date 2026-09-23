@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="1000" viewBox="0 0 680 1000">
+<rect width="680" height="1000" fill="#ffffff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+<rect x="120" y="14" width="14" height="14" rx="3" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/><text x="140" y="26" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#444441">plain code</text>
+<rect x="260" y="14" width="14" height="14" rx="3" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/><text x="280" y="26" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#444441">local AI model</text>
+<rect x="420" y="14" width="14" height="14" rx="3" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.8"/><text x="440" y="26" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#444441">cloud AI (Gemini)</text>
+<rect x="120" y="50" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="72" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">Doctor check</text>
+<text x="290" y="90" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">is everything ready to run?</text>
+<line x1="290" y1="104" x2="290" y2="118" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="122" width="340" height="52" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.8"/>
+<text x="290" y="144" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#085041">0 · Viewer feedback</text>
+<text x="290" y="162" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#0F6E56">classifies comments, never blocks</text>
+<line x1="290" y1="176" x2="290" y2="190" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="194" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="216" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">1 · Twitch fetch</text>
+<text x="290" y="234" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">top clips by views, metadata</text>
+<rect x="480" y="206" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="225" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">220 clips</text>
+<line x1="290" y1="248" x2="290" y2="262" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="266" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="288" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">2a · Prefilter: rules</text>
+<text x="290" y="306" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">blacklist, language, tournament title</text>
+<rect x="480" y="278" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="297" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">~185 left</text>
+<line x1="290" y1="320" x2="290" y2="334" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="338" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="360" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">2b · Prefilter: audio + motion</text>
+<text x="290" y="378" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">low-quality copy, drop quiet</text>
+<rect x="480" y="350" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="369" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">top 52 kept</text>
+<line x1="290" y1="392" x2="290" y2="406" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="410" width="340" height="52" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/>
+<text x="290" y="432" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#3C3489">3 · Local vision model (VLM)</text>
+<text x="290" y="450" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#534AB7">frame questions: gameplay? kills?</text>
+<rect x="480" y="422" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="441" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">top 24 kept</text>
+<line x1="290" y1="464" x2="290" y2="478" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="482" width="340" height="52" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.8"/>
+<text x="290" y="504" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#085041">4a · Gemini judge</text>
+<text x="290" y="522" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#0F6E56">watches each clip, scores it</text>
+<rect x="480" y="494" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="513" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">~17 kept</text>
+<line x1="290" y1="536" x2="290" y2="550" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="554" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="576" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">4b · Selection</text>
+<text x="290" y="594" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">fill 8–10 min, countdown order</text>
+<rect x="480" y="566" width="120" height="28" rx="6" fill="#ffffff" stroke="#B4B2A9" stroke-width="0.8"/><text x="540" y="585" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#2C2C2A">~17 in video</text>
+<line x1="290" y1="608" x2="290" y2="622" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="626" width="340" height="52" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.8"/>
+<text x="290" y="648" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#3C3489">5 · Transcribe (Whisper)</text>
+<text x="290" y="666" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#534AB7">speech to English captions</text>
+<line x1="290" y1="680" x2="290" y2="694" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="698" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="720" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">8 · Assemble</text>
+<text x="290" y="738" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">ffmpeg builds the video</text>
+<line x1="290" y1="752" x2="290" y2="766" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="770" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="792" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">9–10 · Credits + thumbnail</text>
+<text x="290" y="810" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">title, chapters, thumbnail image</text>
+<line x1="290" y1="824" x2="290" y2="838" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="842" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="864" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">11–12 · Upload + Shorts</text>
+<text x="290" y="882" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">YouTube video, 3 Shorts</text>
+<line x1="290" y1="896" x2="290" y2="910" stroke="#888780" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="120" y="914" width="340" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.8"/>
+<text x="290" y="936" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#444441">13 · Cleanup</text>
+<text x="290" y="954" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#5F5E5A">delete old files</text>
+</svg>

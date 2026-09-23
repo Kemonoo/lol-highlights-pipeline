@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEMONO Night Shift</title>
+<meta name="description" content="How an unattended pipeline turns 219 Twitch clips into one daily League of Legends video, stage by stage, with the real output of one night.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315222e'/%3E%3Cpath d='M9 7v18M9 16l10-9M12 13l8 12' stroke='%23c9982f' stroke-width='3.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#top">KEMONO <span>night shift</span></a>
+  <nav aria-label="Sections">
+    <a href="#funnel">Funnel</a>
+    <a href="#stages">Stages</a>
+    <a href="#ideas">Design</a>
+    <a href="#limits">Open problems</a>
+    <a class="gh" href="https://github.com/Kemonoo/lol-highlights-pipeline">Source on GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <p class="dateline">The night of 21 September 2026, 03:00 to 05:06, one home PC with an RTX 3050</p>
+  <h1>Every night at 3&nbsp;a.m. a computer watches 219 League of Legends clips and keeps 17.</h1>
+  <p class="lede">Nobody presses a button. By breakfast there is a nine-minute countdown video on YouTube, three Shorts, captions in English, credits for every streamer, and a thumbnail. This page walks through that one night, stage by stage, using what the machine actually produced.</p>
+  <figure class="plate hero-plate">
+    <img src="assets/hero.jpg" width="1600" height="900" alt="A frame from the finished video: a teamfight in League of Legends, with the streamer name lol_Ethereal on an animated card at the left and a large #2 countdown badge at the top right.">
+    <figcaption>Clip #2 of that night's video: a pentakill by lol_Ethereal. The name card, countdown badge and captions are all drawn by the pipeline.</figcaption>
+  </figure>
+</section>
+
+<section id="funnel" class="funnel" aria-labelledby="funnel-h">
+  <div class="wrap">
+    <h2 id="funnel-h">From 219 clips to 17</h2>
+    <p class="section-lede">Each square is one clip from that night's Twitch top list. The 52 with pictures are the ones that were downloaded and looked at closely. Step through the filters to see where each clip fell out, and select any picture to see why.</p>
+  </div>
+
+  <div class="funnel-ui">
+    <ol class="steps" role="tablist" aria-label="Filter steps">
+      <li><button role="tab" data-step="0" aria-selected="true"><b>219</b>Fetched</button></li>
+      <li><button role="tab" data-step="1"><b>162</b>Language and title</button></li>
+      <li><button role="tab" data-step="2"><b>124</b>Sound and motion</button></li>
+      <li><button role="tab" data-step="3"><b>52</b>Best ranked</button></li>
+      <li><button role="tab" data-step="4"><b>24</b>Local vision model</button></li>
+      <li><button role="tab" data-step="5"><b>17</b>Gemini judge</button></li>
+    </ol>
+    <p class="step-note" id="step-note" aria-live="polite"></p>
+    <div class="grid-wrap">
+      <div class="grid" id="grid" aria-label="Clips"></div>
+      <aside class="detail" id="detail" aria-live="polite">
+        <p class="detail-empty">Select a picture to see who streamed it, what the title said, and what each filter decided.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="legend wrap" aria-label="Who does the work">
+  <h2>Three kinds of worker</h2>
+  <p>Every stage below is done by one of three things. The split is deliberate: the cheap workers go first and throw most clips away, so the expensive one only sees what survives.</p>
+  <ul class="workers">
+    <li class="w-code"><span class="swatch"></span><div><b>Plain code</b> Python, ffmpeg and a few signal-processing libraries. Free, fast, and predictable.</div></li>
+    <li class="w-local"><span class="swatch"></span><div><b>A model on the home GPU</b> A 4-billion-parameter vision model (Qwen3-VL through Ollama) and Whisper for speech. Free, but slow on an 8&nbsp;GB card.</div></li>
+    <li class="w-cloud"><span class="swatch"></span><div><b>A model in the cloud</b> Google Gemini, which can watch a whole clip with sound. Used on the free tier, so it gets a strict daily allowance.</div></li>
+  </ul>
+</section>
+
+<section id="stages" class="stages" aria-labelledby="stages-h">
+  <div class="wrap"><h2 id="stages-h">The night, stage by stage</h2></div>
+
+  <article class="stage w-code">
+    <div class="rail"><time>03:00:00</time><span class="num">0</span></div>
+    <div class="body">
+      <h3>Check the machine, read the comments</h3>
+      <p>Before anything else a quick self-check confirms ffmpeg, the GPU, Ollama and the API keys are there, so a broken setup fails in seconds rather than an hour in. Then Gemini reads the comments under recent uploads. A viewer writing “#3 was boring” is mapped to the third clip of that video, and only complaints that several people agree on are written up as proposals for the owner.</p>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>03:00:16</time><span class="num">1</span></div>
+    <div class="body">
+      <h3>Fetch the day's top clips</h3>
+      <p>The Twitch API returns the most-watched League of Legends clips created between midnight and midnight, Amsterdam time. Only the list is fetched: title, streamer, language tag, view count. That night it was 219 clips. Nothing is downloaded yet, because most of them will be thrown out on metadata alone.</p>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>03:00:20</time><span class="num">2</span><span class="took">6&nbsp;min</span></div>
+    <div class="body">
+      <h3>Throw out what code alone can judge</h3>
+      <p>First, rules that need no download. Clips from channels outside the supported languages go (57 that night), as do a hand-kept blacklist of event channels and titles that name a tournament. The remaining 162 are downloaded in low quality and measured two ways.</p>
+      <figure class="plate">
+        <img src="assets/filmstrip.jpg" width="2602" height="180" loading="lazy" alt="Eight small frames sampled evenly across a 30 second clip, showing a teamfight moving across the map.">
+        <img class="wave" src="assets/wave.png" width="1600" height="200" loading="lazy" alt="The audio waveform of the same clip, with a loud burst in the second half.">
+        <figcaption>The motion score compares eight tiny frames like these (160×90 pixels): how much changes between neighbours. The audio score reads the waveform for loudness, spikes, pitch energy and how much of the clip is loud. This is the clip that became #2.</figcaption>
+      </figure>
+      <p>A clip is dropped if it is quiet (audio below 0.22) or static (motion below 0.015). A title with a word like <q>penta</q>, <q>1v5</q> or <q>outplay</q> skips the audio test entirely: the owner once watched a silent pentakill get thrown out for being quiet, and the streamer's own title is a stronger signal than their volume. The 124 that pass are ranked by title keyword, then loudness, then views, and the top 52 move on.</p>
+      <p class="aside">The thresholds and feature weights are set by hand. A logistic regression was once fitted to hand labels to suggest values, but the pipeline does not load it.</p>
+    </div>
+  </article>
+
+  <article class="stage w-local">
+    <div class="rail"><time>03:06:56</time><span class="num">3</span><span class="took">92&nbsp;min</span></div>
+    <div class="body">
+      <h3>Ask a small vision model simple questions</h3>
+      <p>The 52 survivors are downloaded in full quality and a 4B vision model running on the home GPU looks at still frames. Small models get multi-part questions wrong, so each question is asked on its own:</p>
+      <ul class="qs">
+        <li>Is this League of Legends gameplay? <span>Three frames, majority vote.</span></li>
+        <li>Is this a professional tournament broadcast? <span>One frame.</span></li>
+        <li>How many kill notifications are on screen? Is there a multikill banner? <span>Crops of the screen every five seconds.</span></li>
+      </ul>
+      <figure class="plate crops">
+        <div class="crop-row">
+          <img src="assets/crop_banner.jpg" width="512" height="163" loading="lazy" alt="A crop of the top centre of the screen showing the ACE! announcement banner.">
+          <img src="assets/crop_killfeed.jpg" width="512" height="592" loading="lazy" alt="A crop of the right edge of the screen showing a kill notification with two champion icons.">
+        </div>
+        <figcaption>What the model is shown for clip #2 at 22 seconds: the announcement area (it read “ace!”) and the kill feed. Cropping lets a small model see tiny HUD text it would miss in the full frame.</figcaption>
+      </figure>
+      <p>The model only describes. It never decides. Its answers are cached per clip, and a plain function turns them into keep or reject:</p>
+<pre class="code"><code><span class="c"># pipeline/filtering/vlm_filter.py, decide(), in order</span>
+blacklisted streamer          → reject
+not gameplay (votes)          → reject
+pro broadcast                 → reject
+keyword in title              → keep
+multikill banner              → keep
+kills confirmed, audio ≥ 0.30 → keep
+loud reaction, audio ≥ 0.55   → keep  <span class="c"># not for Japanese titles</span>
+otherwise                     → reject</code></pre>
+      <p>Because the rules sit outside the model, changing a threshold re-runs in a second from the cache instead of costing another 90 minutes of GPU time. That night 24 clips were kept.</p>
+    </div>
+  </article>
+
+  <article class="stage w-cloud">
+    <div class="rail"><time>04:38:56</time><span class="num">4</span><span class="took">5&nbsp;min</span></div>
+    <div class="body">
+      <h3>Let a large model watch the whole clip</h3>
+      <p>The 24 are sent to Gemini as video with sound. It must reply in a fixed JSON shape, and a reply with a missing field is treated as no reply. This is its real verdict on clip #2:</p>
+<pre class="code json"><code>{
+  <span class="k">"clip_focus"</span>: <span class="s">"gameplay"</span>,
+  <span class="k">"play_quality"</span>: 9,
+  <span class="k">"entertainment"</span>: 9,
+  <span class="k">"what_happens"</span>: <span class="s">"A League of Legends player achieves an incredible
+    pentakill during a chaotic teamfight using Viego's ultimate
+    resets. The player expresses pure disbelief and excitement…"</span>,
+  <span class="k">"best_moment_s"</span>: 18
+}</code></pre>
+      <p>Code again makes the call: keep gameplay or reaction clips scoring 6 or more on entertainment (7 for pure reactions), or 7 or more on play quality. The free tier allows 20 requests per model per day, so the stage walks a chain of models, each with its own allowance. It switched models once that night when the first was overloaded. With no key at all it falls back to the local verdicts and still produces a video.</p>
+      <p>Finally the survivors are ordered into a countdown and trimmed to fill about eight minutes: 17 clips, 8.8 minutes.</p>
+    </div>
+  </article>
+
+  <article class="stage w-local">
+    <div class="rail"><time>04:43:29</time><span class="num">5</span><span class="took">1&nbsp;min</span></div>
+    <div class="body">
+      <h3>Transcribe and translate the streamers</h3>
+      <p>Whisper runs on the GPU over each clip, detects the language, and translates the speech straight into English with a timestamp on every word. Those timestamps drive the captions in the next stage.</p>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>04:44:46</time><span class="num">6</span><span class="took">4&nbsp;min</span></div>
+    <div class="body">
+      <h3>Assemble the video</h3>
+      <p>Everything is rendered with ffmpeg: the KEMONO intro, then each clip with an animated name card, the countdown number and English captions, a slow-motion replay of the best moment for the highest-rated clips, and an outro. The GPU's video encoder is detected and used automatically.</p>
+      <figure class="plate">
+        <img src="assets/caption_en.jpg" width="1600" height="900" loading="lazy" alt="Clip #17: a streamer's gameplay with her webcam at bottom right, the name card bibiadoll at the left, and the English caption LET'S GO NOW near the bottom.">
+        <figcaption>Captions appear one to three words at a time and never overlap, so they can be read at a glance and the video works with the sound off.</figcaption>
+      </figure>
+      <p>Many streamers already show live captions on their stream, and these are part of the picture, so they can't be removed. The pipeline detects them without any model: a caption widget only draws while someone is speaking, so it compares the bottom of the frame during speech with the same area during silence. Whatever appears only during speech is a caption.</p>
+      <figure class="plate">
+        <img src="assets/caption_translate.jpg" width="1600" height="900" loading="lazy" alt="Clip #12: a Polish streamer's own caption at the bottom reads 'Leszną i skoczą', and the pipeline's English translation FINALLY HE JUMPED sits above it.">
+        <figcaption>If the streamer's own caption is English, the pipeline adds nothing. If it is in another language, as with this Polish streamer, the English translation goes above it.</figcaption>
+      </figure>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>04:48:48</time><span class="num">7</span></div>
+    <div class="body">
+      <h3>Write the credits, draw the thumbnails</h3>
+      <p>The description gets a chapter for every clip and a link to every streamer's channel, which is also what makes reusing their clips fair. Thumbnails are composed in Python from the champion's splash art, the streamer's avatar and a short hook, in three colourways.</p>
+      <figure class="plate thumbs">
+        <img src="assets/thumb_1.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail with Karthus splash art, a red border and the word PENTAKILL?! beside the streamer's circular avatar.">
+        <img src="assets/thumb_2.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail variant with a gameplay frame behind the gold word PENTAKILL.">
+        <img src="assets/thumb_3.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail variant in teal with the word INSANE!">
+      </figure>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>04:48:58</time><span class="num">8</span><span class="took">13&nbsp;min</span></div>
+    <div class="body">
+      <h3>Upload</h3>
+      <p>The video goes to YouTube through the Data API with a resumable upload. The run records the video id, so if the night's run crashes and restarts, it can't upload the same day twice.</p>
+    </div>
+  </article>
+
+  <article class="stage w-code">
+    <div class="rail"><time>05:02:27</time><span class="num">9</span><span class="took">4&nbsp;min</span></div>
+    <div class="body">
+      <h3>Cut three Shorts</h3>
+      <p>The three best clips are cut to about 30 seconds and turned vertical. When a webcam is found, gameplay goes on top and the streamer's face below; otherwise the gameplay is centred.</p>
+      <figure class="plate shorts">
+        <img src="assets/short_1.jpg" width="540" height="960" loading="lazy" alt="A vertical Short: gameplay in the top half, the streamer's webcam filling the bottom half.">
+        <img src="assets/short_2.jpg" width="540" height="960" loading="lazy" alt="A vertical Short with the gameplay centred on a blurred background.">
+      </figure>
+    </div>
+  </article>
+
+  <article class="stage w-code last">
+    <div class="rail"><time>05:06:30</time><span class="num">10</span></div>
+    <div class="body">
+      <h3>Clean up</h3>
+      <p>Raw downloads older than a day are deleted. A finished video is only ever deleted once YouTube has confirmed it. The run ended at 05:06:32 with exit code 0.</p>
+    </div>
+  </article>
+</section>
+
+<section id="ideas" class="ideas wrap" aria-labelledby="ideas-h">
+  <h2 id="ideas-h">Three decisions that shaped it</h2>
+  <div class="idea">
+    <h3>Cheap first, expensive last</h3>
+    <p>Free code discards three clips in four before any model runs, and the paid model only sees the last 24. Sending all 219 to Gemini would take eleven days of one model's free allowance.</p>
+  </div>
+  <div class="idea">
+    <h3>Models describe, code decides</h3>
+    <p>What a model saw is cached. Whether that is good enough is a function anyone can read and test. Tuning a rule costs nothing, and when a clip is wrongly rejected the reason is a line of code, not a mood of the model.</p>
+  </div>
+  <div class="idea">
+    <h3>Degrade, never stop</h3>
+    <p>No API key means local judging. An exhausted quota means the next model in the chain. No billing means the thumbnail is drawn locally. No GPU means CPU. Each fallback is covered by tests that run with no network, GPU or keys.</p>
+  </div>
+</section>
+
+<section id="limits" class="limits wrap" aria-labelledby="limits-h">
+  <h2 id="limits-h">Open problems</h2>
+  <p>Measured on real nights, not guessed.</p>
+  <dl>
+    <dt>The pro-broadcast check is often wrong</dt>
+    <dd>On one audited night it was right about 2 of 7 rejections. The other five were ordinary streamers.</dd>
+    <dt>The judge watches a low-resolution copy</dt>
+    <dd>Twitch now serves a vertical 360p file first, and the judge reuses it instead of the 720p shrink it was designed for.</dd>
+    <dt>Shorts find the wrong face about half the time</dt>
+    <dd>When webcam detection misses, half the Short is an enlarged patch of HUD.</dd>
+    <dt>Shorts can still show two captions</dt>
+    <dd>The source-caption check runs for the main video but not yet for Shorts.</dd>
+  </dl>
+</section>
+
+</main>
+
+<footer class="foot wrap">
+  <p>Built by one person with Claude Code. Python, ffmpeg, Ollama, faster-whisper, Gemini. Every clip belongs to the streamer who made it; the pipeline links each one in the video description.</p>
+  <p><a href="https://github.com/Kemonoo/lol-highlights-pipeline">Read the source</a></p>
+</footer>
+
+<script src="funnel.js" defer></script>
+</body>
+</html>

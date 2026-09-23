@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "site"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "review",
+      "runtimeExecutable": "./venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "pipeline.tools.review_queue",
+        "--config",
+        "config.kemono.yaml",
+        "--no-browser"
+      ],
+      "port": 8766
+    }
+  ]
+}
