@@ -35,8 +35,8 @@
   <div class="hero-inner">
     <p class="kicker"><span class="dot"></span>Runs every night at 03:00, unattended</p>
     <h1>
-      <span class="l1">219 clips in,</span>
-      <span class="l2"><span class="keycap" aria-hidden="true"><img src="assets/clips/28.jpg" alt=""></span><span class="pix">17 out.</span></span>
+      <span class="l1"><span data-n="fetched">219</span> clips in,</span>
+      <span class="l2"><span class="keycap" aria-hidden="true"><img src="assets/keycap.jpg" alt=""></span><span class="pix"><span data-n="final">17</span> out.</span></span>
     </h1>
     <p class="lede">A home PC watches the day's most-watched League of Legends clips on Twitch, keeps the best, and publishes a finished countdown video and three Shorts to YouTube before breakfast.</p>
     <div class="cta">
@@ -46,26 +46,26 @@
   </div>
   <figure class="hero-media">
     <div class="frame">
-      <video src="assets/hero.mp4" poster="assets/hero.jpg" autoplay muted loop playsinline aria-label="Nine seconds of the finished video: a pentakill teamfight, with the streamer's name card and a #2 countdown badge drawn by the pipeline."></video>
+      <video src="assets/hero.mp4" poster="assets/hero.jpg" autoplay muted loop playsinline aria-label="Nine seconds of the finished video, with the streamer's name card and countdown badge drawn by the pipeline."></video>
     </div>
-    <figcaption>Clip #2 from the video of 21 September 2026. The name card, countdown badge and captions are drawn by the pipeline.</figcaption>
+    <figcaption>Clip #<span data-n="hero_rank">2</span> from the video of <span data-n="date_long">21 September 2026</span>. The name card, countdown badge and captions are drawn by the pipeline.</figcaption>
   </figure>
 </section>
 
 <section id="funnel" class="section funnel" aria-labelledby="funnel-h">
   <div class="head">
-    <h2 id="funnel-h">Where 202 clips were dropped</h2>
+    <h2 id="funnel-h">Where <span data-n="dropped_total">202</span> clips were dropped</h2>
     <p>Each square is one clip from that night's Twitch top list. The 52 with pictures were downloaded and examined closely. Step through the filters, then select a picture to see what each one decided.</p>
   </div>
 
   <div class="panel funnel-panel">
     <ol class="steps" role="tablist" aria-label="Filter steps">
-      <li><button role="tab" data-step="0" aria-selected="true"><b>219</b><span>Fetched</span></button></li>
-      <li><button role="tab" data-step="1"><b>162</b><span>Language</span></button></li>
-      <li><button role="tab" data-step="2"><b>124</b><span>Sound and motion</span></button></li>
-      <li><button role="tab" data-step="3"><b>52</b><span>Best ranked</span></button></li>
-      <li><button role="tab" data-step="4"><b>24</b><span>Local vision model</span></button></li>
-      <li><button role="tab" data-step="5"><b>17</b><span>Gemini judge</span></button></li>
+      <li><button role="tab" data-step="0" aria-selected="true"><b data-n="fetched">219</b><span>Fetched</span></button></li>
+      <li><button role="tab" data-step="1"><b data-n="scored">162</b><span>Language</span></button></li>
+      <li><button role="tab" data-step="2"><b data-n="passed">124</b><span>Sound and motion</span></button></li>
+      <li><button role="tab" data-step="3"><b data-n="kept">52</b><span>Best ranked</span></button></li>
+      <li><button role="tab" data-step="4"><b data-n="vlm_kept">24</b><span>Local vision model</span></button></li>
+      <li><button role="tab" data-step="5"><b data-n="final">17</b><span>Gemini judge</span></button></li>
     </ol>
     <p class="step-note" id="step-note" aria-live="polite"></p>
     <div class="grid-wrap">
@@ -101,13 +101,13 @@
 <section id="stages" class="section stages" aria-labelledby="stages-h">
   <div class="head">
     <h2 id="stages-h">One night, stage by stage</h2>
-    <p>Times are from the log of the 21 September run. It finished at 05:06 with exit code 0.</p>
+    <p>Times are from the log of the <span data-n="date_short">21 September</span> run. It finished at <span data-n="finish_hm">05:06</span> with exit code <span data-n="exit">0</span>.</p>
   </div>
 
   <ol class="timeline">
 
   <li class="stage w-code">
-    <div class="when"><time>03:00:00</time></div>
+    <div class="when"><time data-n="t_doctor">03:00:13</time></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Check the machine, read the comments</h3>
@@ -116,45 +116,45 @@
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>03:00:16</time></div>
+    <div class="when"><time data-n="t_fetch">03:00:16</time></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Fetch the day's top clips</h3>
-      <p>The Twitch API lists the most-watched League of Legends clips created between midnight and midnight, Amsterdam time: title, streamer, language tag and view count. That night: 219 clips. Nothing is downloaded yet, because most will be dropped on this information alone.</p>
+      <p>The Twitch API lists the most-watched League of Legends clips created between midnight and midnight, Amsterdam time: title, streamer, language tag and view count. That night: <span data-n="fetched">219</span> clips. Nothing is downloaded yet, because most will be dropped on this information alone.</p>
     </div>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>03:00:20</time><span class="took">6 min</span></div>
+    <div class="when"><time data-n="t_prefilter">03:00:20</time><span class="took" data-n="d_prefilter">7 min</span></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Drop what code alone can judge</h3>
-      <p>Channels outside the supported languages go first (57 that night), along with a hand-kept blacklist and tournament titles. The other 162 are downloaded in low quality and measured.</p>
+      <p>Channels outside the supported languages go first (<span data-n="drop_lang">57</span> that night), along with a hand-kept blacklist and tournament titles. The other <span data-n="scored">162</span> are downloaded in low quality and measured.</p>
       <figure class="media">
-        <img src="assets/filmstrip.jpg" width="2602" height="180" loading="lazy" alt="Eight small frames sampled evenly across a 30-second clip, showing a teamfight moving across the map.">
-        <img class="wave" src="assets/wave.png" width="1600" height="200" loading="lazy" alt="The audio waveform of the same clip, with loud bursts in the second half.">
-        <figcaption>Motion compares eight tiny frames like these (160×90 pixels). Audio reads the waveform for loudness, spikes, pitch energy and how much of the clip is loud. This is the clip that became #2.</figcaption>
+        <img src="assets/filmstrip.jpg" width="2602" height="180" loading="lazy" alt="Eight small frames sampled evenly across one clip.">
+        <img class="wave" src="assets/wave.png" width="1600" height="200" loading="lazy" alt="The audio waveform of the same clip.">
+        <figcaption>Motion compares eight tiny frames like these (160×90 pixels). Audio reads the waveform for loudness, spikes, pitch energy and how much of the clip is loud. This is the clip that became #<span data-n="hero_rank">2</span>.</figcaption>
       </figure>
-      <p>A clip is dropped if it is quiet (audio below 0.22) or static (motion below 0.015). A title containing <q>penta</q>, <q>1v5</q> or <q>outplay</q> skips the audio test: a silent pentakill once got thrown out for being quiet, and the streamer's own title is a stronger signal than their volume. The 124 that pass are ranked by title keyword, loudness and views; the top 52 go on.</p>
+      <p>A clip is dropped if it is quiet (audio below 0.22) or static (motion below 0.015). A title containing <q>penta</q>, <q>1v5</q> or <q>outplay</q> skips the audio test: a silent pentakill once got thrown out for being quiet, and the streamer's own title is a stronger signal than their volume. The <span data-n="passed">124</span> that pass are ranked by title keyword, loudness and views; the top <span data-n="kept">52</span> go on.</p>
       <p class="note">Thresholds and weights are set by hand. A logistic regression was once fitted to hand labels to suggest values, but the pipeline doesn't load it.</p>
     </div>
   </li>
 
   <li class="stage w-local">
-    <div class="when"><time>03:06:56</time><span class="took">92 min</span></div>
+    <div class="when"><time data-n="t_vlm_filter">03:06:56</time><span class="took" data-n="d_vlm_filter">92 min</span></div>
     <div class="what">
       <span class="tag">Model on the home GPU</span>
       <h3>Ask a small vision model simple questions</h3>
-      <p>The 52 are downloaded in full quality. A 4B vision model on the home GPU looks at still frames. Small models get multi-part questions wrong, so each question is asked on its own:</p>
+      <p>The <span data-n="kept">52</span> are downloaded in full quality. A 4B vision model on the home GPU looks at still frames. Small models get multi-part questions wrong, so each question is asked on its own:</p>
       <ul class="qs">
         <li><span>Is this League of Legends gameplay?</span><small>3 frames, majority vote</small></li>
         <li><span>Is this a professional tournament broadcast?</span><small>1 frame</small></li>
         <li><span>How many kill notifications? Is there a multikill banner?</span><small>Screen crops every 5 s</small></li>
       </ul>
       <figure class="media crops">
-        <img src="assets/crop_banner.jpg" width="512" height="163" loading="lazy" alt="A crop of the top centre of the screen showing the ACE! announcement banner.">
-        <img src="assets/crop_killfeed.jpg" width="512" height="592" loading="lazy" alt="A crop of the right edge of the screen showing a kill notification with two champion icons.">
-        <figcaption>What the model was shown for clip #2 at 22 seconds: the announcement area (it read “ace!”) and the kill feed. Crops let a small model read HUD text it would miss in the full frame.</figcaption>
+        <img src="assets/crop_banner.jpg" width="512" height="163" loading="lazy" alt="A crop of the top centre of the screen, where multikill announcements appear.">
+        <img src="assets/crop_killfeed.jpg" width="512" height="592" loading="lazy" alt="A crop of the right edge of the screen, where kill notifications appear.">
+        <figcaption>What the model was shown for clip #<span data-n="hero_rank">2</span> <span data-n="crop_note">at 22 seconds: the announcement area (it read “ace!”) and the kill feed</span>. Crops let a small model read HUD text it would miss in the full frame.</figcaption>
       </figure>
       <p>The model only describes; it never decides. Its answers are cached, and a plain function turns them into keep or reject:</p>
 <pre class="code"><code><span class="c"># pipeline/filtering/vlm_filter.py · decide(), first match wins</span>
@@ -166,31 +166,31 @@ multikill banner              <span class="k">keep</span>
 kills confirmed, audio ≥ 0.30 <span class="k">keep</span>
 loud reaction, audio ≥ 0.55   <span class="k">keep</span>   <span class="c"># not for Japanese titles</span>
 anything else                 <span class="r">reject</span></code></pre>
-      <p>Because the rules live outside the model, changing a threshold re-runs in a second from the cache instead of costing another 90 minutes of GPU time. 24 clips were kept.</p>
+      <p>Because the rules live outside the model, changing a threshold re-runs in a second from the cache instead of costing another <span data-n="vlm_minutes">92</span> minutes of GPU time. <span data-n="vlm_kept">24</span> clips were kept.</p>
     </div>
   </li>
 
   <li class="stage w-cloud">
-    <div class="when"><time>04:38:56</time><span class="took">5 min</span></div>
+    <div class="when"><time data-n="t_api_judge">04:38:56</time><span class="took" data-n="d_api_judge">5 min</span></div>
     <div class="what">
       <span class="tag">Model in the cloud</span>
       <h3>Let a large model watch the whole clip</h3>
-      <p>The 24 go to Gemini as video with sound. It must answer in a fixed JSON shape; an answer with a missing field counts as no answer. Its real verdict on clip #2:</p>
-<pre class="code"><code>{
+      <p>The <span data-n="vlm_kept">24</span> go to Gemini as video with sound. It must answer in a fixed JSON shape; an answer with a missing field counts as no answer. Its real verdict on clip #<span data-n="hero_rank">2</span>:</p>
+<pre class="code"><code data-n="verdict_html">{
   <span class="p">"clip_focus"</span>: <span class="s">"gameplay"</span>,
   <span class="p">"play_quality"</span>: <span class="n">9</span>,
   <span class="p">"entertainment"</span>: <span class="n">9</span>,
-  <span class="p">"what_happens"</span>: <span class="s">"A League of Legends player achieves an incredible
-    pentakill during a chaotic teamfight using Viego's ultimate
-    resets. The player expresses pure disbelief and excitement…"</span>,
+  <span class="p">"what_happens"</span>: <span class="s">"A League of Legends player achieves an incredible pentakill
+    during a chaotic teamfight using Viego&#x27;s ultimate resets.
+    The player expresses pure disbelief and…"</span>,
   <span class="p">"best_moment_s"</span>: <span class="n">18</span>
 }</code></pre>
-      <p>Code makes the call again: keep clips scoring 6+ on entertainment (7+ for pure reactions) or 7+ on play quality. The free tier allows 20 requests per model per day, so the stage walks a chain of models, each with its own allowance; it switched once that night when the first was overloaded. With no key at all it falls back to the local verdicts and still makes a video. The survivors are ordered into a countdown and trimmed to about eight minutes: 17 clips, 8.8 minutes.</p>
+      <p>Code makes the call again: keep clips scoring 6+ on entertainment (7+ for pure reactions) or 7+ on play quality. The free tier allows 20 requests per model per day, so the stage walks a chain of models, each with its own allowance.<span data-n="judge_switch"> It switched models once that night when the first was overloaded.</span> With no key at all it falls back to the local verdicts and still makes a video. The survivors are ordered into a countdown: <span data-n="final">17</span> clips, <span data-n="minutes">8.8</span> minutes of video.</p>
     </div>
   </li>
 
   <li class="stage w-local">
-    <div class="when"><time>04:43:29</time><span class="took">1 min</span></div>
+    <div class="when"><time data-n="t_transcribe">04:43:29</time><span class="took" data-n="d_transcribe">1 min</span></div>
     <div class="what">
       <span class="tag">Model on the home GPU</span>
       <h3>Transcribe and translate the streamers</h3>
@@ -199,39 +199,39 @@ anything else                 <span class="r">reject</span></code></pre>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>04:44:46</time><span class="took">4 min</span></div>
+    <div class="when"><time data-n="t_assemble">04:44:46</time><span class="took" data-n="d_assemble">4 min</span></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Assemble the video</h3>
       <p>ffmpeg renders the intro, then every clip with an animated name card, the countdown number and English captions, a slow-motion replay of the best moment for top-rated clips, and an outro. The GPU's video encoder is detected and used automatically.</p>
       <figure class="media">
-        <img src="assets/caption_en.jpg" width="1600" height="900" loading="lazy" alt="Clip #17: gameplay with the streamer's webcam at bottom right, the name card bibiadoll at the left, and the English caption LET'S GO NOW.">
+        <img src="assets/caption_en.jpg" width="1600" height="900" loading="lazy" alt="A clip from the video with the streamer's name card and the pipeline's English caption.">
         <figcaption>Captions show one to three words at a time and never overlap, so the video works with the sound off.</figcaption>
       </figure>
       <p>Many streamers already burn live captions into their stream, and those can't be removed. The pipeline finds them without a model: a caption widget only draws while someone speaks, so it compares the bottom of the frame during speech with the same area during silence. Whatever appears only during speech is a caption.</p>
       <figure class="media">
-        <img src="assets/caption_translate.jpg" width="1600" height="900" loading="lazy" alt="Clip #12: a Polish streamer's own caption at the bottom, with the pipeline's English translation FINALLY HE JUMPED above it.">
-        <figcaption>An English source caption means we add nothing. A caption in another language, like this Polish one, gets the English translation above it.</figcaption>
+        <img src="assets/caption_translate.jpg" width="1600" height="900" loading="lazy" alt="A streamer's own foreign-language caption at the bottom, with the pipeline's English translation above it.">
+        <figcaption>An English source caption means we add nothing. A caption in another language, like this <span data-n="tr_lang">Polish</span> one, gets the English translation above it.</figcaption>
       </figure>
     </div>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>04:48:48</time></div>
+    <div class="when"><time data-n="t_credits">04:48:48</time></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Write the credits, draw the thumbnails</h3>
       <p>The description gets a chapter for every clip and a link to every streamer's channel. Thumbnails are composed in Python from the champion's splash art, the streamer's avatar and a short hook, in three colourways.</p>
       <figure class="media thumbs">
-        <img src="assets/thumb_1.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail with Karthus splash art, a red border and PENTAKILL?! beside the streamer's circular avatar.">
-        <img src="assets/thumb_2.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail variant with a gameplay frame behind the gold word PENTAKILL.">
-        <img src="assets/thumb_3.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail variant in teal with the word INSANE!">
+        <img src="assets/thumb_1.jpg" width="1280" height="720" loading="lazy" alt="The night's thumbnail, first colourway.">
+        <img src="assets/thumb_2.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail, second colourway.">
+        <img src="assets/thumb_3.jpg" width="1280" height="720" loading="lazy" alt="Thumbnail, third colourway.">
       </figure>
     </div>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>04:48:58</time><span class="took">13 min</span></div>
+    <div class="when"><time data-n="t_upload">04:48:58</time><span class="took" data-n="d_upload">13 min</span></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Upload</h3>
@@ -240,20 +240,20 @@ anything else                 <span class="r">reject</span></code></pre>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>05:02:27</time><span class="took">4 min</span></div>
+    <div class="when"><time data-n="t_shorts">05:02:27</time><span class="took" data-n="d_shorts">4 min</span></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Cut three Shorts</h3>
       <p>The three best clips are cut to about 30 seconds and turned vertical. When a webcam is found, gameplay goes on top and the streamer's face below; otherwise the gameplay is centred.</p>
       <figure class="media shorts">
-        <img src="assets/short_1.jpg" width="540" height="960" loading="lazy" alt="A vertical Short: gameplay in the top half, the streamer's webcam in the bottom half.">
-        <img src="assets/short_2.jpg" width="540" height="960" loading="lazy" alt="A vertical Short with the gameplay centred on a blurred background.">
+        <img src="assets/short_1.jpg" width="540" height="960" loading="lazy" alt="One of the night's vertical Shorts.">
+        <img src="assets/short_2.jpg" width="540" height="960" loading="lazy" alt="Another of the night's vertical Shorts.">
       </figure>
     </div>
   </li>
 
   <li class="stage w-code">
-    <div class="when"><time>05:06:30</time></div>
+    <div class="when"><time data-n="t_cleanup">05:06:30</time></div>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Clean up</h3>
@@ -270,7 +270,7 @@ anything else                 <span class="r">reject</span></code></pre>
   <div class="ideas">
     <div class="idea">
       <h3>Cheap first, expensive last</h3>
-      <p>Free code discards three clips in four before any model runs. Sending all 219 to Gemini would take eleven days of one model's free allowance.</p>
+      <p>Free code discards three clips in four before any model runs. Sending all 219 to Gemini would take <span data-n="gemini_days">eleven days</span> of one model's free allowance.</p>
     </div>
     <div class="idea">
       <h3>Models describe, code decides</h3>
@@ -299,7 +299,7 @@ anything else                 <span class="r">reject</span></code></pre>
 </main>
 
 <footer class="foot">
-  <p class="exit"><span class="pix">05:06:32</span> exit 0</p>
+  <p class="exit"><span class="pix" data-n="finish">05:06:32</span> exit <span data-n="exit">0</span></p>
   <p>Built by one person with Claude Code. Python, ffmpeg, Ollama, faster-whisper and Gemini. Every clip belongs to the streamer who made it; each one is credited and linked in the video description.</p>
   <a class="btn btn-light" href="https://github.com/Kemonoo/lol-highlights-pipeline">View source on GitHub</a>
 </footer>

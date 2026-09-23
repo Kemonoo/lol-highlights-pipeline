@@ -1,4 +1,14 @@
-[
+{
+"night": {
+"fetched": 219,
+"scored": 162,
+"passed": 124,
+"kept": 52,
+"vlm_kept": 24,
+"final": 17,
+"date_long": "21 September 2026"
+},
+"clips": [
 {
 "i": 0,
 "who": "Sinmivak",
@@ -676,3 +686,4 @@
 "motion": 0.091
 }
 ]
+}

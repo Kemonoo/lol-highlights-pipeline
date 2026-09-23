@@ -53,7 +53,7 @@ Numbers of the 09-21 night come from the log; rules and limits come from config/
 | S4 | Gemini watches video+sound, fixed JSON schema, missing field = no answer | `filtering/api_judge.py` (`parse_verdict`) |
 | S4-rule | keep: entertainment ≥ 6 (≥ 7 reactions) or play quality ≥ 7 | `api_judge` keep rule |
 | S4-budget | 20 requests/model/day, walks a model chain; switched once on 09-21 | `api_judge.daily_budget`, `llm.roles.judge.overflow_models`, log |
-| S4-selection | Countdown trimmed to ~8 min: 17 clips, 8.8 min | log "Selection: 17 clips, 8.7 min" / "Assembled … 8.8 min" (now `target_clips`) |
+| S4-selection | "ordered into a countdown: 17 clips, 8.8 minutes of video" (no rule named, so it holds under target_clips too) | log "Selection: 17 clips, 8.7 min" / "Assembled … 8.8 min" (now `target_clips`) |
 | S5 | Whisper translates to English with word timestamps, 1 min | `transcribe`, log times |
 | S6 | Captions 1–3 words, never overlap; source-caption detection by speech-vs-silence difference | `assemble._caption_groups`, `enrichment/burned_captions.py` |
 | S6-replay | Slow-mo replay for top-rated clips | `video.replay_min_score: 7` |
@@ -61,7 +61,7 @@ Numbers of the 09-21 night come from the log; rules and limits come from config/
 | S8 | Resumable upload, can't upload a day twice | `publishing/upload.py` (`state.uploaded_id`) |
 | S9 | Three best clips, ~30 s, face below / centred when none | `shorts.count`, `shorts.target_seconds: 32` |
 | S10 | Raw downloads deleted after a day; masters only after YouTube confirms | `cleanup.keep_raw_days: 1`, `cleanup.py` |
-| T | Stage start times 03:00:00 … 05:06:30, durations | `[stage] starting` lines in the log |
+| T | Stage start times (first = first log line, 03:00:13) … 05:06:30, durations rounded to minutes | `[stage] starting` lines in the log |
 | D1 | All 219 to Gemini = 11 days of one model's allowance | 219 / 20 |
 | P1–P4 | Open problems: pro-broadcast check ~2/7 right; judge sees 360p copy; Shorts face miss ~50%; Shorts double captions | audits in this repo's chats (DEVLOG 2026-09-13 area); remove each when fixed |
 
@@ -72,26 +72,37 @@ credits them and the video description links each channel.
 
 | file | what | made from |
 |---|---|---|
-| `hero.mp4` / `hero.jpg` | 9 s loop / poster of clip #2 (lol_Ethereal pentakill) | `output/2026-09-21.mp4` @ 466.5 s / 467.5 s |
+| `hero.mp4` / `hero.jpg` / `keycap.jpg` | 9 s loop / poster / hero tile of countdown #2 (lol_Ethereal pentakill) | output @ chapter start +1 s / +2 s |
 | `clips/NN.jpg` + `funnel.json` | 52 prefilter survivors: tile, verdicts, scores, stage reached, rank | `work/2026-09-21/thumbs`, `vlm_scored.json`, `api_partial_v3.json`, `chapters.json` |
 | `filmstrip.jpg`, `wave.png` | 8 frames + waveform of clip #2 | raw clip `PlumpSingleQuail…mp4` |
 | `crop_banner.jpg`, `crop_killfeed.jpg` | VLM crops at 22 s | `work/2026-09-21/crops/` |
-| `caption_en.jpg` / `caption_translate.jpg` | clip #17 caption / Polish source caption + ours | output @ 6 s / 156.5 s |
+| `caption_en.jpg` / `caption_translate.jpg` | #16 English caption / #12 Polish source caption + ours | output @ chapter start + first 3-word phrase |
 | `thumb_1..3.jpg` | the night's thumbnails | `work/2026-09-21/thumbnail*.jpg` |
 | `short_1.jpg`, `short_2.jpg` | split layout / centred layout | `work/2026-09-22/shorts/` @ 6 s |
 | `intro.jpg` | brand intro frame (currently unused) | output @ 1.2 s |
 
-Hero keycap = `clips/28.jpg` (rank #2). funnel.json `stage`: 2 = dropped by the VLM,
+funnel.json `stage`: 2 = dropped by the VLM,
 3 = dropped by Gemini, 4 = in the video.
 
 ### Regenerating assets for a new night
 
-Raw MP4s are deleted after a day (`cleanup.keep_raw_days: 1`), so export the morning
-after the run you want to feature. The funnel export is the Python snippet in the site
-chat of 2026-09-23 (reads `vlm_scored.json`, `api_partial_v3.json`, `chapters.json`,
-writes `clips/NN.jpg` 240×135 + `funnel.json`); then update the hard-coded counts in
-`index.html` (steps, hero, headings, stage text) and `NOTES` + the drop counts
-(`[[1, 57], [2, 38], [3, 72]]`) in `funnel.js`. TODO: turn this into `site/export.py`.
+```
+./venv/Scripts/python.exe scripts/export_site.py --date <night> --dry-run   # check numbers
+./venv/Scripts/python.exe scripts/export_site.py --date <night>
+```
+
+Run it the morning after the night (raw MP4s are deleted after a day; the filmstrip and
+waveform need one). It reads the night's log and work files and rewrites: every element
+in `index.html` marked `data-n="key"` (numbers, times, durations, dates, the judge's JSON,
+figure captions), `assets/funnel.json` (`{night, clips}`, which funnel.js reads for its
+counts and notes), the clip tiles, `keycap.jpg`, the hero loop/poster, caption stills,
+crops, thumbnails and Short stills. Missing sources are skipped with a warning and the
+old asset stays. Rerunning is idempotent. The script's docstring lists the rules that
+replace hand-picking (hero = countdown #2 via `--hero-rank`, `--crop-time`, …).
+
+Not automated: prose that isn't a number (e.g. "a silent pentakill once…"), the ledger
+and changelog below, and a look at the result. New night-specific text in the page
+should get a `data-n` key and a value in the script's `values` dict.
 
 ## Design (keep consistent)
 
@@ -117,3 +128,6 @@ Built with Anthropic's `frontend-design` plugin guidance.
 - 2026-09-23 — v1: light editorial page, interactive funnel of the 09-21 night.
 - 2026-09-24 — v2: Dovetail-style dark redesign, renamed "Twitch Highlights Pipeline",
   hero video loop, animated hero grid, full HH:MM:SS stage times.
+- 2026-09-24 — `scripts/export_site.py`: the whole night is exported by one command;
+  night-specific text is `data-n`-bound. Re-exported 09-21 (same numbers; new picks:
+  caption still #16, sharper kill-feed crop, prefilter "7 min").

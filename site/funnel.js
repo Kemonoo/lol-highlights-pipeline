@@ -1,20 +1,23 @@
-// The funnel: 219 cells, one per clip fetched on 21 Sep 2026. The 52 clips that reached
-// the GPU carry their real thumbnail and verdicts (assets/funnel.json, exported from the
-// pipeline's own work files). The other 167 never got a thumbnail, so they are plain cells
-// that only know at which step they were dropped.
+// The funnel: one cell per clip fetched on the featured night. The clips that reached
+// the GPU carry their real thumbnail and verdicts (assets/funnel.json, written by
+// scripts/export_site.py from the pipeline's own work files). The rest never got a
+// thumbnail, so they are plain cells that only know at which step they were dropped.
 (function () {
   const grid = document.getElementById("grid");
   const note = document.getElementById("step-note");
   const detail = document.getElementById("detail");
   const tabs = [...document.querySelectorAll(".steps button")];
+  let nightKept = 52;
 
-  const NOTES = [
-    "<strong>219 clips</strong> in that day's Twitch top list for League of Legends. So far only titles and numbers; nothing has been downloaded.",
-    "<strong>57 dropped</strong> because the channel's language tag isn't one the pipeline accepts. No download needed.",
-    "<strong>38 dropped</strong> after a low-quality download: too quiet or too still to be a highlight.",
-    "<strong>72 dropped</strong> by the cap. The rest are ranked by title keyword, then loudness, then views, and only the best 52 go to the GPU.",
-    "<strong>28 rejected</strong> by the local vision model's answers: not gameplay, looked like a pro broadcast, or no kills and not loud enough.",
-    "<strong>7 dropped</strong> on Gemini's scores. The last 17 become the countdown, from #17 to #1.",
+  // step notes; the numbers come from assets/funnel.json ("night"), written by
+  // scripts/export_site.py from that night's log
+  const notes = (n) => [
+    `<strong>${n.fetched} clips</strong> in that day's Twitch top list for League of Legends. So far only titles and numbers; nothing has been downloaded.`,
+    `<strong>${n.fetched - n.scored} dropped</strong> because the channel's language tag isn't one the pipeline accepts. No download needed.`,
+    `<strong>${n.scored - n.passed} dropped</strong> after a low-quality download: too quiet or too still to be a highlight.`,
+    `<strong>${n.passed - n.kept} dropped</strong> by the cap. The rest are ranked by title keyword, then loudness, then views, and only the best ${n.kept} go to the GPU.`,
+    `<strong>${n.kept - n.vlm_kept} rejected</strong> by the local vision model's answers: not gameplay, looked like a pro broadcast, or no kills and not loud enough.`,
+    `<strong>${n.vlm_kept - n.final} dropped</strong> on Gemini's scores. The last ${n.final} become the countdown, from #${n.final} to #1.`,
   ];
 
   // seeded shuffle so the layout is stable between visits
@@ -50,11 +53,14 @@
     });
   }
 
-  fetch("assets/funnel.json").then((r) => r.json()).then((clips) => {
+  fetch("assets/funnel.json").then((r) => r.json()).then(({ night: n, clips }) => {
+    nightKept = n.kept;
     hero(clips);
+    const NOTES = notes(n);
     const cells = [];
-    // dropAt = the first step at which this cell is no longer in the running
-    [[1, 57], [2, 38], [3, 72]].forEach(([at, n]) => { for (let i = 0; i < n; i++) cells.push({ dropAt: at }); });
+    // dropAt = the first step at which this cell is no longer in the running. Only the
+    // clips that reached the GPU have pictures; the rest are counted from the log.
+    [[1, n.fetched - n.scored], [2, n.scored - n.passed], [3, n.passed - n.kept]].forEach(([at, n]) => { for (let i = 0; i < n; i++) cells.push({ dropAt: at }); });
     clips.forEach((c) => cells.push({ clip: c, dropAt: c.stage === 2 ? 4 : c.stage === 3 ? 5 : 99 }));
     shuffle(cells);
 
@@ -108,7 +114,7 @@
     const steps = [
       row(true, "Supported language"),
       row(true, c.audio < 0.22 ? "Quiet, but the title keyword let it through" : "Loud and moving enough", `audio ${c.audio}, motion ${c.motion}`),
-      row(true, "Ranked into the top 52"),
+      row(true, `Ranked into the top ${nightKept}`),
       row(c.stage >= 3, c.stage >= 3 ? "Kept by the local model" : "Rejected by the local model", esc(c.local)),
     ];
     if (c.stage >= 3) {
