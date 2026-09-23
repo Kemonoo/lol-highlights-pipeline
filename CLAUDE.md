@@ -63,7 +63,8 @@ relative to `pipeline/`).
    The quota is metered PerProjectPerModel, so `llm.roles.judge.overflow_models` lists
    further ids that each carry their OWN allowance on the same key — the stage walks the
    chain and re-sends the clip, turning 20/day into 20 x len(chain).
-   Duration-aware selection: fill toward `video.target_minutes_ideal` with fillers
+   Selection (`api_judge.select`, pure): `video.target_clips` > 0 = exactly that many clips
+   (owner overlay: 20); 0 = duration rule — fill toward `video.target_minutes_ideal` with fillers
    (ent≥4), trim at max, order ascending rank = countdown. Writes `api_scored.json`
    (the stage's done-marker) and rewrites vlm_filtered.json (input is always rebuilt
    from vlm_scored.json — idempotent)
@@ -233,7 +234,14 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   names, numbers.
 - **Known open disagreement**: judge underrates "streamer gets outplayed" fail clips
   (labeled good, ent2). Candidate future signal; don't silently "fix".
-- **Eval loop**: labels via `label_clips.py`, score via `eval_filter.py`. v2→v4 filter
+- **Review queue** (`tools/review_queue.py` + `review_ui.html`, `review.bat`): the ongoing
+  ground-truth loop. Samples `review.per_gate` clips from EVERY gate per finished night plus
+  `review.random`, traces why each stopped (`trace()`, rebuilt from work files — nothing
+  extra runs at night), and records two answers: was the gate's stated reason TRUE (detector
+  accuracy) and how GOOD is the clip (rule accuracy). Plays the full-quality file while it
+  exists, else the Twitch embed. Append-only `data/reviews/reviews.jsonl` with a snapshot
+  of the pipeline's facts per clip (newest line per clip wins); `--stats` = per-gate table.
+- **Eval loop (older)**: labels via `label_clips.py`, score via `eval_filter.py`. v2→v4 filter
   took precision 0.25→1.0 on 2026-06-09 — but on a tiny set (25 labels, of which only
   ~9 reached the VLM stage, 1-3 of them good), and it does not reproduce: today's rules
   on the same saved day score 0.33 on 9 clips. Treat it as "tuning helped", not a

@@ -19,6 +19,7 @@
 # If you cloned this repo: copy this file, don't use it — it is somebody else's channel.
 
 video:
+  target_clips: 20               # owner's pick: a top-20 countdown (was 17ish from the 8-min rule)
   brand:
     name: KEMONO
     tagline: DAILY LEAGUE OF LEGENDS
@@ -69,3 +70,7 @@ cleanup:
                                   # canonical copy; a week is enough to catch a bad render
                                   # and re-cut it. Masters are ~550-850 MB each, i.e. about
                                   # 200 GB/year of local disk if never pruned.
+
+vlm_filter:
+  max_keep: 32                   # a 20-clip countdown needs ~30 judged candidates; the VLM
+                                 # usually keeps more than 24 anyway (the cap cut ~9/day)

@@ -408,3 +408,39 @@ def test_spend_is_counted_against_the_pacific_day(tmp_path):
     assert State(tmp_path).api_spend("judge") == 3          # survives a reload
     assert st.quota_day() == datetime.now(
         ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
+
+
+# ── video selection (api_judge.select) ────────────────────────────────────────
+
+def _pool(n_keep, n_filler, dur=30):
+    keep = [{"id": f"k{i}", "api_decision": "KEEP", "api_reason": "R", "duration": dur,
+             "api_rank_score": 9 - i * 0.1, "api_focus": "gameplay", "api_entertainment": 7}
+            for i in range(n_keep)]
+    fill = [{"id": f"f{i}", "api_decision": "DROP", "api_reason": "R", "duration": dur,
+             "api_rank_score": 4 - i * 0.1, "api_focus": "gameplay", "api_entertainment": 5}
+            for i in range(n_filler)]
+    return keep, keep + fill
+
+
+def test_select_target_clips_fills_with_fillers():
+    from pipeline.filtering.api_judge import select
+    keep, judged = _pool(17, 5)
+    kept, _ = select(judged, keep, {"target_clips": 20}, {})
+    assert len(kept) == 20
+    assert [c["id"] for c in kept[17:]] == ["f0", "f1", "f2"]      # best fillers first
+    assert all(c["api_reason"].endswith("_FILLER") for c in kept[17:])
+
+
+def test_select_target_clips_trims_weakest():
+    from pipeline.filtering.api_judge import select
+    keep, judged = _pool(24, 0)
+    kept, _ = select(judged, keep, {"target_clips": 20}, {})
+    assert len(kept) == 20
+    assert keep[-1]["api_reason"].endswith("_OVER_COUNT")
+
+
+def test_select_without_target_keeps_duration_rule():
+    from pipeline.filtering.api_judge import select
+    keep, judged = _pool(24, 0, dur=30)                  # 12 min > 10 min max
+    kept, total = select(judged, keep, {}, {})
+    assert total <= 600 and len(kept) == 20

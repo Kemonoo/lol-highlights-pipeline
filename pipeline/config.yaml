@@ -368,6 +368,8 @@ video:
   # shipped 3-5 min of genuinely good clips, which is worse than a short video. The
   # failure it looked like it guarded against — a broken extractor yielding nothing — is
   # covered properly by video.min_clips.
+  target_clips: 0             # >0 = the video is exactly this many clips (fill with fillers,
+                              # trim the weakest); length follows. 0 = use the minutes below.
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10      # trim the weakest clips back down to this
   music_enabled: false         # LEAN MODE: no background music (Synapse-style — the clip's own
@@ -510,3 +512,10 @@ resources:                    # keep a run from making the machine unusable
 
 paths:
   data: data                  # relative to repo root
+
+review:                       # python -m pipeline.tools.review_queue (review.bat)
+  per_gate: 1                 # clips sampled per night from EVERY filter gate (quiet, still,
+                              # not gameplay, pro broadcast, judge drop, in the video, ...)
+  random: 4                   # plus this many from anywhere in the night's pool
+  days: 7                     # recent finished nights to offer (older ones play via Twitch)
+  port: 8766

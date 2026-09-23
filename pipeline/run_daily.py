@@ -50,13 +50,25 @@ STAGES = [
 ]
 
 
-def _selection_minutes(cfg: dict, d: str) -> float:
+def _selection(cfg: dict, d: str) -> list:
     import json
     f = Path(cfg["paths"]["data_abs"]) / "work" / d / "vlm_filtered.json"
     if not f.exists():
-        return 0.0
-    clips = json.loads(f.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
-    return sum(c.get("duration", 30) for c in clips) / 60.0
+        return []
+    return json.loads(f.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
+
+
+def _selection_minutes(cfg: dict, d: str) -> float:
+    return sum(c.get("duration", 30) for c in _selection(cfg, d)) / 60.0
+
+
+def _selection_short(cfg: dict, d: str) -> bool:
+    """Below video.target_clips when set, else below target_minutes_ideal."""
+    v = cfg.get("video", {})
+    target = int(v.get("target_clips", 0) or 0)
+    if target:
+        return len(_selection(cfg, d)) < target
+    return _selection_minutes(cfg, d) < v.get("target_minutes_ideal", 8)
 
 
 def _expand_selection_if_short(cfg: dict, state, date_label: str) -> None:
@@ -64,23 +76,23 @@ def _expand_selection_if_short(cfg: dict, state, date_label: str) -> None:
     video length (or the fetch cap). Per-clip caches make every extra round
     incremental — only the newly fetched clips cost prefilter/VLM/judge time."""
     tw = cfg["twitch"]
-    ideal = cfg.get("video", {}).get("target_minutes_ideal", 8)
     step = tw.get("expand_step", 150)
     max_fetch = tw.get("max_fetch", 600)
-    while (_selection_minutes(cfg, date_label) < ideal
+    while (_selection_short(cfg, date_label)
            and tw["fetch_count"] + step <= max_fetch):
         tw["fetch_count"] += step
         cfg["prefilter"]["max_keep"] += tw.get("expand_keep_step", 25)
         cfg["vlm_filter"]["max_keep"] += 8
-        log.info("Selection at %.1f min (< ideal %d) — expanding fetch to %d clips",
-                 _selection_minutes(cfg, date_label), ideal, tw["fetch_count"])
+        log.info("Selection at %d clips / %.1f min (short of target) — expanding fetch "
+                 "to %d clips", len(_selection(cfg, date_label)),
+                 _selection_minutes(cfg, date_label), tw["fetch_count"])
         fetch.run(cfg, state, date_label)
         prefilter.run(cfg, state, date_label)
         vlm_filter.run(cfg, state, date_label)
         api_judge.run(cfg, state, date_label)
-    m = _selection_minutes(cfg, date_label)
-    if m < ideal:
-        log.info("Selection finalized at %.1f min - day's pool exhausted", m)
+    if _selection_short(cfg, date_label):
+        log.info("Selection finalized at %d clips / %.1f min - day's pool exhausted",
+                 len(_selection(cfg, date_label)), _selection_minutes(cfg, date_label))
 
 
 def _stage_outputs(cfg: dict, d: str) -> dict:

@@ -198,6 +198,53 @@ def decide_api(clip: dict, aj: dict) -> None:
     clip["api_reason"] = f"{focus}_ent{ent}_pq{pq}"
 
 
+def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
+    """Pick the video's clips from the judged pool. Pure: mutates only the clips'
+    api_decision/api_reason. `kept` arrives sorted best-first.
+
+    `video.target_clips` > 0 fills toward that many clips and trims back to it (length
+    follows from the count). 0 = the older duration rule: fill toward
+    target_minutes_ideal, trim at target_minutes_max. Either way the fill comes from
+    judge-DROPPED fillers (gameplay/reaction, entertainment >= filler_min_entertainment).
+    """
+    target = int(v.get("target_clips", 0) or 0)
+    ideal_s = v.get("target_minutes_ideal", 8) * 60
+    max_s = v.get("target_minutes_max", 10) * 60
+    kept = list(kept)
+    total = sum(c.get("duration", 30) for c in kept)
+
+    def short() -> bool:
+        return len(kept) < target if target else total < ideal_s
+
+    if short():
+        fillers = sorted(
+            (c for c in judged
+             if c.get("api_decision") == "DROP"
+             and c.get("api_focus") in ("gameplay", "reaction")
+             and c.get("api_entertainment", 0) >= aj.get("filler_min_entertainment", 4)),
+            key=lambda c: -c.get("api_rank_score", 0))
+        for c in fillers:
+            if not short():
+                break
+            c["api_decision"] = "KEEP"
+            c["api_reason"] += "_FILLER"
+            kept.append(c)
+            total += c.get("duration", 30)
+        if short():
+            log.info("Only %d clips / %.1f min of keepable content so far", len(kept),
+                     total / 60)
+
+    def over() -> bool:
+        return len(kept) > target if target else total > max_s
+
+    while over() and len(kept) > 1:                  # trim weakest
+        cdrop = kept.pop()
+        cdrop["api_decision"] = "DROP"
+        cdrop["api_reason"] += "_OVER_COUNT" if target else "_OVER_LENGTH"
+        total -= cdrop.get("duration", 30)
+    return kept, total
+
+
 def run(cfg: dict, state, date_label: str) -> Path:
     aj = cfg.get("api_judge", {})
     data = Path(cfg["paths"]["data_abs"])
@@ -398,33 +445,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     kept = sorted((c for c in judged if c.get("api_decision") == "KEEP"),
                   key=lambda c: -c.get("api_rank_score", 0))
 
-    # ── duration-aware selection: fill to target length, order as a countdown ──
     v = cfg.get("video", {})
-    ideal_s = v.get("target_minutes_ideal", 8) * 60
-    max_s = v.get("target_minutes_max", 10) * 60
-    total = sum(c.get("duration", 30) for c in kept)
-    if total < ideal_s:
-        fillers = sorted(
-            (c for c in judged
-             if c.get("api_decision") == "DROP"
-             and c.get("api_focus") in ("gameplay", "reaction")
-             and c.get("api_entertainment", 0) >= aj.get("filler_min_entertainment", 4)),
-            key=lambda c: -c.get("api_rank_score", 0))
-        for c in fillers:
-            if total >= ideal_s:
-                break
-            c["api_decision"] = "KEEP"
-            c["api_reason"] += "_FILLER"
-            kept.append(c)
-            total += c.get("duration", 30)
-        if total < ideal_s:
-            log.info("Only %.1f min of keepable content so far (ideal %d min)",
-                     total / 60, ideal_s // 60)
-    while total > max_s and len(kept) > 1:           # trim weakest
-        cdrop = kept.pop()
-        cdrop["api_decision"] = "DROP"
-        cdrop["api_reason"] += "_OVER_LENGTH"
-        total -= cdrop.get("duration", 30)
+    kept, total = select(judged, kept, v, aj)
 
     if v.get("countdown_enabled", True):              # worst -> best, badges N..1
         kept.sort(key=lambda c: c.get("api_rank_score", 0))

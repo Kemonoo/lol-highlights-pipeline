@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEMONO Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f171e; --panel: #16222c; --raise: #1d2c38; --rule: #2a3a47;
+    --ink: #e6ebef; --muted: #93a3b0; --gold: #d9a843;
+    --yes: #5cc497; --no: #ee8577; --ok: #d9a843;
+    --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+    --sans: "Source Sans 3", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.45 var(--sans); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  .top { display: flex; align-items: center; gap: 20px; padding: 10px 20px; border-bottom: 1px solid var(--rule); }
+  .brand { font: 800 22px/1 var(--display); letter-spacing: .04em; color: var(--gold); }
+  .brand span { color: var(--ink); font-weight: 700; margin-left: 4px; letter-spacing: .01em; }
+  .where { color: var(--muted); }
+  .where b { color: var(--ink); font-weight: 600; }
+  .bar { flex: 1; height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; max-width: 360px; }
+  .bar i { display: block; height: 100%; background: var(--gold); width: 0; transition: width .25s; }
+  .top .link { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px 0; border-bottom: 1px solid transparent; }
+  .top .link:hover { color: var(--ink); border-bottom-color: currentColor; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 22px; padding: 18px 20px 20px; height: calc(100% - 49px); }
+  .stage { display: flex; flex-direction: column; min-height: 0; }
+  .player { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; max-height: calc(100vh - 190px); width: 100%; }
+  .player video, .player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .meta { padding: 12px 2px 0; }
+  .who { font: 800 30px/1 var(--display); margin: 0 0 4px; }
+  .title { font-size: 18px; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .facts { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .facts a { color: var(--muted); }
+  .facts a:hover { color: var(--ink); }
+
+  .panel { background: var(--panel); border-radius: 8px; padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+  .panel h2 { font: 700 14px/1 var(--sans); color: var(--muted); margin: 0 0 8px; letter-spacing: .01em; }
+  .path { list-style: none; margin: 0; padding: 0; }
+  .path li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; padding: 5px 0; border-top: 1px solid var(--rule); font-size: 15px; }
+  .path li:first-child { border-top: 0; }
+  .path li::before { content: "✓"; color: var(--yes); }
+  .path li.no::before { content: "✕"; color: var(--no); }
+  .path li.no { font-weight: 600; }
+  .path small { display: block; color: var(--muted); font-weight: 400; font-size: 13.5px; }
+
+  .claim { background: var(--raise); border-radius: 6px; padding: 14px; }
+  .claim p { margin: 0 0 12px; font-size: 16.5px; }
+  .choices { display: flex; gap: 8px; }
+  .choice {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 8px; border-radius: 6px; border: 1px solid var(--rule); background: transparent; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .choice kbd, .tag kbd, .actions kbd { font: 600 12px/1 var(--sans); color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 2px 5px; }
+  .choice:hover { border-color: var(--muted); }
+  .choice[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); }
+  .choice[aria-pressed="true"] kbd { color: var(--ink); border-color: var(--c); }
+  .c-yes, .c-good { --c: var(--yes); }
+  .c-no, .c-bad { --c: var(--no); }
+  .c-ok { --c: var(--ok); }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--rule); background: transparent; cursor: pointer; font-size: 14px; }
+  .tag[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .tag[aria-pressed="true"] kbd { color: var(--bg); border-color: var(--bg); }
+
+  textarea { width: 100%; min-height: 64px; resize: vertical; background: var(--bg); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font: inherit; }
+  textarea:focus { outline: none; border-color: var(--gold); }
+
+  .actions { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 4px; }
+  .save { flex: 1; padding: 12px; border-radius: 6px; border: 0; background: var(--gold); color: #1b1406; font-weight: 600; cursor: pointer; display: flex; gap: 10px; justify-content: center; align-items: center; }
+  .save kbd { color: #1b1406; border-color: #1b140666; }
+  .ghost { padding: 12px 14px; border-radius: 6px; border: 1px solid var(--rule); background: transparent; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .saved-note { color: var(--yes); font-size: 14px; min-height: 1.2em; margin: -8px 0 0; }
+  .keys-lost { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--gold); color: #1b1406; padding: 8px 14px; border-radius: 6px; font-weight: 600; display: none; }
+  body.blurred .keys-lost { display: block; }
+
+  .done { max-width: 720px; margin: 60px auto; padding: 0 20px; }
+  .done h1 { font: 800 48px/1 var(--display); margin: 0 0 12px; }
+  .done p { color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin-top: 18px; font-size: 15px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); }
+  th { color: var(--muted); font-weight: 600; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td small { color: var(--muted); }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 1000px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .player { max-height: none; }
+    .top { flex-wrap: wrap; gap: 6px 14px; }
+    .bar { display: none; }
+    .where { order: 3; width: 100%; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">KEMONO <span>review</span></div>
+  <div class="where" id="where">Loading…</div>
+  <div class="bar" aria-hidden="true"><i id="progress"></i></div>
+  <button class="link" id="show-stats" type="button">Results so far</button>
+</header>
+
+<main id="app" hidden>
+  <section class="stage">
+    <div class="player" id="player"></div>
+    <div class="meta">
+      <p class="who" id="who"></p>
+      <p class="title" id="title"></p>
+      <div class="facts" id="facts"></div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div>
+      <h2>What the pipeline did</h2>
+      <ol class="path" id="path"></ol>
+    </div>
+
+    <div class="claim" id="claim-box">
+      <p id="claim"></p>
+      <div class="choices" role="group" aria-label="Is the pipeline's reason true?">
+        <button class="choice c-yes" type="button" data-claim="true" aria-pressed="false">True <kbd>Y</kbd></button>
+        <button class="choice c-no" type="button" data-claim="false" aria-pressed="false">Not true <kbd>N</kbd></button>
+      </div>
+    </div>
+
+    <div>
+      <h2>How good is the clip?</h2>
+      <div class="choices" role="group" aria-label="Clip quality">
+        <button class="choice c-good" type="button" data-quality="good" aria-pressed="false">Good <kbd>G</kbd></button>
+        <button class="choice c-ok" type="button" data-quality="ok" aria-pressed="false">OK <kbd>O</kbd></button>
+        <button class="choice c-bad" type="button" data-quality="bad" aria-pressed="false">Bad <kbd>B</kbd></button>
+      </div>
+    </div>
+
+    <div>
+      <h2>What's in it (optional)</h2>
+      <div class="tags" id="tags"></div>
+    </div>
+
+    <div>
+      <h2><label for="note">Note (optional, <kbd>T</kbd> to type)</label></h2>
+      <textarea id="note" placeholder="e.g. quiet but a clean 1v3 outplay; the kill feed is covered by a webcam"></textarea>
+    </div>
+
+    <p class="saved-note" id="saved" aria-live="polite"></p>
+    <div class="actions">
+      <button class="ghost" type="button" id="back"><kbd>←</kbd> Back</button>
+      <button class="ghost" type="button" id="skip">Skip <kbd>→</kbd></button>
+      <button class="save" type="button" id="save">Save and next <kbd>Enter</kbd></button>
+    </div>
+  </aside>
+</main>
+
+<section class="done" id="done" hidden>
+  <h1 id="done-title">All caught up</h1>
+  <p id="done-text">Every sampled clip has a review. New ones appear after the next nightly run.</p>
+  <div id="stats"></div>
+  <p><button class="ghost" type="button" id="back-to-queue">Back to the clips</button></p>
+</section>
+
+<div class="keys-lost">Click outside the video to use the keyboard again</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let Q = [], TAGS = [], GATES = {}, answers = {}, i = 0, totalReviews = 0;
+
+const blank = () => ({ claim_ok: null, quality: null, tags: [], note: "", saved: false });
+
+async function init() {
+  const r = await (await fetch("/api/queue")).json();
+  Q = r.queue; TAGS = r.tags; GATES = r.gates; totalReviews = r.total_reviews;
+  for (const q of Q) {
+    const prev = r.reviewed[q.id];
+    answers[q.id] = prev ? { claim_ok: prev.claim_ok, quality: prev.quality, tags: prev.tags || [],
+                             note: prev.note || "", saved: true } : blank();
+  }
+  $("tags").innerHTML = TAGS.map((t, k) =>
+    `<button class="tag" type="button" data-tag="${k}" aria-pressed="false">${t} <kbd>${(k + 1) % 10}</kbd></button>`).join("");
+  i = Math.max(0, Q.findIndex((q) => !answers[q.id].saved));
+  if (!Q.length || Q.every((q) => answers[q.id].saved)) return showDone();
+  $("app").hidden = false;
+  render();
+}
+
+function render() {
+  const q = Q[i], a = answers[q.id];
+  const dayItems = Q.filter((x) => x.date === q.date);
+  const dayPos = dayItems.indexOf(q) + 1;
+  const done = Q.filter((x) => answers[x.id].saved).length;
+  $("where").innerHTML = `Night of <b>${fmtDate(q.date)}</b> · clip ${dayPos} of ${dayItems.length} · ${done} of ${Q.length} reviewed`;
+  $("progress").style.width = `${(100 * done) / Q.length}%`;
+
+  // player: the local file while it still exists, the Twitch embed after that
+  const p = $("player");
+  if (q.local) {
+    p.innerHTML = `<video src="${q.local}" controls autoplay playsinline></video>`;
+    const v = p.querySelector("video");
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  } else {
+    p.innerHTML = `<iframe src="https://clips.twitch.tv/embed?clip=${encodeURIComponent(q.id)}&parent=localhost&autoplay=true" allow="autoplay; fullscreen" allowfullscreen title="Twitch clip"></iframe>`;
+  }
+  preloadNext();
+
+  $("who").textContent = q.who;
+  $("title").textContent = q.title;
+  $("facts").innerHTML = [
+    `${q.views} views`, `${Math.round(q.duration)} s`, `language tag ${esc(q.lang || "?")}`,
+    `picked as ${esc(q.why_picked)}`,
+    `<a href="${esc(q.url)}" target="_blank" rel="noopener">Open on Twitch</a>`,
+  ].map((x) => `<span>${x}</span>`).join("");
+
+  $("path").innerHTML = q.path.map((s) =>
+    `<li class="${s.ok ? "" : "no"}"><div>${esc(s.step)}${s.detail ? `<small>${esc(s.detail)}</small>` : ""}</div></li>`).join("");
+
+  $("claim-box").hidden = !q.claim;
+  $("claim").textContent = q.claim ? `The pipeline says: ${q.claim}` : "";
+  $("note").value = a.note;
+  paint();
+}
+
+function paint() {
+  const a = answers[Q[i].id];
+  document.querySelectorAll("[data-claim]").forEach((b) => b.setAttribute("aria-pressed", String(String(a.claim_ok) === b.dataset.claim)));
+  document.querySelectorAll("[data-quality]").forEach((b) => b.setAttribute("aria-pressed", String(a.quality === b.dataset.quality)));
+  document.querySelectorAll("[data-tag]").forEach((b) => b.setAttribute("aria-pressed", String(a.tags.includes(TAGS[+b.dataset.tag]))));
+  $("saved").textContent = a.saved ? "Saved. Changes are saved again when you move on." : "";
+}
+
+function preloadNext() {
+  const n = Q.slice(i + 1).find((q) => !answers[q.id].saved && q.local);
+  if (n) { const v = document.createElement("video"); v.preload = "auto"; v.src = n.local; }
+}
+
+async function save() {
+  const q = Q[i], a = answers[q.id];
+  a.note = $("note").value;
+  if (a.claim_ok === null && a.quality === null && !a.tags.length && !a.note.trim()) return next();
+  const r = await fetch("/api/review", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: q.id, claim_ok: a.claim_ok, quality: a.quality, tags: a.tags, note: a.note }) });
+  if (!r.ok) { $("saved").textContent = "Couldn't save. Is the review server still running?"; return; }
+  if (!a.saved) totalReviews++;
+  a.saved = true;
+  next();
+}
+
+function next() {
+  const after = Q.findIndex((q, k) => k > i && !answers[q.id].saved);
+  if (after === -1) {
+    if (Q.every((q) => answers[q.id].saved)) return showDone();
+    i = Q.findIndex((q) => !answers[q.id].saved);
+  } else i = after;
+  render();
+}
+function move(d) { i = Math.min(Q.length - 1, Math.max(0, i + d)); render(); }
+
+async function showDone(fromButton) {
+  $("app").hidden = true; $("done").hidden = false;
+  const left = Q.filter((q) => !answers[q.id].saved).length;
+  $("done-title").textContent = left && fromButton ? "Results so far" : "All caught up";
+  $("done-text").textContent = left && fromButton
+    ? `${left} sampled clips are still waiting. Each row is one filter gate.`
+    : "Every sampled clip has a review. New ones appear after the next nightly run.";
+  $("back-to-queue").hidden = !left;
+  const rows = await (await fetch("/api/stats")).json();
+  $("stats").innerHTML = rows.length ? `<table>
+    <tr><th>Gate</th><th class="n">Reviewed</th><th class="n">Reason true</th><th class="n">Good</th><th class="n">OK</th><th class="n">Bad</th></tr>
+    ${rows.map((r) => `<tr><td>${esc(r.label)}<br><small>${esc(r.where)}</small></td><td class="n">${r.n}</td>
+      <td class="n">${r.claim_n ? `${r.claim_true} of ${r.claim_n}` : "–"}</td>
+      <td class="n">${r.good}</td><td class="n">${r.ok}</td><td class="n">${r.bad}</td></tr>`).join("")}
+  </table>` : "<p>No reviews yet.</p>";
+}
+
+// ---- input ----
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const a = Q[i] && answers[Q[i].id];
+  if (b.dataset.claim) { a.claim_ok = a.claim_ok === (b.dataset.claim === "true") ? null : b.dataset.claim === "true"; paint(); }
+  else if (b.dataset.quality) { a.quality = a.quality === b.dataset.quality ? null : b.dataset.quality; paint(); }
+  else if (b.dataset.tag) { toggleTag(+b.dataset.tag); }
+  else if (b.id === "save") save();
+  else if (b.id === "skip") next();
+  else if (b.id === "back") move(-1);
+  else if (b.id === "show-stats") showDone(true);
+  else if (b.id === "back-to-queue") { $("done").hidden = true; $("app").hidden = false; render(); }
+});
+function toggleTag(k) {
+  const a = answers[Q[i].id], t = TAGS[k]; if (!t) return;
+  a.tags = a.tags.includes(t) ? a.tags.filter((x) => x !== t) : [...a.tags, t]; paint();
+}
+
+document.addEventListener("keydown", (e) => {
+  if ($("app").hidden) return;
+  const inNote = document.activeElement === $("note");
+  if (inNote) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("note").blur(); save(); }
+    if (e.key === "Escape") $("note").blur();
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const a = answers[Q[i].id], k = e.key.toLowerCase();
+  const set = (f, val) => { a[f] = a[f] === val ? null : val; paint(); };
+  if (k === "y" && Q[i].claim) set("claim_ok", true);
+  else if (k === "n" && Q[i].claim) set("claim_ok", false);
+  else if (k === "g") set("quality", "good");
+  else if (k === "o") set("quality", "ok");
+  else if (k === "b") set("quality", "bad");
+  else if (/^[0-9]$/.test(k)) toggleTag((+k + 9) % 10);
+  else if (k === "t") { e.preventDefault(); $("note").focus(); }
+  else if (e.key === "Enter") { e.preventDefault(); save(); }
+  else if (e.key === "ArrowRight") next();
+  else if (e.key === "ArrowLeft") move(-1);
+  else if (k === " " ) { const v = document.querySelector("#player video"); if (v) { e.preventDefault(); v.paused ? v.play() : v.pause(); } }
+  else if (k === "r") { const v = document.querySelector("#player video"); if (v) { v.currentTime = 0; v.play(); } }
+  else return;
+});
+
+// a click into the Twitch embed takes keyboard focus with it; say so, and take it back
+window.addEventListener("blur", () => setTimeout(() => {
+  if (document.activeElement && document.activeElement.tagName === "IFRAME") document.body.classList.add("blurred");
+}, 0));
+window.addEventListener("focus", () => document.body.classList.remove("blurred"));
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+
+init();
+</script>
+</body>
+</html>

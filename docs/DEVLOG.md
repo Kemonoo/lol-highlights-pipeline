@@ -902,3 +902,23 @@ has existed since the first commit; the owner remembers it being motivated by a 
 focused pentakill getting cut, but that incident is not recorded. Known gap: the bypass
 depends on the TITLE — a silent pentakill with an unrelated title is still cut by
 `prefilter.audio_exclude` before any vision model sees it.
+
+## 2026-09-23 — Review queue; top-20 countdown
+
+**Review queue.** The filter makes ~200 decisions a night and nobody looks at the rejects,
+so its quality was unknown. `pipeline/tools/review_queue.py` (run `review.bat`) samples one
+clip per gate per finished night plus four random ones, shows the pipeline's path and its
+stated reason, and asks two things: is that reason TRUE, and how GOOD is the clip. The
+split separates detector errors ("not gameplay" on gameplay) from rule errors (correctly
+"quiet", but a good clip). Replaces `label_clips.py` as the day-to-day tool because that one
+played local MP4s, which are pruned after a day; this falls back to the Twitch embed, so
+every night with a clips.json stays reviewable. Deliberately NOT played: the prefilter's LQ
+copy — Twitch serves it as a 360x640 portrait frame (see the open judge-input bug).
+Free-text notes are stored but not yet summarised by an LLM; do that once there are enough.
+
+**Top 20.** The 17-clip videos were a side effect of the 8-minute target. New
+`video.target_clips` (default 0 = old duration rule; owner overlay 20) fills with judge
+fillers and trims the weakest by count, and the expansion loop now measures shortfall in
+clips when it is set. Owner overlay raises `vlm_filter.max_keep` 24 -> 32 so the judge has
+~30 candidates; the VLM already keeps more than 24 on most nights (the cap cut ~9/day), so
+this costs Gemini calls, not GPU time. Expect ~10-11 min videos.
