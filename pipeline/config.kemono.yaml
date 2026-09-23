@@ -18,8 +18,13 @@
 # accident; turning it on is a deliberate act, which is what passing --config is.
 # If you cloned this repo: copy this file, don't use it — it is somebody else's channel.
 
+twitch:
+  fetch_count: 222               # owner's pick: "222 clips in, 22 out". Twitch can return a
+  max_fetch: 222                 # clip or two fewer than asked (219 of 220 on 2026-09-21);
+                                 # max_fetch = fetch_count keeps expansion off, as upstream.
+
 video:
-  target_clips: 20               # owner's pick: a top-20 countdown (was 17ish from the 8-min rule)
+  target_clips: 22               # owner's pick: a top-22 countdown (was 20; 17ish from the 8-min rule)
   brand:
     name: KEMONO
     tagline: DAILY LEAGUE OF LEGENDS
@@ -72,5 +77,6 @@ cleanup:
                                   # 200 GB/year of local disk if never pruned.
 
 vlm_filter:
-  max_keep: 32                   # a 20-clip countdown needs ~30 judged candidates; the VLM
-                                 # usually keeps more than 24 anyway (the cap cut ~9/day)
+  max_keep: 35                   # a 22-clip countdown needs ~33 judged candidates (32 was
+                                 # sized for 20); the VLM usually keeps more than 24 anyway
+                                 # (the cap cut ~9/day). >20 judge calls walks the model chain.

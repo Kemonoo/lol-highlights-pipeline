@@ -22,7 +22,36 @@
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
+  // Hero backdrop: the page's one orchestrated moment. The 52 examined clips light up
+  // across the grid, then everything but the 17 that made the video fades out.
+  function hero(clips) {
+    const box = document.getElementById("hero-grid");
+    if (!box) return;
+    const size = window.innerWidth <= 720 ? 52 : 72;
+    const cols = Math.floor(box.clientWidth / size), rows = Math.ceil(box.clientHeight / size);
+    const slots = [];
+    for (let i = 0; i < cols * rows; i++) {
+      const s = document.createElement("span"), t = document.createElement("i");
+      s.appendChild(t); box.appendChild(s);
+      const x = (i % cols) / cols - 0.5, y = Math.floor(i / cols) / rows - 0.36;
+      // inside the unmasked ellipse, but not behind the headline and lede
+      const behindText = Math.abs(x) < 0.3 && y > -0.22 && y < 0.24;
+      if (x * x / 0.21 + y * y / 0.13 < 1 && !behindText) slots.push(t);
+    }
+    const picks = shuffle(slots).slice(0, clips.length);
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    picks.forEach((t, k) => {
+      const c = clips[k];
+      t.style.backgroundImage = `url(assets/clips/${String(c.i).padStart(2, "0")}.jpg)`;
+      const keep = c.stage === 4;
+      if (still) { if (keep) t.classList.add("keep"); return; }
+      setTimeout(() => t.classList.add("on"), 250 + k * 28);
+      setTimeout(() => { t.classList.remove("on"); if (keep) t.classList.add("keep"); }, 2600 + (keep ? 0 : k * 12));
+    });
+  }
+
   fetch("assets/funnel.json").then((r) => r.json()).then((clips) => {
+    hero(clips);
     const cells = [];
     // dropAt = the first step at which this cell is no longer in the running
     [[1, 57], [2, 38], [3, 72]].forEach(([at, n]) => { for (let i = 0; i < n; i++) cells.push({ dropAt: at }); });

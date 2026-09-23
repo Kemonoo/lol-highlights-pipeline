@@ -9,6 +9,9 @@
 - **VIRAL_STRATEGY.md** = ranked growth roadmap (CTR/AVD levers) + what's shipped.
 - **FUTURE_WORK.md** = parked ideas incl. the shelved funny-outro findings.
 - **PLAN.md** = stage status table + monetization/legal constraints. README.md = public.
+- **SITE.md** = the project website (`site/`, GitHub Pages): a ledger of every fact the
+  site states and its source. Pipeline changes that alter a ledger fact get a line under
+  its **Pending** heading (don't edit `site/` from pipeline work); site work starts there.
 
 ## Project context
 

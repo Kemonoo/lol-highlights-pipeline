@@ -922,3 +922,16 @@ fillers and trims the weakest by count, and the expansion loop now measures shor
 clips when it is set. Owner overlay raises `vlm_filter.max_keep` 24 -> 32 so the judge has
 ~30 candidates; the VLM already keeps more than 24 on most nights (the cap cut ~9/day), so
 this costs Gemini calls, not GPU time. Expect ~10-11 min videos.
+
+## 2026-09-24 — "222 clips in, 22 out"; website state file
+
+Owner overlay: `twitch.fetch_count`/`max_fetch` 222, `video.target_clips` 22 (was 20),
+`vlm_filter.max_keep` 35 (was 32, sized for 20). Purely the owner's pick for a
+memorable number; defaults in config.yaml unchanged. Twitch may return a clip or two
+fewer than asked (219 of 220 on 09-21). More than 20 judge calls simply walks the
+judge model chain.
+
+The project website was redesigned (dark, Dovetail-style) and `docs/SITE.md` added: a
+ledger of every fact the site states with its source, plus a **Pending** list that
+pipeline work appends to, so site updates don't need a re-read of the codebase. The
+site still narrates the 09-21 night (17 clips) until a 222/22 night is re-exported.
