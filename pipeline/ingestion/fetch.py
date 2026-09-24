@@ -98,10 +98,16 @@ def fetch_metadata(cfg: dict, date_label: str, token: str) -> list[dict]:
             clips.extend(_fetch_page_loop(dict(base, broadcaster_id=bid),
                                           token, client_id, per_streamer))
     else:
-        clips = _fetch_page_loop(dict(base, game_id=tw["game_id"]),
-                                 token, client_id, tw["fetch_count"])
+        # Ask for a few more than fetch_count: Helix pagination repeats clips across
+        # pages, and run() drops already-processed ones, so asking for exactly 222 came
+        # back as 219. run() trims to exactly fetch_count afterwards.
+        clips = _fetch_page_loop(dict(base, game_id=tw["game_id"]), token, client_id,
+                                 tw["fetch_count"] + int(tw.get("fetch_slack", 0)))
+    return dedup_by_views(clips)
 
-    # de-dup, sort by views
+
+def dedup_by_views(clips: list[dict]) -> list[dict]:
+    """Unique clips, most-viewed first."""
     seen, out = set(), []
     for c in sorted(clips, key=lambda c: -c.get("view_count", 0)):
         if c["id"] not in seen:
@@ -147,6 +153,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if cfg["permissions"]["require_permission"]:
         clips = [c for c in clips
                  if state.permission_status(c.get("broadcaster_name", "")) == "approved"]
+    if cfg["twitch"].get("mode") != "broadcasters":
+        clips = clips[:cfg["twitch"]["fetch_count"]]     # the slack is only a buffer
 
     log.info("Fetched %d new clips for %s (metadata only - downloads are on-demand: "
              "low-quality for scoring, full quality for filter survivors)",

@@ -17,6 +17,9 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-24 — fetch now returns exactly `fetch_count` (222) instead of ~3 fewer.
+  The next export should read "222 clips in, 22 out" (H1, F0, D1). Nothing to edit by
+  hand: the exporter takes the count from clips.json.
 - 2026-09-23 — `tools/review_queue` (manual review of filter decisions) exists; the site
   doesn't mention it. Optional.
 

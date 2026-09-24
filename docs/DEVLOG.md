@@ -955,3 +955,11 @@ open area beside the circle instead of behind it; the left text gradient is ligh
 2026-09-24 (later): after one night with 0.95 on every variant, the owner preferred the
 slightly smaller avatar — circle sizes are back to 0.86 / 0.82 / 0.95 per variant
 (`thumbnail.face_scale` removed). The sharp, slid champion splash stays.
+
+## 2026-09-24 — fetch returns exactly fetch_count
+
+Asking Helix for 222 clips gave 219 (09-23) and 216 (re-fetched on 09-24): pagination
+repeats clips across pages and they were de-duplicated afterwards. The fetch now asks for
+`twitch.fetch_slack` (20) extra and `run()` trims to exactly `fetch_count` after dedup and
+the processed filter (game mode only; broadcaster mode unchanged). Live check for 09-23:
+239 unique -> 222. `dedup_by_views` is pure and tested (tests/test_fetch.py).
