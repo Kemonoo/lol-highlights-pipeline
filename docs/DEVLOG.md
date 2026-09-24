@@ -987,3 +987,11 @@ VTuber art, a plushie, UI; new: a drawn overlay character — which the old one 
 back to the centred layout, which is safe; a wrong pick was the visible failure.
 Considered and not done: OpenCV's YuNet DNN detector (better recall on small/turned
 faces) — needs a ~230 KB model download; the owner declined adding a download for now.
+
+## 2026-09-24 — Slight zoom for no-webcam Shorts
+
+Owner: when no face is found, the Short showed the whole 16:9 frame small in the middle.
+`shorts.center_zoom` (default 1.0 = unchanged) scales the centred gameplay up and crops
+its sides; the owner overlay uses 1.3 (compared 1.0 / 1.3 / 1.45 on a real clip — 1.3
+mostly trims minimap/HUD edges, 1.45 started cutting the fight). Now that facecam misses
+fall back to this layout (see the facecam entry above), it is the common no-face look.

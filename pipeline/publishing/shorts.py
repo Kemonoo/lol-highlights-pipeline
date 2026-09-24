@@ -335,11 +335,16 @@ def _render_short(mp4: Path, out: Path, facecam: tuple | None,
             "[game][face]vstack=inputs=2[cur]",
         ]
     else:
+        # No webcam: the gameplay sits centred over a blurred copy of itself. center_zoom
+        # > 1 scales it up and crops the sides (the action is almost always mid-screen),
+        # so a phone shows more of the fight and less of the HUD edges.
+        zoom = max(1.0, float(cfg.get("shorts", {}).get("center_zoom", 1.0)))
+        fg_w = int(TARGET_W * zoom) // 2 * 2
         parts += [
             "[0:v]split=2[vbg][vfg]",
             f"[vbg]scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=increase,"
             f"crop={TARGET_W}:{TARGET_H},boxblur=20:5[bg]",
-            f"[vfg]scale={TARGET_W}:-2[fg]",
+            f"[vfg]scale={fg_w}:-2,crop={TARGET_W}:ih[fg]",
             "[bg][fg]overlay=(W-w)/2:(H-h)/2[cur]",
         ]
 

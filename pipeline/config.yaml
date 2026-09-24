@@ -483,6 +483,8 @@ shorts:
                               # render; shares the main upload OAuth token.
   privacy: private            # private | unlisted | public
   detect_facecam: true        # detect the webcam anywhere in frame; split-screen layout if found
+  center_zoom: 1.0            # no-webcam layout: >1 zooms the centred gameplay and crops
+                              # its sides (1.0 = whole frame, the old look)
   facecam_min_live: 3.0       # a webcam changes between frames; HUD/portrait art scored 0-2.6
   facecam_min_skin: 0.12      # share of skin-coloured pixels a face box needs (art ~0-0.07;
                               # one dim real webcam measured 0.16)

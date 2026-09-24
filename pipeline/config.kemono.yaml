@@ -64,6 +64,8 @@ upload:
 shorts:
   upload: true
   privacy: public
+  center_zoom: 1.3               # owner pick: no-webcam Shorts zoom in slightly on the centre
+                                 # (1.45 cut too much of the fight; 1.0 = whole frame)
 
 thumbnail:
   provider: local                 # gemini needs a BILLED API key (free tier quota is 0 for

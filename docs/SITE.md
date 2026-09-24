@@ -17,6 +17,8 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-24 — no-webcam Shorts are zoomed 1.3x on the centre (owner overlay). Row S9
+  ("otherwise the gameplay is centred") could add "and slightly zoomed".
 - 2026-09-24 — Shorts/thumbnail webcam detection rewritten (whole frame, live-face
   gates). Open problem P3 ("Shorts miss the face about half the time") is out of date:
   reword to the measured numbers in DEVLOG 2026-09-24, or drop it. Also refresh
