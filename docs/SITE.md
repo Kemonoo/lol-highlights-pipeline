@@ -28,7 +28,7 @@ of video, 17 clips).
 - 2026-09-24 — VLM crop regions changed (banner 0.0–0.17, kill feed down to 0.52) and
   the cache is now `vlm_partial_v4.json`. Affects the crop images (S3 figure) once a new
   night is exported; the exporter reads v4 and falls back to v3.
-- 2026-09-24 — local thumbnails: every variant uses the big streamer circle and a sharp,
+- 2026-09-24 — local thumbnails: circle sizes unchanged (0.86/0.82/0.95); the champion splash is now sharp,
   zoomed champion splash (no blurred variant). Affects row S7 wording ("three
   colourways" still true) and `thumb_1..3.jpg` on the next export.
 - 2026-09-23 — `tools/review_queue` (manual review of filter decisions) exists; the site

@@ -667,16 +667,14 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
         face = _twitch_pfp(top["broadcaster_id"], cache_dir)
     frame_bg = _clip_frame_bg(mp4, best_s, int(th.get("background_blur", 2))) if mp4 else None
 
-    # Owner pick (2026-09-24): the big streamer circle of the old teal variant (0.95 of the
-    # height) on every variant, over the clip's champion splash shown SHARP — the blurred,
-    # darkened splash hid the one thing that says which champion the clip is about.
-    # Variant 2 keeps the real gameplay frame so the A/B set still has one "this fight"
-    # background.
-    big = float(th.get("face_scale", 0.95))
+    # Circle sizes per variant as before 2026-09-24: the owner tried 0.95 on all three for
+    # one night and preferred the slightly smaller avatar. What stayed from that change:
+    # the champion splash is shown SHARP (zoomed, slid beside the circle) instead of the
+    # blurred, darkened variant-3 background, which hid which champion the clip is about.
     specs = [
-        dict(bg=splash_bg or frame_bg, text=_ask(hook), accent=(255, 60, 60), scale=big),
-        dict(bg=frame_bg or splash_bg, text=hook, accent=(255, 205, 60), scale=big),
-        dict(bg=splash_bg or frame_bg, text="INSANE!", accent=(31, 214, 230), scale=big),
+        dict(bg=splash_bg or frame_bg, text=_ask(hook), accent=(255, 60, 60), scale=0.86),
+        dict(bg=frame_bg or splash_bg, text=hook, accent=(255, 205, 60), scale=0.82),
+        dict(bg=splash_bg or frame_bg, text="INSANE!", accent=(31, 214, 230), scale=0.95),
     ][:max(1, n)]
 
     out_dir.mkdir(parents=True, exist_ok=True)

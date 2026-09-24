@@ -951,3 +951,7 @@ variants now use the big circle (`thumbnail.face_scale`), and the splash is zoom
 (`splash_zoom` 1.35) and slid left (`splash_focus_x` 0.24) so the champion sits in the
 open area beside the circle instead of behind it; the left text gradient is lighter
 (140 vs 210). Variant 2 keeps the gameplay-frame background.
+
+2026-09-24 (later): after one night with 0.95 on every variant, the owner preferred the
+slightly smaller avatar — circle sizes are back to 0.86 / 0.82 / 0.95 per variant
+(`thumbnail.face_scale` removed). The sharp, slid champion splash stays.
