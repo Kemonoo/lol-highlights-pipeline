@@ -244,7 +244,7 @@ anything else                 <span class="r">reject</span></code></pre>
     <div class="what">
       <span class="tag">Plain code</span>
       <h3>Cut three Shorts</h3>
-      <p>The three best clips are cut to about 30 seconds and turned vertical. When a webcam is found, gameplay goes on top and the streamer's face below; otherwise the gameplay is centred.</p>
+      <p>The three best clips are cut to about 30 seconds and turned vertical. When a webcam is found, gameplay goes on top and the streamer's face below; otherwise the gameplay is centred and zoomed in slightly. A clip only counts as having a webcam if the face moves between frames and shows skin tones, which stops HUD portraits and champion art from being mistaken for the streamer. If the streamer already burns English captions into their stream, the Short adds none of its own.</p>
       <figure class="media shorts">
         <img src="assets/short_1.jpg" width="540" height="960" loading="lazy" alt="One of the night's vertical Shorts.">
         <img src="assets/short_2.jpg" width="540" height="960" loading="lazy" alt="Another of the night's vertical Shorts.">
@@ -291,8 +291,8 @@ anything else                 <span class="r">reject</span></code></pre>
   <ul class="limits">
     <li><h3>The pro-broadcast check is often wrong</h3><p>On one audited night it was right about 2 of 7 rejections. The other five were ordinary streamers.</p></li>
     <li><h3>The judge watches a low-resolution copy</h3><p>Twitch now serves a vertical 360p file first, and the judge reuses it instead of the 720p version it was designed for.</p></li>
-    <li><h3>Shorts miss the face about half the time</h3><p>When webcam detection fails, half the Short is an enlarged patch of HUD.</p></li>
-    <li><h3>Shorts can still show two captions</h3><p>The source-caption check runs for the main video but not yet for Shorts.</p></li>
+    <li><h3>Some webcams go undetected</h3><p>Checked by hand on 52 clips from a night it wasn't tuned on: the right face on most, a wrong one on 2 (a drawn overlay character and a menu screen), and about 7 small or dark webcams missed. A miss falls back to zoomed gameplay, so the Short still works.</p></li>
+    <li><h3>The filters are tuned on small samples</h3><p>Thresholds were set by hand against a few dozen labelled clips. A review queue now samples every filter's decisions each night to build a proper test set.</p></li>
   </ul>
 </section>
 

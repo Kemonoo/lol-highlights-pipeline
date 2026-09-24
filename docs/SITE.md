@@ -17,18 +17,11 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
-- 2026-09-24 — Shorts no longer double-caption (open problem P4 is fixed: remove it).
-- 2026-09-24 — no-webcam Shorts are zoomed 1.3x on the centre (owner overlay). Row S9
-  ("otherwise the gameplay is centred") could add "and slightly zoomed".
-- 2026-09-24 — Shorts/thumbnail webcam detection rewritten (whole frame, live-face
-  gates). Open problem P3 ("Shorts miss the face about half the time") is out of date:
-  reword to the measured numbers in DEVLOG 2026-09-24, or drop it. Also refresh
-  `docs/images/site.jpg` (README hero screenshot of the live page) after each export.
+- Refresh `docs/images/site.jpg` (README hero screenshot of the live page) after each
+  export — it currently shows "219 clips in".
 - 2026-09-24 — fetch now returns exactly `fetch_count` (222) instead of ~3 fewer.
   The next export should read "222 clips in, 22 out" (H1, F0, D1). Nothing to edit by
   hand: the exporter takes the count from clips.json.
-- 2026-09-23 — `tools/review_queue` (manual review of filter decisions) exists; the site
-  doesn't mention it. Optional.
 
 ## Ledger — every fact the site states, and where it comes from
 
@@ -61,11 +54,11 @@ Numbers of the 09-23 night come from the log; rules and limits come from config/
 | S6-replay | Slow-mo replay for top-rated clips | `video.replay_min_score: 7` |
 | S7 | Chapters + per-streamer links; PIL thumbnails in three colourways (sharp champion splash) | `production/credits.py`, `thumbnail.provider: local` |
 | S8 | Resumable upload, can't upload a day twice | `publishing/upload.py` (`state.uploaded_id`) |
-| S9 | Three best clips, ~30 s, face below / centred when none | `shorts.count`, `shorts.target_seconds: 32` |
+| S9 | Three best clips, ~30 s, face below / centred + slightly zoomed when none; live-face webcam check; no captions over English source captions | `shorts.count`, `shorts.target_seconds: 32` |
 | S10 | Raw downloads deleted after a day; masters only after YouTube confirms | `cleanup.keep_raw_days: 1`, `cleanup.py` |
 | T | Stage start times (first = first log line, 03:00:06) … finish 05:52:11, durations rounded to minutes | `[stage] starting` lines in the log |
 | D1 | All 219 to Gemini = 11 days of one model's allowance | 219 / 20 |
-| P1–P4 | Open problems: pro-broadcast check ~2/7 right; judge sees 360p copy; Shorts face miss ~50%; Shorts double captions | audits in this repo's chats (DEVLOG 2026-09-13 area); remove each when fixed |
+| P1–P4 | Open problems: pro-broadcast check ~2/7 right; judge sees 360p copy; webcams: 2 wrong / ~7 missed of 52 on a held-out night; filters tuned on small samples | DEVLOG 2026-09-13 (P1, P2), 2026-09-24 facecam entry (P3), CLAUDE.md eval loop + review queue (P4); remove each when fixed |
 
 ## Assets (`site/assets/`)
 
@@ -81,7 +74,7 @@ the footer credits them and the video description links each channel.
 | `caption_en.jpg` | #19 English caption | output @ chapter start + first 3-word phrase |
 | `caption_translate.jpg` | **09-21** #12 Polish source caption + ours (09-23 had no such clip; the exporter keeps the old still and its text) | 09-21 output |
 | `thumb_1..3.jpg` | 09-23 thumbnails **re-rendered with the restored avatar sizes** (the uploaded ones used the one-night 0.95 circle) | `thumbnail.generate_variants` |
-| `short_1.jpg`, `short_2.jpg` | two of the night's Shorts | `work/2026-09-23/shorts/` @ 6 s |
+| `short_1.jpg`, `short_2.jpg` | 09-23 Shorts (BigDog_Q split, YoungGooby zoomed) **re-rendered with the 2026-09-24 code** (live-face check, zoom, no double captions); the uploaded ones predate it | `shorts._render_short` @ 6 s |
 | `intro.jpg` | brand intro frame (currently unused) | 09-21 output @ 1.2 s |
 
 funnel.json `stage`: 2 = dropped by the VLM,
@@ -131,6 +124,9 @@ Built with Anthropic's `frontend-design` plugin guidance.
 - 2026-09-23 — v1: light editorial page, interactive funnel of the 09-21 night.
 - 2026-09-24 — v2: Dovetail-style dark redesign, renamed "Twitch Highlights Pipeline",
   hero video loop, animated hero grid, full HH:MM:SS stage times.
+- 2026-09-24 — Open problems updated: Shorts double captions removed (fixed), webcam
+  detection reworded to measured numbers, "filters tuned on small samples" added. Shorts
+  stage text mentions the zoom, the live-face check and the caption rule.
 - 2026-09-24 — re-exported from the 09-23 night (first 222/22 night: 219 in, 22 out).
   Exporter: crops now come from the best-ranked clip whose announcement the model read,
   and the model's reading is only quoted when unambiguous; missing caption/translation
