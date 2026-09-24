@@ -2,7 +2,8 @@
 
 Per clip:
   1. Trim to ≤55 s (centered on api_best_moment_s when the clip is longer).
-  2. Face cam detection (9 frames, majority vote, CLAHE + frontal + profile cascades).
+  2. Face cam detection (9 frames, whole frame, CLAHE + frontal + profile cascades;
+     a candidate must be live video with skin, see pick_facecam).
   3. One-pass ffmpeg render at 1080×1920 (blur-bg or split layout).
   4. Streamer speech → English via the shared enrichment.transcribe (faster-whisper),
      rendered as word-level captions at the BOTTOM of the frame (clear of the HUD + the
@@ -87,7 +88,8 @@ def _extract_frame(mp4: Path, t: float) -> "np.ndarray | None":
 
 def _faces_in_strip(strip_gray: "np.ndarray",
                     cas_frontal: "cv2.CascadeClassifier",
-                    cas_profile: "cv2.CascadeClassifier | None") -> list[tuple]:
+                    cas_profile: "cv2.CascadeClassifier | None",
+                    min_size: int = 40) -> list[tuple]:
     """Return all face detections from one strip using frontal + profile cascades.
 
     Applies CLAHE first to handle dark or low-contrast webcam overlays.
@@ -105,99 +107,126 @@ def _faces_in_strip(strip_gray: "np.ndarray",
     for cas in ([cas_frontal] + ([cas_profile] if cas_profile else [])):
         # Normal orientation
         det = cas.detectMultiScale(enhanced, scaleFactor=1.1, minNeighbors=5,
-                                   minSize=(40, 40))
+                                   minSize=(min_size, min_size))
         if len(det):
             found.extend(det.tolist())
         # Horizontally flipped (catches right-facing profiles)
         det_f = cas.detectMultiScale(cv2.flip(enhanced, 1), scaleFactor=1.1,
-                                     minNeighbors=5, minSize=(40, 40))
+                                     minNeighbors=5, minSize=(min_size, min_size))
         for fx, fy, fw2, fh2 in (det_f.tolist() if len(det_f) else []):
             found.append((sw - fx - fw2, fy, fw2, fh2))   # mirror x back
 
     return found
 
 
-def _detect_facecam(mp4: Path, duration: float) -> tuple | None:
-    """Multi-frame face cam detection: 9 frames across the full clip, majority vote.
+def pick_facecam(clusters: list[dict], min_votes: int = 4, min_live: float = 3.0,
+                 min_skin: float = 0.12) -> dict | None:
+    """Choose the webcam among face candidates. Pure (no cv2), so it is unit-tested.
 
-    Combines:
-    - CLAHE preprocessing for dark webcam overlays
-    - Frontal + profile cascades (both orientations) to catch 3/4-view faces
-    - 9 evenly-spaced frames (10%–90% of clip) for temporal coverage
-    - Majority vote: ≥3/9 frames agreeing at the same position → confirmed
+    Each cluster is one on-screen position where faces were found:
+      votes = in how many of the sampled frames, live = median frame-to-frame change of
+      the box (0-255 mean abs diff), skin = median share of skin-coloured pixels.
+    A webcam is live video of a person: it changes between frames and carries skin.
+    The Haar cascade's false positives were HUD champion portraits, champion-select
+    icons and minimap art: static pixels (live ~0-2.6) or no skin (~0-0.07). Kill-feed
+    portraits DO change and can look skin-toned, but appear in fewer frames than a
+    webcam (6 vs 9 on the clip that showed it), so the most-voted survivor wins; ties go
+    to the livelier one. 4+ of 9 frames: 3-vote clusters were art on menu screens.
+    """
+    ok = [c for c in clusters
+          if c["votes"] >= min_votes and c["live"] >= min_live and c["skin"] >= min_skin]
+    return max(ok, key=lambda c: (c["votes"], c["live"])) if ok else None
+
+
+def _detect_facecam(mp4: Path, duration: float, min_live: float = 3.0,
+                    min_skin: float = 0.12) -> tuple | None:
+    """Find the streamer's webcam: 9 frames across the clip, faces anywhere in frame.
+
+    - Frontal + profile Haar cascades (both orientations), CLAHE for dark webcams, on a
+      960-px-wide copy of each frame. Whole frame: webcams also sit top-left/right, and
+      the old bottom-third-only search missed those.
+    - Hits are clustered by position; each cluster is scored for votes, liveness and
+      skin, and pick_facecam() decides (see its docstring for why).
+
+    Measured 2026-09-24 on the 52 downloaded clips of 2026-09-22: the old detector was
+    wrong or missed on 13 (HUD/minimap/portrait false positives on 7).
 
     Returns (x, y, w, h) crop region (face + padding) in source pixels, or None.
     """
     try:
         import cv2
+        import numpy as np
     except ImportError:
         return None
 
     cas_frontal = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
-    profile_xml = cv2.data.haarcascades + "haarcascade_profileface.xml"
-    cas_profile = cv2.CascadeClassifier(profile_xml) if profile_xml else None
-    if cas_profile and cas_profile.empty():
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    cas_profile = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
+    if cas_profile.empty():
         cas_profile = None
 
-    TOLERANCE = 120   # px — face cam widget doesn't move between frames
-    MIN_VOTES = 3     # need agreement in at least 3 out of 9 frames
-
-    all_hits: list[tuple] = []   # (cx, cy, fx, fy, rw, rh, fw, fh)
-    for i in range(1, 10):       # t = 0.1, 0.2, …, 0.9
-        t     = min(duration * i / 10, duration - 0.5)
-        frame = _extract_frame(mp4, t)
-        if frame is None:
+    frames, src_w, src_h = [], 0, 0
+    for i in range(1, 10):                         # t = 0.1, 0.2, ..., 0.9
+        f = _extract_frame(mp4, min(duration * i / 10, duration - 0.5))
+        if f is None:
             continue
-        import cv2 as _cv2
-        fh, fw  = frame.shape[:2]
-        gray    = _cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY)
-        strip_y = int(fh * 0.667)
-        strip   = gray[strip_y:, :]
+        src_h, src_w = f.shape[:2]
+        frames.append(cv2.resize(f, (960, max(1, round(960 * src_h / src_w)))))
+    if len(frames) < 3:
+        return None
+    H, W = frames[0].shape[:2]
+    k = src_w / W                                  # small-frame px -> source px
 
-        detections = _faces_in_strip(strip, cas_frontal, cas_profile)
-        if not detections:
-            continue
-        # Reject hits centred in the bottom-center HUD band (champion portrait / ability
-        # icons / resource orbs live here) - Haar cascades false-positive on that painted
-        # portrait art, and real facecam overlays are placed in a corner specifically to
-        # stay clear of it, never dead-center-bottom.
-        detections = [
-            d for d in detections
-            if not (0.25 * fw < d[0] + d[2] / 2 < 0.75 * fw
-                    and d[1] + strip_y + d[3] / 2 > 0.85 * fh)
-        ]
-        if not detections:
-            continue
-        fx, fy, rw, rh = max(detections, key=lambda f: f[2] * f[3])
-        fy += strip_y
-        all_hits.append((fx + rw // 2, fy + rh // 2, fx, fy, rw, rh, fw, fh))
+    hits = []                                      # (frame_index, x, y, w, h)
+    for fi, f in enumerate(frames):
+        gray = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
+        for x, y, w, h in _faces_in_strip(gray, cas_frontal, cas_profile, min_size=26):
+            hits.append((fi, x, y, w, h))
 
-    if len(all_hits) < MIN_VOTES:
+    clusters: list[list] = []                      # group hits at the same position
+    for hit in hits:
+        cx, cy = hit[1] + hit[3] / 2, hit[2] + hit[4] / 2
+        for cl in clusters:
+            _, x0, y0, w0, h0 = cl[0]
+            if abs(cx - (x0 + w0 / 2)) < 0.06 * W and abs(cy - (y0 + h0 / 2)) < 0.08 * H:
+                cl.append(hit)
+                break
+        else:
+            clusters.append([hit])
+
+    scored = []
+    for cl in clusters:
+        votes = len({h[0] for h in cl})
+        if votes < 3:
+            continue
+        x, y, w, h = (int(np.median([hit[j] for hit in cl])) for j in (1, 2, 3, 4))
+        boxes = [f[y:y + h, x:x + w] for f in frames]
+        live = float(np.median([np.abs(a.astype(np.int16) - b.astype(np.int16)).mean()
+                                for a, b in zip(boxes, boxes[1:])]))
+        skins = []
+        for bx in boxes:
+            ycc = cv2.cvtColor(bx, cv2.COLOR_BGR2YCrCb)
+            skins.append(float(((ycc[..., 1] > 133) & (ycc[..., 1] < 173)
+                                & (ycc[..., 2] > 77) & (ycc[..., 2] < 127)).mean()))
+        scored.append(dict(votes=votes, live=live, skin=float(np.median(skins)),
+                           box=(x, y, w, h)))
+
+    best = pick_facecam(scored, min_live=min_live, min_skin=min_skin)
+    if best is None:
+        if scored:
+            log.info("  face cam: none of %d candidates is a live face (%s)", len(scored),
+                     ", ".join(f"{c['votes']}v live {c['live']:.1f} skin {c['skin']:.2f}"
+                               for c in scored))
         return None
 
-    # Vote: position supported by the most frames wins
-    best, best_votes = None, 0
-    for cx1, cy1, fx, fy, rw, rh, fw, fh in all_hits:
-        votes = sum(
-            1 for cx2, cy2, *_ in all_hits
-            if abs(cx1 - cx2) < TOLERANCE and abs(cy1 - cy2) < TOLERANCE
-        )
-        if votes > best_votes:
-            best_votes, best = votes, (fx, fy, rw, rh, fw, fh)
-
-    if best_votes < MIN_VOTES:
-        return None
-
-    fx, fy, rw, rh, fw, fh = best
+    x, y, w, h = best["box"]
+    fx, fy, rw, rh = int(x * k), int(y * k), int(w * k), int(h * k)
     pad = max(rw, rh)
-    x0  = max(0,  fx - pad)
-    y0  = max(0,  fy - pad)
-    x1  = min(fw, fx + rw + pad)
-    y1  = min(fh, fy + rh + pad)
-    log.info("  face cam: %d/9 frames agree face=(%d,%d %dx%d) crop=(%d,%d %dx%d)",
-             best_votes, fx, fy, rw, rh, x0, y0, x1 - x0, y1 - y0)
+    x0, y0 = max(0, fx - pad), max(0, fy - pad)
+    x1, y1 = min(src_w, fx + rw + pad), min(src_h, fy + rh + pad)
+    log.info("  face cam: %d/9 frames, live %.1f, skin %.2f, face=(%d,%d %dx%d) "
+             "crop=(%d,%d %dx%d)", best["votes"], best["live"], best["skin"],
+             fx, fy, rw, rh, x0, y0, x1 - x0, y1 - y0)
     return (x0, y0, x1 - x0, y1 - y0)
 
 
@@ -460,8 +489,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 log.warning("  trim failed - using full clip: %s", e)
                 trim_tmp = None
 
-        # 2. Face cam detection (bottom corners only)
-        facecam = _detect_facecam(clip_src, min(duration, target_s)) if detect_face else None
+        # 2. Face cam detection (anywhere in frame; live + skin gates)
+        facecam = (_detect_facecam(clip_src, min(duration, target_s),
+                                   float(sh.get("facecam_min_live", 3.0)),
+                                   float(sh.get("facecam_min_skin", 0.12)))
+                   if detect_face else None)
         game_h  = int(TARGET_H * 0.60) if facecam else TARGET_H
         face_h  = TARGET_H - game_h
 

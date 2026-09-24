@@ -482,7 +482,10 @@ shorts:
   upload: false               # SAFE BY DEFAULT (see upload.enabled). true = auto-upload after
                               # render; shares the main upload OAuth token.
   privacy: private            # private | unlisted | public
-  detect_facecam: true        # detect webcam overlay in corners; split-screen layout if found
+  detect_facecam: true        # detect the webcam anywhere in frame; split-screen layout if found
+  facecam_min_live: 3.0       # a webcam changes between frames; HUD/portrait art scored 0-2.6
+  facecam_min_skin: 0.12      # share of skin-coloured pixels a face box needs (art ~0-0.07;
+                              # one dim real webcam measured 0.16)
   target_seconds: 32          # punchy length — 20-35s wins on Shorts (retention drops past ~45s)
   pre_roll_s: 7               # seconds of build-up before the best moment (lead with the heat)
   caption_margin_v: 430       # blur-bg layout: px captions sit above the bottom (lower-third)

@@ -17,6 +17,10 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-24 — Shorts/thumbnail webcam detection rewritten (whole frame, live-face
+  gates). Open problem P3 ("Shorts miss the face about half the time") is out of date:
+  reword to the measured numbers in DEVLOG 2026-09-24, or drop it. Also refresh
+  `docs/images/site.jpg` (README hero screenshot of the live page) after each export.
 - 2026-09-24 — fetch now returns exactly `fetch_count` (222) instead of ~3 fewer.
   The next export should read "222 clips in, 22 out" (H1, F0, D1). Nothing to edit by
   hand: the exporter takes the count from clips.json.

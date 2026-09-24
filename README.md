@@ -1,10 +1,16 @@
 # Twitch → YouTube highlights pipeline
 
+### ▶ [See how it works — one real night, stage by stage](https://kemonoo.github.io/lol-highlights-pipeline/)
+
+[![The project page: 219 clips in, 22 out](docs/images/site.jpg)](https://kemonoo.github.io/lol-highlights-pipeline/)
+
 Turns each day's top Twitch clips into a finished, uploadable YouTube video — fetch,
 filter with AI, edit, thumbnail, publish — plus vertical Shorts. One command in, one
-~9-minute video out.
+countdown video out. The [project page](https://kemonoo.github.io/lol-highlights-pipeline/)
+walks through a real night with its actual clips, numbers and model verdicts, including
+an interactive view of where every clip was dropped.
 
-# Video example
+## Video example
 https://youtu.be/OhYVCmSULfs?si=Ss4IasyotYa7DGUl
 
 ```bash
@@ -14,13 +20,6 @@ python -m pipeline.run_daily     # yesterday's clips -> data/output/<date>.mp4
 
 Built for League of Legends, runs unattended on a single Windows PC with a consumer GPU,
 and runs on free local models by default — no API key or billing required.
-
-<!--
-  TODO(maintainer): add visuals here — this is the biggest single improvement left.
-    docs/images/output.gif      a 5-10s grab of a finished video (intro + a clip + badge)
-    docs/images/report.png      a screenshot of data/work/<date>/report.html
-    docs/images/thumbnail.jpg   one generated thumbnail
--->
 
 ## Features
 
@@ -114,7 +113,7 @@ the .bat, or another terminal.
 | `assemble` | FFmpeg: intro, countdown badges, nameplates, captions, replays, outro, mastering |
 | `credits` | Title, chapters, per-streamer credit links, music attribution |
 | `thumbnail` | Free local composite, or an AI reaction thumbnail |
-| `upload` · `shorts` | Resumable YouTube upload + 3 vertical Shorts |
+| `upload` · `shorts` | Resumable YouTube upload + 3 vertical Shorts (webcam found anywhere in frame → gameplay above, streamer below) |
 
 Two modes, both config toggles: **lean** (default — curated clips, transitions, brand,
 no narration) and **produced** (AI commentary + voiceover + music bed).

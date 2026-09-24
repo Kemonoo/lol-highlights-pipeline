@@ -963,3 +963,27 @@ repeats clips across pages and they were de-duplicated afterwards. The fetch now
 `twitch.fetch_slack` (20) extra and `run()` trims to exactly `fetch_count` after dedup and
 the processed filter (game mode only; broadcaster mode unchanged). Live check for 09-23:
 239 unique -> 222. `dedup_by_views` is pure and tested (tests/test_fetch.py).
+
+## 2026-09-24 — Facecam detection: whole frame + "live face" gates
+
+Owner: Shorts showed the wrong face (or half a screen of zoomed HUD) about half the
+time; thumbnails occasionally too (both use `shorts._detect_facecam`). Audit of the 52
+downloaded clips of 09-22: the Haar detector was wrong on 7 (HUD champion portraits,
+champion-select icons, minimap art) and missed 6 (it only searched the bottom third;
+webcams also sit top-left/top-right, or are small).
+
+Now: faces are searched in the whole frame (960-px copies of 9 frames), hits clustered
+by position, and each cluster must be a LIVE face — median frame-to-frame change >= 3
+(static art measured 0-2.6), skin-colour share >= 0.12 (art ~0-0.07; one dim real
+webcam 0.16) — found in >= 4 of 9 frames. The most-voted survivor wins, which is what
+beats a changing, skin-toned kill-feed portrait (6 frames vs the webcam's 9). The
+choice is the pure `pick_facecam()` with tests built from those measured cases.
+Keys: `shorts.facecam_min_live`, `shorts.facecam_min_skin`.
+
+Tuning set (09-22): wrong picks 7 -> 0 (excluding pro broadcasts), misses 6 -> 7.
+Held-out (09-23, 52 clips, not tuned on): wrong picks 9 -> 2 (old: minimap x3, anime/
+VTuber art, a plushie, UI; new: a drawn overlay character — which the old one also picked
+— and a "game terminated" menu screen); misses ~7 -> ~7 (different ones). A miss falls
+back to the centred layout, which is safe; a wrong pick was the visible failure.
+Considered and not done: OpenCV's YuNet DNN detector (better recall on small/turned
+faces) — needs a ~230 KB model download; the owner declined adding a download for now.
