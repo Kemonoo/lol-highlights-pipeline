@@ -206,7 +206,8 @@ def first_phrase(words, n=3):
     return None
 
 
-def export_media(args, work, raw, night, clips, chapters, transcripts, burned, api):
+def export_media(args, work, raw, night, clips, chapters, transcripts, burned, api,
+                 vlm_all):
     out_mp4 = DATA / "output" / f"{args.date}.mp4"
     by_rank = {c["rank"]: c for c in chapters}
     hero = by_rank.get(args.hero_rank) or by_rank[min(by_rank)]
@@ -264,12 +265,23 @@ def export_media(args, work, raw, night, clips, chapters, transcripts, burned, a
         warn(f"raw clip {src.name} is gone (deleted after a day); filmstrip/wave kept")
 
     crops = work / "crops"
+    # Crops come from the best-ranked clip where the model actually READ an announcement
+    # (the hero's own check can stop after one frame, leaving a weak example); else hero.
+    cid = next((c["clip_id"] for c in sorted(chapters, key=lambda c: c["rank"])
+                if (vlm_all.get(c["clip_id"]) or {}).get("announcements")
+                and list(crops.glob(f"{c['clip_id']}_bn_*s.jpg"))), hid)
+    info["crop_rank"] = next(c["rank"] for c in chapters if c["clip_id"] == cid)
+    # the cache doesn't say WHICH frame an announcement was read from, so only quote it
+    # when there is a single banner crop (it must be that one)
+    single = len(list(crops.glob(f"{cid}_bn_*s.jpg"))) == 1
+    info["crop_ann"] = (((vlm_all.get(cid) or {}).get("announcements") or [None])[0]
+                        if single else None)
 
     def at(p):                                        # crop file -> its second in the clip
         return int(re.search(r"_(\d+)s\.jpg$", p.name).group(1))
 
     for kind, name in (("bn", "crop_banner.jpg"), ("kf", "crop_killfeed.jpg")):
-        cands = sorted(crops.glob(f"{hid}_{kind}_*s.jpg"), key=at)
+        cands = sorted(crops.glob(f"{cid}_{kind}_*s.jpg"), key=at)
         if args.crop_time is not None:
             cands = [p for p in cands if at(p) == args.crop_time] or cands
         if not cands:
@@ -278,7 +290,7 @@ def export_media(args, work, raw, night, clips, chapters, transcripts, burned, a
         if kind == "bn":
             # "most detail" picks a busy teamfight over a banner. Announcements land right
             # after the play, so take the first banner crop at/after the judge's best moment.
-            bm = (api.get(hid) or {}).get("api_best_moment_s") or 0
+            bm = (api.get(cid) or {}).get("api_best_moment_s") or 0
             best = next((p for p in cands if at(p) >= bm), cands[-1])
             info["crop_time"] = at(best)
         else:
@@ -380,12 +392,13 @@ def main():
     burned = load(work / "burned_captions.json") if (work / "burned_captions.json").exists() else {}
     clips = export_funnel(work, night)
     api = load(work / "api_partial_v3.json") if (work / "api_partial_v3.json").exists() else {}
-    media = export_media(args, work, raw, night, clips, chapters, transcripts, burned, api)
-    hero_id = next(c["clip_id"] for c in chapters if c["rank"] == media["hero_rank"])
     vp = next((work / f"vlm_partial_v{v}.json" for v in (4, 3)
                if (work / f"vlm_partial_v{v}.json").exists()), None)   # v4 from 2026-09-24
-    vlm = load(vp).get(hero_id, {}) if vp else {}
-    ann = (vlm.get("announcements") or [None])[0]
+    vlm_all = load(vp) if vp else {}
+    media = export_media(args, work, raw, night, clips, chapters, transcripts, burned, api,
+                         vlm_all)
+    hero_id = next(c["clip_id"] for c in chapters if c["rank"] == media["hero_rank"])
+    ann = media.get("crop_ann")
 
     d = Date.fromisoformat(args.date)
     st, dur = night["starts"], durations(night["starts"], night["finish"])
@@ -406,8 +419,10 @@ def main():
                          if f["switches"] == 1 else
                          f" It switched models {f['switches']} times that night."),
         "hero_rank": media["hero_rank"], "hero_who": media["hero_who"],
-        "cap_rank": media.get("cap_rank", "?"), "tr_rank": media.get("tr_rank", "?"),
-        "tr_lang": media.get("tr_lang", "a foreign-language"),
+        "crop_rank": media["crop_rank"],
+        # no match that night -> leave these keys out, so the page keeps the text that
+        # goes with the still it keeps
+        **{k: media[k] for k in ("cap_rank", "tr_rank", "tr_lang") if k in media},
         "crop_note": (f"at {media['crop_time']} seconds: the announcement area"
                       + (f" (it read “{ann}”)" if ann else "") + " and the kill feed"
                       if "crop_time" in media else "the announcement area and the kill feed"),
@@ -421,8 +436,8 @@ def main():
     print("  " + " -> ".join(str(values[k]) for k in
                              ("fetched", "scored", "passed", "kept", "vlm_kept", "final"))
           + f"  |  {f['minutes']} min  |  finished {f['finish']} exit {f['exit']}")
-    print(f"  hero #{media['hero_rank']} {media['hero_who']}  |  caption #{values['cap_rank']}"
-          f"  |  translation #{values['tr_rank']} ({values['tr_lang']})")
+    print(f"  hero #{media['hero_rank']} {media['hero_who']}  |  caption #{values.get('cap_rank', 'kept')}"
+          f"  |  translation #{values.get('tr_rank', 'kept')} ({values.get('tr_lang', '-')})")
 
     page, missing = fill((SITE / "index.html").read_text(encoding="utf-8"), values)
     if missing:

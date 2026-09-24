@@ -10,82 +10,69 @@ sync without re-reading the codebase:
 - **Site work:** start here. Work through Pending, update the site and the ledger, move
   the items into the changelog, and bump "Synced with".
 
-**Synced with:** pipeline as of 2026-09-24 (the commit that added this file). The page
-narrates the real run of the night of **2026-09-21** (log `data/logs/auto_2026-09-22.log`,
-work files `data/work/2026-09-21/`), which still used the old selection rule (~8 minutes
-of video, 17 clips).
+**Synced with:** pipeline as of 2026-09-24 (commit "Thumbnails: restore the previous
+avatar sizes"). The page narrates the real run of the night of **2026-09-23** (log
+`data/logs/auto_2026-09-24.log`, work files `data/work/2026-09-23/`), the first night
+with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
-- 2026-09-23 — `video.target_clips` added; the owner overlay makes the video a fixed
-  number of clips instead of ~8 minutes. Affects rows F5, S4-selection.
-- 2026-09-24 — owner overlay: `twitch.fetch_count`/`max_fetch` 222, `target_clips` 22,
-  `vlm_filter.max_keep` 35 ("222 clips in, 22 out"). Affects the hero headline, F0–F5,
-  S3-keep, S4-selection, the hero-grid survivors, and the whole funnel data. Needs a
-  real night run with the new settings, then a re-export (see "Regenerating assets").
-  Note: Twitch can return a clip or two fewer than asked (219 of 220 on 09-21), so check
-  the real count before writing "222" anywhere.
-- 2026-09-24 — VLM crop regions changed (banner 0.0–0.17, kill feed down to 0.52) and
-  the cache is now `vlm_partial_v4.json`. Affects the crop images (S3 figure) once a new
-  night is exported; the exporter reads v4 and falls back to v3.
-- 2026-09-24 — local thumbnails: circle sizes unchanged (0.86/0.82/0.95); the champion splash is now sharp,
-  zoomed champion splash (no blurred variant). Affects row S7 wording ("three
-  colourways" still true) and `thumb_1..3.jpg` on the next export.
 - 2026-09-23 — `tools/review_queue` (manual review of filter decisions) exists; the site
   doesn't mention it. Optional.
 
 ## Ledger — every fact the site states, and where it comes from
 
-Numbers of the 09-21 night come from the log; rules and limits come from config/code.
+Numbers of the 09-23 night come from the log; rules and limits come from config/code.
 
 | id | Site says | Source |
 |---|---|---|
-| H1 | "219 clips in, 17 out." (hero headline) | log: fetched 219; chapters.json 17 |
+| H1 | "219 clips in, 22 out." (hero headline) | `raw/…/clips.json` 219 (Twitch returned 219 of the 222 asked); `target_clips: 22` |
 | H2 | Runs every night at 03:00, unattended | `setup_schedule.bat` / Task Scheduler |
 | H3 | Three Shorts per night | `shorts.count: 3` |
-| F0 | 219 fetched | `raw/2026-09-21/clips.json` (219 of `fetch_count` 220) |
-| F1 | 162 after language (57 dropped) | log "Language filter … removed 57 clips" |
-| F2 | 124 after sound & motion (38 dropped) | log "162 scored -> 124 passed -> 52 kept" |
-| F3 | 52 best ranked (72 dropped) | `prefilter.max_keep: 52` |
-| F4 | 24 after local vision model (28 dropped) | `vlm_filter.max_keep: 24`; `api_partial_v3.json` |
-| F5 | 17 after Gemini (7 dropped) | log "API judge: 24 -> 17 kept"; `chapters.json` |
+| F0 | 219 fetched | `raw/2026-09-23/clips.json` (219 of `fetch_count` 222) |
+| F1 | 190 after language (29 dropped) | log "Prefilter … 190 scored" |
+| F2 | 141 after sound & motion (49 dropped) | log "190 scored -> 141 passed -> 52 kept" |
+| F3 | 52 best ranked (89 dropped) | `prefilter.max_keep: 52` |
+| F4 | 35 after local vision model (17 dropped) | overlay `vlm_filter.max_keep: 35`; log "Filter: 52 -> 35 kept" |
+| F5 | 22 after Gemini (13 dropped) | log "API judge: 35 -> 22 kept"; `chapters.json` |
 | S0 | Self-check, then comment feedback at 03:00:00 | `doctor.py`, `feedback/feedback.py` |
 | S1 | Midnight–midnight Amsterdam, metadata only | `ingestion/fetch.py` |
 | S2 | audio < 0.22 or motion < 0.015 dropped; title keyword skips the audio test; rank = keyword, loudness, views | `prefilter.audio_exclude`, `motion_exclude`, `filtering/prefilter.py` |
 | S2-lr | Logistic regression exists but isn't loaded | `tools/train_classifier.py` docstring |
 | S3 | Qwen3-VL 4B via Ollama; 3-frame gameplay vote, 1-frame pro check, crops every 5 s | `llm.roles.vlm`, `filtering/vlm_filter.py`, `kill_detect.py` |
 | S3-rules | The 8-line decide() order, audio ≥ 0.30 / ≥ 0.55, not for Japanese titles | `vlm_filter.decide()` |
-| S3-keep | 24 kept | `vlm_filter.max_keep` (default 24; overlay now 35) |
+| S3-keep | 35 kept | overlay `vlm_filter.max_keep: 35` (default 24) |
 | S4 | Gemini watches video+sound, fixed JSON schema, missing field = no answer | `filtering/api_judge.py` (`parse_verdict`) |
 | S4-rule | keep: entertainment ≥ 6 (≥ 7 reactions) or play quality ≥ 7 | `api_judge` keep rule |
-| S4-budget | 20 requests/model/day, walks a model chain; switched once on 09-21 | `api_judge.daily_budget`, `llm.roles.judge.overflow_models`, log |
-| S4-selection | "ordered into a countdown: 17 clips, 8.8 minutes of video" (no rule named, so it holds under target_clips too) | log "Selection: 17 clips, 8.7 min" / "Assembled … 8.8 min" (now `target_clips`) |
+| S4-budget | 20 requests/model/day, walks a model chain; switched once on 09-23 | `api_judge.daily_budget`, `llm.roles.judge.overflow_models`, log |
+| S4-selection | "ordered into a countdown: 22 clips, 12.9 minutes of video" | log "Assembled … (12.9 min, 22 clips)"; `video.target_clips` |
 | S5 | Whisper translates to English with word timestamps, 1 min | `transcribe`, log times |
 | S6 | Captions 1–3 words, never overlap; source-caption detection by speech-vs-silence difference | `assemble._caption_groups`, `enrichment/burned_captions.py` |
 | S6-replay | Slow-mo replay for top-rated clips | `video.replay_min_score: 7` |
-| S7 | Chapters + per-streamer links; PIL thumbnails in three colourways | `production/credits.py`, `thumbnail.provider: local` |
+| S7 | Chapters + per-streamer links; PIL thumbnails in three colourways (sharp champion splash) | `production/credits.py`, `thumbnail.provider: local` |
 | S8 | Resumable upload, can't upload a day twice | `publishing/upload.py` (`state.uploaded_id`) |
 | S9 | Three best clips, ~30 s, face below / centred when none | `shorts.count`, `shorts.target_seconds: 32` |
 | S10 | Raw downloads deleted after a day; masters only after YouTube confirms | `cleanup.keep_raw_days: 1`, `cleanup.py` |
-| T | Stage start times (first = first log line, 03:00:13) … 05:06:30, durations rounded to minutes | `[stage] starting` lines in the log |
+| T | Stage start times (first = first log line, 03:00:06) … finish 05:52:11, durations rounded to minutes | `[stage] starting` lines in the log |
 | D1 | All 219 to Gemini = 11 days of one model's allowance | 219 / 20 |
 | P1–P4 | Open problems: pro-broadcast check ~2/7 right; judge sees 360p copy; Shorts face miss ~50%; Shorts double captions | audits in this repo's chats (DEVLOG 2026-09-13 area); remove each when fixed |
 
 ## Assets (`site/assets/`)
 
-All from the 09-21 night. Clip thumbnails and stills show streamers' footage; the footer
-credits them and the video description links each channel.
+From the 09-23 night unless noted. Clip thumbnails and stills show streamers' footage;
+the footer credits them and the video description links each channel.
 
 | file | what | made from |
 |---|---|---|
-| `hero.mp4` / `hero.jpg` / `keycap.jpg` | 9 s loop / poster / hero tile of countdown #2 (lol_Ethereal pentakill) | output @ chapter start +1 s / +2 s |
-| `clips/NN.jpg` + `funnel.json` | 52 prefilter survivors: tile, verdicts, scores, stage reached, rank | `work/2026-09-21/thumbs`, `vlm_scored.json`, `api_partial_v3.json`, `chapters.json` |
-| `filmstrip.jpg`, `wave.png` | 8 frames + waveform of clip #2 | raw clip `PlumpSingleQuail…mp4` |
-| `crop_banner.jpg`, `crop_killfeed.jpg` | VLM crops at 22 s | `work/2026-09-21/crops/` |
-| `caption_en.jpg` / `caption_translate.jpg` | #16 English caption / #12 Polish source caption + ours | output @ chapter start + first 3-word phrase |
-| `thumb_1..3.jpg` | the night's thumbnails | `work/2026-09-21/thumbnail*.jpg` |
-| `short_1.jpg`, `short_2.jpg` | split layout / centred layout | `work/2026-09-22/shorts/` @ 6 s |
-| `intro.jpg` | brand intro frame (currently unused) | output @ 1.2 s |
+| `hero.mp4` / `hero.jpg` / `keycap.jpg` | 9 s loop / poster / hero tile of countdown #2 (BigDog_Q) | output @ chapter start +1 s / +2 s |
+| `clips/NN.jpg` + `funnel.json` | 52 prefilter survivors: tile, verdicts, scores, stage reached, rank | `work/<night>/thumbs`, `vlm_scored.json`, `api_partial_v3.json`, `chapters.json` |
+| `filmstrip.jpg`, `wave.png` | 8 frames + waveform of clip #2 | raw clip |
+| `crop_banner.jpg`, `crop_killfeed.jpg` | VLM crops of #1 at 22 s ("YoungGoobyV2 is godlike!") — v4 regions | `work/2026-09-23/crops/` |
+| `caption_en.jpg` | #19 English caption | output @ chapter start + first 3-word phrase |
+| `caption_translate.jpg` | **09-21** #12 Polish source caption + ours (09-23 had no such clip; the exporter keeps the old still and its text) | 09-21 output |
+| `thumb_1..3.jpg` | 09-23 thumbnails **re-rendered with the restored avatar sizes** (the uploaded ones used the one-night 0.95 circle) | `thumbnail.generate_variants` |
+| `short_1.jpg`, `short_2.jpg` | two of the night's Shorts | `work/2026-09-23/shorts/` @ 6 s |
+| `intro.jpg` | brand intro frame (currently unused) | 09-21 output @ 1.2 s |
 
 funnel.json `stage`: 2 = dropped by the VLM,
 3 = dropped by Gemini, 4 = in the video.
@@ -134,6 +121,11 @@ Built with Anthropic's `frontend-design` plugin guidance.
 - 2026-09-23 — v1: light editorial page, interactive funnel of the 09-21 night.
 - 2026-09-24 — v2: Dovetail-style dark redesign, renamed "Twitch Highlights Pipeline",
   hero video loop, animated hero grid, full HH:MM:SS stage times.
+- 2026-09-24 — re-exported from the 09-23 night (first 222/22 night: 219 in, 22 out).
+  Exporter: crops now come from the best-ranked clip whose announcement the model read,
+  and the model's reading is only quoted when unambiguous; missing caption/translation
+  matches keep the old still AND its text. Cleared Pending: target_clips, 222/22, v4
+  crop regions, thumbnail layout.
 - 2026-09-24 — `scripts/export_site.py`: the whole night is exported by one command;
   night-specific text is `data-n`-bound. Re-exported 09-21 (same numbers; new picks:
   caption still #16, sharper kill-feed crop, prefilter "7 min").
