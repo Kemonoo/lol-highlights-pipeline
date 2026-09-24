@@ -7,7 +7,7 @@ The site narrates one real night. Everything night-specific is exported from tha
 night's own files, so nothing is typed in by hand:
 
   * numbers and times  <- the run log (data/logs/auto_*.log containing "Prefilter <date>")
-  * funnel tiles/data  <- work/<date>/vlm_scored.json, api_partial_v3.json, chapters.json
+  * funnel tiles/data  <- work/<date>/vlm_scored.json, api_partial_v4.json (v3 before 09-24), chapters.json
   * stills and loop    <- output/<date>.mp4 at chapter times, raw/<date>/<id>.mp4,
                           work/<date>/crops, thumbnail*.jpg, shorts/
   * text               <- elements marked data-n="key" in site/index.html are rewritten
@@ -149,10 +149,19 @@ def plain_reason(r):
     return r
 
 
+def load_api(work):
+    """The judge's per-clip verdicts: api_partial_v4 from 2026-09-24, v3 before."""
+    for v in (4, 3):
+        p = work / f"api_partial_v{v}.json"
+        if p.exists():
+            return load(p)
+    return {}
+
+
 def export_funnel(work, night):
     scored = load(work / "vlm_scored.json")
     scored = scored["clips"] if isinstance(scored, dict) else scored
-    api = load(work / "api_partial_v3.json") if (work / "api_partial_v3.json").exists() else {}
+    api = load_api(work)
     ranks = {c["clip_id"]: c["rank"] for c in load(work / "chapters.json")}
     clips = []
     if not DRY:
@@ -391,7 +400,7 @@ def main():
     transcripts = load(work / "transcripts.json") if (work / "transcripts.json").exists() else {}
     burned = load(work / "burned_captions.json") if (work / "burned_captions.json").exists() else {}
     clips = export_funnel(work, night)
-    api = load(work / "api_partial_v3.json") if (work / "api_partial_v3.json").exists() else {}
+    api = load_api(work)
     vp = next((work / f"vlm_partial_v{v}.json" for v in (4, 3)
                if (work / f"vlm_partial_v{v}.json").exists()), None)   # v4 from 2026-09-24
     vlm_all = load(vp) if vp else {}

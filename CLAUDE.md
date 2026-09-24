@@ -46,7 +46,7 @@ relative to `pipeline/`).
 1. `ingestion/fetch.py` — Twitch Helix top clips (or broadcaster list), METADATA ONLY →
    `data/raw/<date>/clips.json`. Downloads are lazy: prefilter grabs low-quality
    copies (`raw/<date>/lq/`) for scoring; vlm_filter downloads full quality for its
-   survivors only; api_judge reuses the LQ copy instead of re-encoding
+   survivors only; api_judge shrinks that to 720p (the LQ copy is now portrait-360, unusable)
 2. `filtering/prefilter.py` — free local scoring: title keywords / tournament exclude /
    audio-hype / motion (functions from `filtering/scoring.py`) + broadcaster blacklist
    → `work/<date>/prefiltered.json`
@@ -60,7 +60,9 @@ relative to `pipeline/`).
 4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
    to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
    provider's Files API), scores focus/play_quality/entertainment against a JSON schema
-   (cache `api_partial_v3.json`). No judge available → `local_judge()`, never a hard fail.
+   (cache `api_partial_v4.json` — v4 since 2026-09-24: the judge
+   used to watch Twitch's portrait-360 LQ copy; it now only reuses the LQ copy when it is
+   landscape and ≥ `shrink_height`, else shrinks the full-quality file). No judge available → `local_judge()`, never a hard fail.
    Spend is capped by `api_judge.daily_budget` (free tier = 20 req/day/model, counted per
    PACIFIC day in state.json); clips are judged best-first so the budget buys the top.
    The quota is metered PerProjectPerModel, so `llm.roles.judge.overflow_models` lists
@@ -188,8 +190,8 @@ _archive/               pre-pivot code (shorts app, long-video experiment) — d
   a fallback path away.
 - **Detection/decision split**: model outputs cached per clip; keep/reject rules
   recompute from cache on every run. When changing DETECTION semantics (prompts,
-  regions), bump the cache filename version (`vlm_partial_v4` → v5, `api_partial_v3`
-  → v4). When changing only decision rules, never bump.
+  regions), bump the cache filename version (`vlm_partial_v4` → v5, `api_partial_v4`
+  → v5). When changing only decision rules, never bump.
 - **Cost cascade**: free local checks discard ~90%; paid Gemini only sees survivors
   (~1¢/day). Keep it that way.
 - **Gemini image thumbnail (Nano Banana) guardrails**: image generation needs a

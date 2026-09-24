@@ -6,7 +6,7 @@ play actually good?" — catches boring-kills, talk-driven hype, misplay deaths.
 
 Per clip: shrink to `shrink_height` (720p by default), send the whole video with its
 audio to the `judge` role, get a schema-constrained verdict, cache it
-(api_partial_v3.json — interruption-safe). Clips too large to inline go through the
+(api_partial_v4.json — interruption-safe). Clips too large to inline go through the
 provider's file-upload path rather than being degraded further.
 Decision rules (pure code, tunable in config):
     KEEP if clip_focus in (gameplay, reaction) and entertainment >= min_entertainment
@@ -118,6 +118,31 @@ def shrink(mp4: Path, out: Path, aj: dict) -> Path | None:
         log.info("  %s still %.0fMB after shrink - uploading instead of inlining",
                  out.name, out.stat().st_size / 1024 / 1024)
     return out
+
+
+def lq_is_judge_quality(lq: Path, min_height: int) -> bool:
+    """May the judge watch the prefilter's low-quality copy instead of a fresh shrink?
+
+    Only when it is a real landscape video at least `min_height` tall. Twitch started
+    serving `portrait-*` renditions and yt-dlp's "worst" picks portrait-360: a 360x640
+    frame with the landscape picture shrunk inside it. The old size-only check always
+    passed, so from at least 2026-06-15 the judge graded clips at roughly 360x200
+    effective instead of the intended 720p (found 2026-09-13, fixed 2026-09-24).
+    """
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0", str(lq)],
+            capture_output=True, text=True, timeout=20).stdout.strip()
+        w, h = (int(x) for x in out.split(",")[:2])
+    except Exception:
+        return False
+    return landscape_at_least(w, h, min_height)
+
+
+def landscape_at_least(w: int, h: int, min_height: int) -> bool:
+    """Pure half of lq_is_judge_quality (tested without ffprobe)."""
+    return w > h and h >= min_height
 
 
 def judge(mp4: Path, provider) -> dict | None:
@@ -267,7 +292,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     tmp = work / "api_tmp"
     tmp.mkdir(exist_ok=True)
 
-    partial_path = work / "api_partial_v3.json"
+    partial_path = work / "api_partial_v4.json"
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
 
@@ -366,7 +391,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
             continue
         max_bytes = float(aj.get("max_mb", 90)) * 1024 * 1024
         lq = raw_dir / "lq" / f"{c['id']}.mp4"   # prefilter's low-quality copy
-        if lq.exists() and lq.stat().st_size <= max_bytes:
+        if (lq.exists() and lq.stat().st_size <= max_bytes
+                and lq_is_judge_quality(lq, int(aj.get("shrink_height", 720)))):
             small = lq                            # already API-sized — skip re-encode
         else:
             small = shrink(mp4, tmp / f"{c['id']}.mp4", aj)

@@ -1005,3 +1005,14 @@ are burned in (2026-09-09), but Shorts never asked — on 09-23, 2 of 3 Shorts s
 their caption words when the source has captions AND whisper hears English; foreign
 speech keeps ours as the translation. The transcript text still feeds the Short's title.
 Checked by re-rendering the 09-23 Shorts with upload off (then restoring the folder).
+
+## 2026-09-24 — Judge watches 720p again (was portrait-360)
+
+Found 2026-09-13, fixed now: api_judge reused the prefilter's LQ copy whenever it was
+under `max_mb` — always. Twitch serves `portrait-*` renditions and yt-dlp "worst" picks
+portrait-360 (360x640 frame, the landscape picture shrunk inside), so since at least
+2026-06-15 Gemini graded clips at ~360x200 effective. The LQ copy is now reused only if
+it is landscape and >= `shrink_height` (`lq_is_judge_quality`, pure half tested);
+otherwise the full-quality file is shrunk to 720p (checked: 1280x720, 4.7 MB, ~7 s per
+clip, ~4 min per night). Input changed -> judge cache bumped to `api_partial_v4.json`
+(exporter reads v4, falls back to v3). Judge scores may shift; watch the next nights.

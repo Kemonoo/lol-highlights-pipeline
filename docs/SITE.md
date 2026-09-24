@@ -17,6 +17,8 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-24 — the judge now watches 720p (open problem P2 is fixed: remove it); judge
+  cache is `api_partial_v4.json` (exporter handles both).
 - Refresh `docs/images/site.jpg` (README hero screenshot of the live page) after each
   export — it currently shows "219 clips in".
 - 2026-09-24 — fetch now returns exactly `fetch_count` (222) instead of ~3 fewer.
