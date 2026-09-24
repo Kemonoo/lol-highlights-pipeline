@@ -7,7 +7,8 @@ Per clip:
   3. One-pass ffmpeg render at 1080×1920 (blur-bg or split layout).
   4. Streamer speech → English via the shared enrichment.transcribe (faster-whisper),
      rendered as word-level captions at the BOTTOM of the frame (clear of the HUD + the
-     Shorts UI). NO voiceover, NO AI overlay text — translate the speech and caption it.
+     Shorts UI) — skipped when the source already burns in English captions (the same
+     enrichment.burned_captions rule as the long-form video). NO voiceover, NO AI overlay text — translate the speech and caption it.
   5. Upload as a YouTube Short — English title generated from the summary + speech
      (never the raw, often-native Twitch clip title).
 
@@ -455,6 +456,20 @@ def run(cfg: dict, state, date_label: str) -> Path:
     cap_split_gap = int(sh.get("caption_split_gap", 190))                  # split: px above the facecam
                                                                             # (clears the in-game HUD too)
 
+    # Same rule as the long-form video (assemble + enrichment/burned_captions): when the
+    # streamer's own live-caption widget is baked into the clip and the speech is English,
+    # ours would be a second copy of the same words. The detection is cached per clip in
+    # work/<date>/burned_captions.json, which assemble already filled for these clips.
+    burned: dict = {}
+    try:
+        from ..enrichment.burned_captions import detect as _detect_burned
+        tr_path = work / "transcripts.json"
+        tr_all = (json.loads(tr_path.read_text(encoding="utf-8").rstrip("\x00"))
+                  if tr_path.exists() else {})
+        burned = _detect_burned(cfg, date_label, candidates, tr_all)
+    except Exception as e:                           # never let this block a Short
+        log.warning("shorts: source-caption check failed (%s) - captioning all", e)
+
     done: dict = {}
     done_f = out_dir / "done.json"
     if done_f.exists():
@@ -514,6 +529,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
             speech_words, speech_text = tr["words"], tr["text"]
             if speech_text:
                 log.info("  speech [%s]: %s", tr["lang"], speech_text[:80])
+            from ..production.assemble import _is_english
+            if speech_words and burned.get(clip_id) and _is_english(tr.get("lang")):
+                log.info("  source already shows English captions - adding none")
+                speech_words = []                    # speech_text still feeds the title
         except Exception as e:
             log.warning("  transcription failed: %s", e)
 

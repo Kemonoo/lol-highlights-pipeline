@@ -17,6 +17,7 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-24 — Shorts no longer double-caption (open problem P4 is fixed: remove it).
 - 2026-09-24 — no-webcam Shorts are zoomed 1.3x on the centre (owner overlay). Row S9
   ("otherwise the gameplay is centred") could add "and slightly zoomed".
 - 2026-09-24 — Shorts/thumbnail webcam detection rewritten (whole frame, live-face

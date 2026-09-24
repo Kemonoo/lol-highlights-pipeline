@@ -995,3 +995,13 @@ Owner: when no face is found, the Short showed the whole 16:9 frame small in the
 its sides; the owner overlay uses 1.3 (compared 1.0 / 1.3 / 1.45 on a real clip — 1.3
 mostly trims minimap/HUD edges, 1.45 started cutting the fight). Now that facecam misses
 fall back to this layout (see the facecam entry above), it is the common no-face look.
+
+## 2026-09-24 — Shorts: no double captions
+
+The long-form video skipped our captions when the streamer's own English live captions
+are burned in (2026-09-09), but Shorts never asked — on 09-23, 2 of 3 Shorts showed both
+("OH" over the streamer's "clip that? Oh"). Shorts now call the same
+`enrichment/burned_captions.detect` (cached per clip, already filled by assemble) and drop
+their caption words when the source has captions AND whisper hears English; foreign
+speech keeps ours as the translation. The transcript text still feeds the Short's title.
+Checked by re-rendering the 09-23 Shorts with upload off (then restoring the folder).
