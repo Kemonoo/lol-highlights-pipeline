@@ -265,8 +265,46 @@ def _cap_font() -> str:
     return _CAP_FONTS[-1].replace(":", r"\:")
 
 
+SPEAKER_COLORS = ["0xFFE600", "0x40E0D0", "0xFF9A00"]   # panel A, B, C (left to right)
+
+
+def caption_groups(words: list[dict], v: dict | None = None) -> list[dict]:
+    """The caption phrases of a Short (assemble._caption_groups with the video.* keys).
+    Shared by the renderer and the speaker labelling so phrase i is the same in both."""
+    from ..production.assemble import _caption_groups
+    v = v or {}
+    return _caption_groups(words,
+                           max_words=int(v.get("caption_max_words", 3)),
+                           max_gap=float(v.get("caption_group_gap", 0.65)),
+                           max_seconds=float(v.get("caption_max_seconds", 1.9)),
+                           min_seconds=float(v.get("caption_min_seconds", 0.62)))
+
+
+def caption_style(who: str | None, n_panels: int, cap_mv: int, fontsize: int) -> tuple:
+    """(x expression, y, colour, fontsize) for one phrase. Pure (tested).
+
+    No speaker info: centred, white, `cap_mv` above the bottom (as before). A duo Short
+    (n_panels >= 2): a panel's speaker is drawn INSIDE their panel, near its bottom, in
+    that panel's colour; "other" voices stay centred above the panels in white. One
+    panel: the streamer stays white, other voices are teal — so a second voice reads as
+    a second person."""
+    y = TARGET_H - cap_mv - fontsize
+    if who is None:
+        return "(w-text_w)/2", y, "white", fontsize
+    k = ord(who) - 65 if len(who) == 1 and who.isalpha() else -1
+    if n_panels >= 2 and 0 <= k < n_panels:
+        cell = TARGET_W // n_panels
+        fs = min(fontsize, 50)
+        return (f"'max(8,{k * cell}+({cell}-text_w)/2)'", TARGET_H - 64 - fs,
+                SPEAKER_COLORS[k % len(SPEAKER_COLORS)], fs)
+    if n_panels >= 2:
+        return "(w-text_w)/2", y, "white", fontsize
+    return "(w-text_w)/2", y, ("white" if k == 0 else "0x40E0D0"), fontsize
+
+
 def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64,
-                     v: dict | None = None) -> str:
+                     v: dict | None = None, speakers: list | None = None,
+                     n_panels: int = 0) -> str:
     """One drawtext per caption PHRASE (only one visible at a time), centred, white with a
     black outline, its BOTTOM sitting `cap_mv` px above the frame bottom. Returns a
     comma-joined filterchain. drawtext+fontfile renders everywhere (no fontconfig/libass
@@ -274,23 +312,20 @@ def _caption_filters(words: list[dict], cap_mv: int, fontsize: int = 64,
 
     Grouping and the disjoint-window guarantee come from assemble._caption_groups — this
     had the same one-word-at-a-time flashing and the same overlap arithmetic as the
-    long-form captions, so it gets the same fix and the same config keys."""
-    from ..production.assemble import _caption_groups
-    v = v or {}
+    long-form captions, so it gets the same fix and the same config keys.
+    `speakers` (one label per phrase, enrichment/speakers) colour-codes and places each
+    phrase per caption_style."""
     font = _cap_font()
-    y = TARGET_H - cap_mv - fontsize
     seg = []
-    for g in _caption_groups(words,
-                             max_words=int(v.get("caption_max_words", 3)),
-                             max_gap=float(v.get("caption_group_gap", 0.65)),
-                             max_seconds=float(v.get("caption_max_seconds", 1.9)),
-                             min_seconds=float(v.get("caption_min_seconds", 0.62))):
+    for i, g in enumerate(caption_groups(words, v)):
         text = _clean_overlay(g["text"].replace("'", "’")).upper()
         if not text:
             continue
+        who = speakers[i] if speakers and i < len(speakers) else None
+        x, y, color, fs = caption_style(who, n_panels, cap_mv, fontsize)
         seg.append(
-            f"drawtext=fontfile='{font}':text='{text}':fontsize={fontsize}:fontcolor=white:"
-            f"borderw=7:bordercolor=black:x=(w-text_w)/2:y={y}:"
+            f"drawtext=fontfile='{font}':text='{text}':fontsize={fs}:fontcolor={color}:"
+            f"borderw=7:bordercolor=black:x={x}:y={y}:"
             f"enable='between(t,{g['start']:.2f},{g['end']:.2f})'")
     return ",".join(seg)
 
@@ -317,7 +352,8 @@ def _shorts_enc(cfg: dict) -> list[str]:
 
 def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
                   caption_words: list[dict], cap_mv: int, game_h: int,
-                  cfg: dict, total_h: int = TARGET_H) -> None:
+                  cfg: dict, total_h: int = TARGET_H,
+                  speakers: list | None = None) -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
     (no voiceover, no music).
@@ -327,7 +363,7 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
     face_h = total_h - game_h
     parts: list[str] = []
     cams = ([facecam] if isinstance(facecam, tuple) else list(facecam or []))[:3]
-    cams.sort(key=lambda b: b[0])
+    cams.sort(key=lambda b: (b[0], b[1]))     # same order the speakers were labelled in
 
     if cams:
         n = len(cams)
@@ -361,7 +397,8 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
 
     cur = "cur"
     if caption_words:
-        dt = _caption_filters(caption_words, cap_mv)
+        dt = _caption_filters(caption_words, cap_mv, v=cfg.get("video", {}),
+                              speakers=speakers, n_panels=len(cams))
         if dt:
             parts.append(f"[{cur}]{dt}[cap]")
             cur = "cap"
@@ -550,6 +587,15 @@ def run(cfg: dict, state, date_label: str) -> Path:
         except Exception as e:
             log.warning("  transcription failed: %s", e)
 
+        # Colour-coded captions: who says each phrase (enrichment/speakers).
+        speakers = None
+        if facecam and speech_words and sh.get("speaker_colors", False):
+            from ..enrichment.speakers import label_groups
+            cams_sorted = sorted(facecam, key=lambda bx: (bx[0], bx[1]))
+            speakers = label_groups(cfg, clip_src, caption_groups(speech_words,
+                                                                  cfg.get("video", {})),
+                                    cams_sorted)
+
         # split layout: caption bottom sits above the facecam panel (over gameplay, off
         # the face + in-game HUD); blur-bg layout: a high lower-third position.
         cap_mv = (face_h + cap_split_gap) if facecam else cap_margin
@@ -559,7 +605,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
         # 4. Single-pass render (clip audio only, drawtext captions, no VO/music)
         v_final = out_dir / f"{clip_id}.mp4"
         try:
-            _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h, cfg)
+            _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h, cfg,
+                          speakers=speakers)
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or b"").decode(errors="replace")[-500:]
             log.warning("  render failed for %s:\n%s", clip_id, stderr)

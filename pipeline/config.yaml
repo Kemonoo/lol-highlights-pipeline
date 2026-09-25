@@ -503,6 +503,10 @@ shorts:
                               # render; shares the main upload OAuth token.
   privacy: private            # private | unlisted | public
   detect_facecam: true        # detect the webcam anywhere in frame; split-screen layout if found
+  speaker_colors: false       # colour-code caption phrases by speaker (enrichment/speakers:
+                              # one Gemini call per Short with speech + a webcam); duo Shorts
+                              # put each person's lines in their own panel
+  speaker_role: judge         # llm role that labels speakers (needs video + audio)
   center_zoom: 1.0            # no-webcam layout: >1 zooms the centred gameplay and crops
                               # its sides (1.0 = whole frame, the old look)
   facecam_method: haar        # haar = face detector below; vlm = the local vision model

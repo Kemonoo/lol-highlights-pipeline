@@ -65,6 +65,7 @@ upload:
 shorts:
   upload: true
   privacy: public
+  speaker_colors: true           # owner 2026-09-25: colour-code captions by speaker
   facecam_avatar_motion: [15, 40]   # owner: 2D avatars / VTubers count as the streamer
   facecam_pad: 0.15              # owner: room around a person the edges didn't bound
   facecam_method: vlm            # owner pick 2026-09-25: the local vision model finds the

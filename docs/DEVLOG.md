@@ -1192,3 +1192,21 @@ alert 50-56. Only the largest rescued box is kept (a bouncing Poro sticker next 
 VTuber also landed in the band). Verified: #27 and #17 now boxed, Goku alert and the
 static character next to 09-24 #41's webcam still rejected, all 4 owner-approved webcam
 fixtures unchanged. Small sample: watch for animated alerts in the lower panel.
+
+## 2026-09-25 — Speaker-coloured Short captions (enrichment/speakers.py)
+
+Owner: when several people talk (duo streams, voice chat), colour-code the captions per
+speaker, and in a duo Short put each person's lines inside their own webcam panel. Who
+speaks is asked of the `shorts.speaker_role` (default the judge's Gemini): the clip
+(720p, with sound) + the numbered caption phrases with times + the webcams named by
+position -> one label per phrase ("A", "B", or "other"). Only Gemini both hears the
+voices and sees whose mouth moves, which is what ties a voice to a panel. Checked on the
+09-24 Dantes duo clip: the full model and the lite model disagreed on half the phrases,
+and webcam motion is no proxy (one streamer gestured throughout) — so the full model is
+the default and correctness can only be judged by ear (owner). Placement/colours are the
+pure `shorts.caption_style` (tested): duo -> panel speaker in panel colour (A yellow,
+B teal) inside the panel; "other" white, centred above; one webcam -> streamer white,
+other voices teal. One Gemini call per Short with speech + a webcam; any failure ->
+plain captions. Note: when the source already burns English captions, Shorts draw none
+of ours (2026-09-24 rule), so colours only show on clips we caption.
+`shorts.speaker_colors` (default false; owner overlay true).
