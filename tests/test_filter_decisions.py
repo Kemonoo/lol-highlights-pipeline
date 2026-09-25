@@ -444,3 +444,43 @@ def test_select_without_target_keeps_duration_rule():
     keep, judged = _pool(24, 0, dur=30)                  # 12 min > 10 min max
     kept, total = select(judged, keep, {}, {})
     assert total <= 600 and len(kept) == 20
+
+
+# ── "hook" title mode ────────────────────────────────────────────────────────
+
+def test_hook_title_format_and_length():
+    from pipeline.production.credits import hook_title
+    assert hook_title("His Penta Got STOLEN", "LoL Daily Clips", 31) == \
+        "His Penta Got STOLEN... LoL Daily Clips #31"
+    assert len(hook_title("x" * 200, "LoL Daily Clips", 31)) <= 100
+    # seen live: the model copied the series into its hook
+    assert hook_title("Jhin PREDICTED His Own Pentakill... LoL Daily Clips 30",
+                      "LoL Daily Clips", 30) == \
+        "Jhin PREDICTED His Own Pentakill... LoL Daily Clips #30"
+
+
+def test_clean_hook_strips_what_we_append_and_rejects_junk():
+    from pipeline.production.credits import clean_hook, clean_thumb
+    assert clean_hook('"Viego Resets Into a PENTAKILL..."') == "Viego Resets Into a PENTAKILL"
+    assert clean_hook("Jhin #lol | wow!") == "Jhin lol wow"
+    assert clean_hook("") == "" and clean_hook("word " * 12) == ""
+    assert clean_thumb("penta stolen?!") == "PENTA STOLEN?!"
+    assert clean_thumb("this is far too many words") == ""
+
+
+def test_day_hook_falls_back_to_keyword_without_a_provider(tmp_path, monkeypatch):
+    from pipeline.production import credits
+    monkeypatch.setattr(credits, "write_hook", lambda *a, **k: {})
+    h = credits.day_hook({}, tmp_path, _clips("he scores a Quadra Kill"), "2026-08-01")
+    assert h["hook"] == "Quadra Kill" and h.get("fallback")
+    assert not (tmp_path / credits.HOOK_CACHE).exists()      # a fallback is never cached
+
+
+def test_day_hook_is_cached_per_date(tmp_path, monkeypatch):
+    from pipeline.production import credits
+    calls = []
+    monkeypatch.setattr(credits, "write_hook",
+                        lambda *a, **k: calls.append(1) or {"hook": "H", "thumb": "T"})
+    for _ in range(2):
+        assert credits.day_hook({}, tmp_path, _clips("x"), "d")["hook"] == "H"
+    assert len(calls) == 1

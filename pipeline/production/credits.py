@@ -67,6 +67,146 @@ DEFAULT_TITLE_STYLES = [
 ]
 
 
+# ── "hook" title mode: "<day-specific hook>... <series> #<episode>" ───────────────
+#
+# Owner decision 2026-09-25, modelled on the daily-clip channels that rank for "lol
+# moments" ("AFK Bait That Always Works...LoL Daily Moments Ep 3482"): the title says
+# something SPECIFIC about the day's best clip, then a constant series name + episode.
+# The clip count ("Top 22") is dropped — nobody chooses a video by it. The hook is
+# written by the `commentary` role from the judge's descriptions of the top clips;
+# the same call writes the 1-3 word thumbnail text. Cached per date (title_hook.json)
+# so a re-run keeps the same title and spends no second request.
+
+HOOK_CACHE = "title_hook.json"
+
+_HOOK_SCHEMA = {"type": "object",
+                "properties": {"hook": {"type": "string"}, "thumb": {"type": "string"}},
+                "required": ["hook", "thumb"]}
+
+_HOOK_PROMPT = """You write YouTube titles for a daily League of Legends Twitch-clips compilation.
+Write the HOOK: the part before "... {series} #N". It sells the day's best moment.
+
+Look across ALL the clips below for the best STORY, not just the biggest number: a twist
+(a stolen penta, a predicted penta, a fail right after a win), a streamer losing it, an
+absurd outplay. Multikills are common in this series, so "X gets a pentakill" alone is weak.
+
+Rules:
+- 3-7 words, English, max 45 characters. Title Case, with ONE word in CAPS for punch.
+- Curiosity or emotion; make people want to see it. Good shapes (other days' clips):
+  "He Called the Penta... Then DID IT", "Nobody Expected This Thresh HOOK",
+  "The Most DISRESPECTFUL Flash", "Teemo Should NOT Win This".
+- Never use flat verbs: secures, achieves, gets, performs, executes, demonstrates.
+- Only facts stated in the descriptions (champion names, multikills, what happened).
+  Never invent names, numbers or events. No streamer names, no emojis, no hashtags,
+  no trailing punctuation.
+{avoid}
+Also write THUMB: 1-3 word ALL-CAPS thumbnail text for the same moment, clickbait allowed,
+usually ending "?!" (e.g. "PENTA STOLEN?!", "200 IQ", "ONE SHOT", "1V5?!", "HE CALLED IT").
+Don't just repeat the hook's CAPS word.
+
+Top clips (best first):
+{clips}"""
+
+
+def _top_clips(clips: list[dict], n: int = 3) -> list[dict]:
+    return sorted(clips, key=lambda c: -(c.get("api_rank_score") or 0))[:n]
+
+
+def clean_hook(text: str) -> str:
+    """Model output -> a safe title fragment ('' if unusable)."""
+    t = re.sub(r"\s+", " ", (text or "").replace("\n", " ")).strip().strip("\"'")
+    t = re.sub(r"\s+", " ", re.sub(r"[#@|]", "", t)).strip()
+    t = re.sub(r"(\.{2,}|…|[.!?,:;-])+$", "", t).strip()    # we append the "..."
+    if not t or len(t) > 60 or len(t.split()) > 9:
+        return ""
+    return t
+
+
+def clean_thumb(text: str) -> str:
+    t = re.sub(r"\s+", " ", (text or "")).strip().strip("\"'").upper()
+    t = re.sub(r"[^A-Z0-9 ?!'.-]", "", t).strip()
+    if not t or len(t.split()) > 3 or len(t) > 20:
+        return ""
+    return t
+
+
+def write_hook(cfg: dict, clips: list[dict], series: str,
+               recent_titles: list | None = None, recent_thumb: str = "") -> dict:
+    """{'hook','thumb'} from the `commentary` role; {} on any failure (never raises)."""
+    from ..providers import ProviderUnavailable, get_provider
+    top = _top_clips(clips)
+    if not top:
+        return {}
+    lines = []
+    for i, c in enumerate(top, 1):
+        desc = c.get("api_what_happens") or c.get("vlm_summary") or ""
+        lines.append(f"{i}. Twitch title: {c.get('title', '')!r}. What happens: {desc}")
+    avoid = ""
+    if recent_titles:
+        avoid = f"- Yesterday's title was {recent_titles[0]!r}: open with a different word."
+    if recent_thumb:
+        avoid += f"\n- Yesterday's THUMB was {recent_thumb!r}: use different words."
+    prompt = _HOOK_PROMPT.format(series=series, avoid=avoid, clips="\n".join(lines))
+    try:
+        r = get_provider(cfg, "commentary").complete_json(prompt, schema=_HOOK_SCHEMA) or {}
+    except ProviderUnavailable as e:
+        log.info("  no title-hook provider (%s) - keyword hook", e)
+        return {}
+    except Exception as e:
+        log.warning("  title hook failed (%s) - keyword hook", e)
+        return {}
+    out = {"hook": clean_hook(r.get("hook", "")), "thumb": clean_thumb(r.get("thumb", ""))}
+    return {k: v for k, v in out.items() if v}
+
+
+def _previous_thumb(work: Path) -> str:
+    """Thumbnail text of the latest earlier date that has one (so days don't repeat it)."""
+    try:
+        for d in sorted((x for x in work.parent.iterdir() if x.name < work.name),
+                        reverse=True)[:7]:
+            f = d / HOOK_CACHE
+            if f.exists():
+                return json.loads(f.read_text(encoding="utf-8").rstrip("\x00")).get("thumb", "")
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+def hook_title(hook: str, series: str, episode: int) -> str:
+    # the model sometimes writes the whole title ("... LoL Daily Clips 29") into the hook
+    i = hook.lower().find(series.lower())
+    if i >= 0:
+        hook = clean_hook(hook[:i]) or hook[:i].strip()
+    tail = f"... {series} #{episode}"
+    return (hook[:100 - len(tail)].rstrip() + tail).strip()
+
+
+def day_hook(cfg: dict, work: Path, clips: list[dict], date_label: str,
+             recent_titles: list | None = None) -> dict:
+    """The cached {'hook','thumb'} for this date, writing it on first use.
+
+    Falls back to the keyword hook ("PENTAKILL?!") when the model is unavailable; that
+    fallback is NOT cached, so the next run tries the model again."""
+    series = cfg.get("upload", {}).get("title_series", "LoL Daily Clips")
+    p = work / HOOK_CACHE
+    try:
+        cached = json.loads(p.read_text(encoding="utf-8").rstrip("\x00"))
+        if cached.get("hook"):
+            return cached
+    except (OSError, ValueError):
+        pass
+    got = write_hook(cfg, clips, series, recent_titles, _previous_thumb(work))
+    if got.get("hook"):
+        got.setdefault("thumb", "")
+        try:
+            p.write_text(json.dumps(got, indent=2, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+        return got
+    kw = _hook(clips, date_label)
+    return {"hook": kw.title() if len(kw.split()) > 1 else kw, "thumb": "", "fallback": True}
+
+
 def _ts(seconds: float) -> str:
     s = int(seconds)
     return f"{s // 60}:{s % 60:02d}"
@@ -144,10 +284,15 @@ def _title(cfg: dict, date_label: str, clips: list[dict], n: int, episode: int,
 
 def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
                    clips: list[dict], episode: int,
-                   recent_titles: list | None = None) -> dict:
+                   recent_titles: list | None = None, work: Path | None = None) -> dict:
     emoji = _EMOJI[int(hashlib.md5(date_label.encode("utf-8")).hexdigest(), 16) % len(_EMOJI)]
-    title = _title(cfg, date_label, clips, len(chapters), episode,
-                   recent_titles=recent_titles)
+    up = cfg.get("upload", {})
+    if up.get("title_mode", "styles") == "hook" and work is not None:
+        h = day_hook(cfg, work, clips, date_label, recent_titles)
+        title = hook_title(h["hook"], up.get("title_series", "LoL Daily Clips"), episode)
+    else:
+        title = _title(cfg, date_label, clips, len(chapters), episode,
+                       recent_titles=recent_titles)
 
     # Lean mode ships no voiceover, so don't advertise commentary that isn't there —
     # this is the description viewers read under a public video.
@@ -198,7 +343,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
              if src.exists() else [])
     episode = state.episode_number(date_label)
     meta = build_metadata(cfg, date_label, chapters, clips, episode,
-                          recent_titles=state.recent_titles() if state else None)
+                          recent_titles=state.recent_titles() if state else None,
+                          work=work)
     out = data / "output" / f"{date_label}.meta.json"
     out.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("Metadata: %s", meta["title"])

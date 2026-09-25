@@ -113,8 +113,11 @@ relative to `pipeline/`).
    energy-detected drop of an NCS track, `_find_drop`; else text card) → concat
    demuxer → master (looped music bed, sidechain-ducked under clip audio so music rises
    in quiet gaps + single-pass loudnorm, video stream copied)
-9. `production/credits.py` — title hook from best clip, chapters, per-streamer credit
-   links, music attribution → `data/output/<date>.meta.json`
+9. `production/credits.py` — title, chapters, per-streamer credit links, music
+   attribution → `data/output/<date>.meta.json`. `upload.title_mode: styles` = rotating
+   templates; `hook` = "<LLM hook>... LoL Daily Clips #N" (owner-approved 2026-09-25; the
+   `commentary` role writes hook + 1-3 word thumbnail text once per date →
+   `work/<date>/title_hook.json`, keyword fallback uncached)
 10. `production/thumbnail.py` — 1280×720 thumbnail, two providers (`thumbnail.provider`,
     now defaulting to `local` so a fresh clone needs no billing):
     `gemini` builds a viral reaction thumbnail via the `thumbnail_image` role

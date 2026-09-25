@@ -441,6 +441,13 @@ upload:
   # Episode numbers start at 1 and are assigned once per date_label in data/state.json
   # ("episodes" map) — stable across reruns/retries of the same date.
   title_date: true            # append " | <n>" as the daily-series marker
+  title_mode: styles          # styles = the rotating templates below (default)
+                              # hook   = "<day-specific hook>... <title_series> #<episode>",
+                              # hook written by the `commentary` role from the judge's
+                              # descriptions of the top clips (+ the 1-3 word thumbnail text),
+                              # cached per date in work/<date>/title_hook.json; keyword
+                              # hook when no model is reachable. Drops the clip count.
+  title_series: LoL Daily Clips   # series name used by title_mode: hook
   title_styles:
     - "{hook}?! {emoji} League of Legends Best Moments"
     - "He Really Did THAT… {emoji} LoL Plays of the Day"

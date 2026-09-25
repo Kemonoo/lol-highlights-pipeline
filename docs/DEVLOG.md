@@ -1028,3 +1028,22 @@ over 67 dates, 3.5 MB; e.g. 18 pentakills in the last 7 days. Gap: cleanup delet
 survived — from now on the log records them before cleanup, and a rebuild carries over
 fields it can no longer see. Past Short ids are recoverable from the YouTube API if needed.
 
+## 2026-09-25 — Titles: "<hook>... LoL Daily Clips #N" (built, not switched on)
+
+Owner looked at the channels ranking for "lol moments": they title the SPECIFIC best clip
+then a constant series + episode ("AFK Bait That Always Works...LoL Daily Moments Ep
+3482"); nobody shows the clip count. Picked "LoL Daily Clips" (not a competitor's series
+name). `upload.title_mode: hook` asks the `commentary` role once per date for a 3-7 word
+hook + 1-3 word thumbnail text from the top-3 judge descriptions; cached in
+title_hook.json; yesterday's title/thumb passed in so days don't repeat. First prompt gave
+"X Secures A Pentakill" + "PENTAKILL" every day — the prompt now bans flat verbs and asks
+for the day's best STORY. Seen live: the model sometimes copies the series into the hook
+("... LoL Daily Clips 29") — hook_title cuts it. Default stays `styles`; the owner overlay
+switches with the new thumbnails once the facecam work in thumbnail.py lands.
+Thumbnail direction chosen the same day (not built yet): style A = sharp best-moment
+gameplay + webcam picture-in-picture over the original cam corner, torero red #E10600
+border 10-15 px, 1-3 word hook top-left (yellow/black, white/red or white/black edge;
+Bahnschrift Bold Condensed or Arial Black — final pick pending). The auto-aimed red arrow
+was dropped: qwen3-vl boxed the wrong thing on 8/9 frames when asked for the player's
+champion.
+
