@@ -1139,8 +1139,13 @@ Gemini hook + thumb words in title_hook.json, and the thumbnail on YouTube.
 
 2026-09-25 (later): the owner found duo-stream boxes still face-tight (09-23 #11, #16).
 Cause: snapping looks for straight lines that persist across frames, and a webcam's own
-room (shelves, posters, a chair) is static too, so it snapped to lines INSIDE the webcam.
-A line now only counts when the game moves on its outer side (outer strip change >= 3
-and > 1.5x the inner strip). Sides that still find no edge get `shorts.facecam_pad`
-(owner overlay 0.15) of room — never a snapped side, so a found webcam edge is never
-exceeded. Re-checked: 09-23 #16's two boxes now match the webcams' true extent.
+room (shelves, posters, a chair) is static too, so a person-hugging model box can snap to
+lines INSIDE the webcam. Tried: "a line only counts when the game moves outside it" —
+REVERTED the same evening: the thumbnail session caught that it moved 3 of the 4
+owner-approved 09-24 boxes (Kesha: top 65 px into the game; Livinha: 10 px into the
+webcam; Walou: +43 px and down to 1080), because the game beside a webcam is often still
+(dark jungle, HUD). As a tie-breaker it still broke Livinha and fixed nothing real.
+Kept: `shorts.facecam_pad` (owner overlay 0.15) of room on sides with NO edge found —
+never a snapped side. Regression fixtures (all restored, IoU >= 0.99): Kesha
+(10,762,521,318), Livinha (1165,796,452,284), Walou (0,571,385,370), Gin (31,19,443,249).
+Known limit: 09-23 #11-style tight boxes stay tight (owner: acceptable).

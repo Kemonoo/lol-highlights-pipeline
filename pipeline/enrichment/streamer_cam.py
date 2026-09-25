@@ -187,32 +187,6 @@ def pad_unsnapped(box: tuple, snapped: set, frac: float, W: int, H: int) -> tupl
     return (int(x0), int(y0), int(x1 - x0), int(y1 - y0))
 
 
-def _motion(frames, axis: int, a: int, b: int, lo: int, hi: int) -> float:
-    """Median frame-to-frame change of the strip [a, b) across the side (lo..hi)."""
-    import numpy as np
-    if b <= a:
-        return 0.0
-    strips = [f[lo:hi, a:b] if axis == 1 else f[a:b, lo:hi] for f in frames]
-    return float(np.median([np.abs(p - q).mean() for p, q in zip(strips, strips[1:])]))
-
-
-def _outline_side(frames, side: str, axis: int, pos: int, lo: int, hi: int,
-                  lim: int) -> bool:
-    """Is a line at `pos` the OUTER edge of the overlay? The game moves outside it.
-
-    Added 2026-09-25: a webcam's own background (shelves, posters, a chair) is static
-    too, so the persistent-line test alone snapped to lines INSIDE the webcam and gave
-    face-tight boxes. The real outline has moving gameplay beyond it."""
-    k = 8
-    if side in ("l", "t"):
-        outer = _motion(frames, axis, max(0, pos - 2 - k), pos - 2, lo, hi)
-        inner = _motion(frames, axis, pos + 2, min(lim, pos + 2 + k), lo, hi)
-    else:
-        outer = _motion(frames, axis, pos + 2, min(lim, pos + 2 + k), lo, hi)
-        inner = _motion(frames, axis, max(0, pos - 2 - k), pos - 2, lo, hi)
-    return outer >= 3.0 and outer > 1.5 * inner
-
-
 def snap_sides(frames, box: tuple, band: float = 0.18, min_score: float = 0.15):
     """Rough box -> (the overlay's real outline, sides that snapped). Pure numpy, tested.
 
@@ -223,7 +197,10 @@ def snap_sides(frames, box: tuple, band: float = 0.18, min_score: float = 0.15):
     edge. Dark webcam on dark game measured 0.20-0.40 (real); no line at all ~0.09, in
     which case the overlay runs off-screen if the frame border is near, else the rough
     edge is kept. No rectangle (green screen, VTuber) = nothing snaps = rough box.
-    A line only counts when the game moves on its outer side (_outline_side).
+    Known limit: a webcam's static room (shelves, a chair) also makes persistent lines,
+    so a model box that hugs the person can snap to one (09-23 #11/#16 stay tight).
+    A 'game moves outside the line' rule was tried 2026-09-25 and reverted: it broke
+    owner-approved boxes next to still game areas (Kesha, Livinha, Walou, 09-24).
     `frames` are same-size grayscale float arrays, spread over the clip.
     """
     H, W = frames[0].shape
@@ -241,9 +218,6 @@ def snap_sides(frames, box: tuple, band: float = 0.18, min_score: float = 0.15):
         for pos in range(max(3, int(centre - d)), min(lim - 3, int(centre + d))):
             s = _line_score(frames, axis, pos, *span)
             s -= 0.10 * abs(pos - centre) / max(d, 1)   # ties -> closest to the model
-            if s > best[0] and s >= min_score and not _outline_side(
-                    frames, side, axis, pos, *span, lim):
-                continue                                 # a line inside the webcam
             if s > best[0]:
                 best = (s, pos)
         if best[0] >= min_score:
