@@ -1070,3 +1070,30 @@ on a non-gameplay screen (09-23 #29), and a 2D drawn avatar (09-23 #27) whose cr
 model calls "not the streamer" despite the prompt. ~20-30 s per clip, only for the
 Shorts/thumbnail clips (a few minutes per night). `shorts.facecam_method` (default haar;
 owner overlay vlm), `facecam_vlm_frames`.
+
+## 2026-09-25 — Thumbnail style A: final spec (to build once the facecam work lands)
+
+Owner-approved after five rounds of mockups on the 09-24 clips. Prototype code (scratch,
+not wired in): `docs/prototypes/` — thumb_style_a.py renders it, cam_snap.py snaps boxes.
+- Background: sharp frame near the judge's best moment (of 5 frames at ±1.5 s, the most
+  colourful/active one), zoomed 1.25x toward the action (brightest-saturation area with
+  HUD, minimap and webcam masked), colour/contrast pop + unsharp mask.
+- Text: the 1-3 word thumb text (title_hook.json), Arial Black, yellow #FFE600 with a
+  black edge, top-left, size CAPPED at what "QUADRA KILL" gets at 800 px (102 pt) — short
+  words must not blow up to half the frame.
+- Border: torero red #E10600, 15 px. (10 px also fine; 30 px and glow rejected.)
+- Webcam: picture-in-picture, bottom corner on the webcam's own side, 40 px in from the
+  border, turquoise #40E0D0 7 px frame. Wherever the ORIGINAL webcam lands in the zoomed
+  frame is heavily blurred first, so the face never appears twice (owner: keep that).
+- No webcam: same without the panel. Red arrow dropped (VLM can't find the player's own
+  champion: wrong on 8/9 frames; the own health bar is yellow, not green, and segmented).
+- Webcam box snapping (cam_snap.py): the locator's box is rough (a few % off on every
+  side). An overlay's outline is a straight line in the same place in every frame while
+  the game moves, so per side: strongest line within ±18% of the rough edge, scored as
+  the share of the side's length with a >18-grey step, median/min over 6 frames. Accept
+  >= 0.15 (dark webcam on dark game measured 0.20-0.40 — real); below that (~0.09) the
+  webcam runs off-screen if the frame border is near, else keep the rough edge. Verified
+  on 4/4 webcams of 09-24; a sponsor banner glued under a webcam is included (owner: fine).
+  Belongs in enrichment/streamer_cam.py so Shorts get it too; no rectangle (green screen,
+  VTuber) = nothing snaps = rough box kept.
+
