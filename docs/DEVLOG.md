@@ -1167,3 +1167,12 @@ for all 5 streamers + clip links in the description. Once per date; a failure ne
 the regular Shorts. Every Short's `format` ("clip" / "ranking:<key>") goes to done.json
 for the A/B comparison. Test render (upload off) on 09-24: TOP 5 Pentakills from 104
 candidates, 5/5 webcams, 50 s, ~4 min. Default off; owner overlay on.
+
+2026-09-25 (later): ranking Short layout redone to the owner's reference (the "Ranking
+Cutest Golden Retriever Moments" style): black title band on top ("Ranking Top 5" /
+"<Label>"), the clip below (webcam split or zoomed centre, rendered at 1620 px tall via
+`shorts._render_short(total_h=...)`), and a coloured 1..5 counter down the left edge
+(1 white, 2 yellow, 3 orange, 4 red-orange, 5 red) where each streamer's name appears
+small as their clip plays and stays (`ranking_shorts.list_rows`, tested). Title:
+"Ranking Top 5 Pentakills | League of Legends #Shorts". Replaced the first version's big
+centred "#N" + header, which the owner did not want.

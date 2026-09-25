@@ -531,7 +531,7 @@ ranking_shorts:               # publishing/ranking_shorts: "TOP 5 PENTAKILLS"-st
   pre_roll_s: 6               # build-up before the judge's best moment
   min_score: 6.0              # judge api_rank_score a clip needs to be ranked
   max_per_streamer: 2         # variety: at most this many clips of one streamer per ranking
-  title: "TOP {n} {LABEL} | League of Legends #Shorts"
+  title: "Ranking Top {n} {Label} | League of Legends #Shorts"   # {label}/{Label}/{LABEL}
   # Category of the day = the one used longest ago that still has `count` unused clips.
   # `pattern` is a regex over the Twitch title + the judge's description + banners read
   # (the clip log has no champion field, so champion categories match that text).

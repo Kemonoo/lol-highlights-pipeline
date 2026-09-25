@@ -2,6 +2,7 @@
 from pipeline.publishing.ranking_shorts import (
     description_for,
     eligible,
+    list_rows,
     pick_category,
     title_for,
     window,
@@ -56,7 +57,13 @@ def test_window_leads_into_the_best_moment_and_stays_inside_the_clip():
 
 
 def test_title_and_credits():
-    assert title_for(PENTA, 5, "TOP {n} {LABEL} | League of Legends #Shorts") == \
-        "TOP 5 PENTAKILLS | League of Legends #Shorts"
+    assert title_for(PENTA, 5, "Ranking Top {n} {Label} | League of Legends #Shorts") == \
+        "Ranking Top 5 Pentakills | League of Legends #Shorts"
     d = description_for(PENTA, [ROWS[1], ROWS[0]], 2)
     assert d.index("#2 one") < d.index("#1 one") and "twitch.tv/one" in d
+
+
+def test_side_counter_reveals_names_as_the_countdown_reaches_them():
+    names = {1: "best", 2: "second", 3: "third"}
+    assert list_rows(3, 3, names) == [(1, ""), (2, ""), (3, "third")]
+    assert list_rows(3, 1, names) == [(1, "best"), (2, "second"), (3, "third")]

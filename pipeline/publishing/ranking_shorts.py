@@ -89,7 +89,8 @@ def window(duration: float, best_s: float | None, length: float, pre: float) -> 
 
 
 def title_for(category: dict, n: int, template: str) -> str:
-    return template.format(n=n, label=category["label"].title(),
+    return template.format(n=n, label=category["label"].lower(),
+                           Label=category["label"].title(),
                            LABEL=category["label"].upper())[:95]
 
 
@@ -166,10 +167,24 @@ def _probe(mp4: Path) -> float:
 
 # ── render ────────────────────────────────────────────────────────────────────
 
-def _segment(cfg: dict, row: dict, src: Path, rank: int, header: str, work: Path,
-             rc: dict) -> Path | None:
-    """One countdown entry: vertical layout (webcam split or zoomed centre, as regular
-    Shorts) + the header, the big rank number and the streamer's name."""
+RANK_COLORS = {1: "0xFFFFFF", 2: "0xFFE600", 3: "0xFF9A00", 4: "0xFF5A1F", 5: "0xFF2A2A"}
+HEADER_H = 300
+
+
+def list_rows(n: int, current: int, names: dict) -> list[tuple]:
+    """The side counter for the segment of rank `current`: every number 1..n, and the
+    name only for ranks already revealed (the countdown runs n -> 1, so ranks >= current).
+    -> [(rank, label or "")]. Pure (tested)."""
+    return [(r, names.get(r, "") if r >= current else "") for r in range(1, n + 1)]
+
+
+def _segment(cfg: dict, row: dict, src: Path, rank: int, title: tuple, names: dict,
+             n: int, work: Path, rc: dict) -> Path | None:
+    """One countdown entry in the owner's reference layout (2026-09-25, the "Ranking
+    Cutest Golden Retriever Moments" Shorts): a black title band on top, the clip below
+    (webcam split or zoomed centre, as regular Shorts), and a coloured 1..n counter down
+    the left edge where each streamer's name appears, small, as their clip plays and
+    then stays."""
     from ..enrichment.streamer_cam import find_all
     from . import shorts as S
 
@@ -185,30 +200,36 @@ def _segment(cfg: dict, row: dict, src: Path, rank: int, header: str, work: Path
                     "-c", "copy", str(cut)], capture_output=True)
     if not cut.exists():
         return None
+    body_h = S.TARGET_H - HEADER_H
     cams = find_all(cfg, cut, length) if cfg.get("shorts", {}).get("detect_facecam", True) else []
-    game_h = int(S.TARGET_H * 0.60) if cams else S.TARGET_H
+    game_h = int(body_h * 0.58) if cams else body_h
     layout = seg_dir / f"layout_{rank}.mp4"
     try:
-        S._render_short(cut, layout, cams or None, [], 0, game_h, cfg)
+        S._render_short(cut, layout, cams or None, [], 0, game_h, cfg, total_h=body_h)
     except subprocess.CalledProcessError as e:
         log.warning("  ranking: render failed for #%d: %s", rank,
                     (e.stderr or b"")[-300:].decode(errors="replace"))
         return None
 
     font = S._cap_font()
-    who = S._clean_overlay(S._ascii_name({"broadcaster_name": row.get("broadcaster", "")}))
-    head = S._clean_overlay(header)
-    txt = [
-        f"drawtext=fontfile='{font}':text='{head}':fontsize=78:fontcolor=white:borderw=8:"
-        f"bordercolor=black:x=(w-text_w)/2:y=90",
-        f"drawtext=fontfile='{font}':text='#{rank}':fontsize=230:fontcolor=0xFFE600:"
-        f"borderw=12:bordercolor=black:x=(w-text_w)/2:y=200",
-        f"drawtext=fontfile='{font}':text='{who}':fontsize=54:fontcolor=white:borderw=6:"
-        f"bordercolor=black:x=(w-text_w)/2:y=460",
-    ]
+    vf = [f"pad={S.TARGET_W}:{S.TARGET_H}:0:{HEADER_H}:black"]
+    for i, line in enumerate(title):
+        t = S._clean_overlay(line)
+        vf.append(f"drawtext=fontfile='{font}':text='{t}':fontsize=84:fontcolor=white:"
+                  f"borderw=7:bordercolor=black:x=(w-text_w)/2:y={52 + i * 108}")
+    y0, step = HEADER_H + 170, 112
+    for i, (r, name) in enumerate(list_rows(n, rank, names)):
+        y = y0 + i * step
+        vf.append(f"drawtext=fontfile='{font}':text='{r}.':fontsize=96:"
+                  f"fontcolor={RANK_COLORS.get(r, '0xFFFFFF')}:borderw=7:bordercolor=black:"
+                  f"x=34:y={y}")
+        if name:
+            nm = S._clean_overlay(name)[:18]
+            vf.append(f"drawtext=fontfile='{font}':text='{nm}':fontsize=44:fontcolor=white:"
+                      f"borderw=5:bordercolor=black:x=150:y={y + 30}")
     out = seg_dir / f"seg_{rank}.mp4"
     r = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(layout), "-vf", ",".join(txt) + ",fps=30",
+        ["ffmpeg", "-y", "-i", str(layout), "-vf", ",".join(vf) + ",fps=30",
          *S._shorts_enc(cfg), "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
          str(out)], capture_output=True)
     if r.returncode != 0 or not out.exists():
@@ -253,7 +274,7 @@ def make(cfg: dict, state, date_label: str, upload_fn=None) -> dict | None:
     cands = eligible(rows, cat, used, min_score, per)
     log.info("ranking short: TOP %d %s (%d candidates)", n, cat["label"], len(cands))
 
-    header = f"TOP {n} {cat['label'].upper()}"
+    title = (f"Ranking Top {n}", cat["label"].title())
     picks: list[dict] = []
     segs: list[Path] = []
     # best n that still download; rendered worst-first so the video counts down to #1
@@ -267,8 +288,11 @@ def make(cfg: dict, state, date_label: str, upload_fn=None) -> dict | None:
     if len(chosen) < n:
         log.info("ranking: only %d of %d clips could be fetched - skip", len(chosen), n)
         return None
+    from . import shorts as S
+    names = {rank: S._ascii_name({"broadcaster_name": r.get("broadcaster", "")})
+             for rank, (r, _) in zip(range(1, n + 1), chosen)}
     for rank, (r, src) in zip(range(n, 0, -1), reversed(chosen)):
-        seg = _segment(cfg, r, src, rank, header, work, rc)
+        seg = _segment(cfg, r, src, rank, title, names, n, work, rc)
         if seg is None:
             log.warning("ranking: segment #%d failed - skip the ranking today", rank)
             return None
@@ -285,7 +309,7 @@ def make(cfg: dict, state, date_label: str, upload_fn=None) -> dict | None:
     entry = {"format": f"ranking:{cat['key']}", "rendered": str(out),
              "clips": [r["clip_id"] for r in picks]}
     if upload_fn is not None:
-        title = title_for(cat, n, rc.get("title", "TOP {n} {LABEL} | League of Legends #Shorts"))
+        title = title_for(cat, n, rc.get("title", "Ranking Top {n} {Label} | League of Legends #Shorts"))
         desc = description_for(cat, picks, n)
         tags = ["league of legends", "lol", "shorts", "top 5", cat["label"].lower(),
                 "twitch clips"] + [str(r.get("broadcaster", "")).lower() for r in picks]

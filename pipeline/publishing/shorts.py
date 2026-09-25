@@ -317,14 +317,14 @@ def _shorts_enc(cfg: dict) -> list[str]:
 
 def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
                   caption_words: list[dict], cap_mv: int, game_h: int,
-                  cfg: dict) -> None:
+                  cfg: dict, total_h: int = TARGET_H) -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
     (no voiceover, no music).
 
     `facecam` is one box or a list of them (duo streams: the streamers sit side by side
     in the lower panel, left to right as on the stream)."""
-    face_h = TARGET_H - game_h
+    face_h = total_h - game_h
     parts: list[str] = []
     cams = ([facecam] if isinstance(facecam, tuple) else list(facecam or []))[:3]
     cams.sort(key=lambda b: b[0])
@@ -353,8 +353,8 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
         fg_w = int(TARGET_W * zoom) // 2 * 2
         parts += [
             "[0:v]split=2[vbg][vfg]",
-            f"[vbg]scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=increase,"
-            f"crop={TARGET_W}:{TARGET_H},boxblur=20:5[bg]",
+            f"[vbg]scale={TARGET_W}:{total_h}:force_original_aspect_ratio=increase,"
+            f"crop={TARGET_W}:{total_h},boxblur=20:5[bg]",
             f"[vfg]scale={fg_w}:-2,crop={TARGET_W}:ih[fg]",
             "[bg][fg]overlay=(W-w)/2:(H-h)/2[cur]",
         ]
