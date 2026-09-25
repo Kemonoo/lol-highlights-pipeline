@@ -50,3 +50,13 @@ def test_rebuild_keeps_short_id_after_cleanup_deleted_its_record(tmp_path):
     upsert(p, "d", build_entries("d", CHAPTERS, CLIPS))          # shorts/done.json gone
     rows = {json.loads(ln)["clip_id"]: json.loads(ln) for ln in p.read_text().splitlines()}
     assert rows["B"]["short_youtube_id"] == "s1"
+
+
+def test_ranking_entry_in_shorts_done_is_ignored_and_format_logged():
+    """shorts/done.json also holds a "ranking" entry (not a clip id) since be2ebac."""
+    done = {"B": {"youtube_id": "s1", "format": "clip"},
+            "ranking": {"youtube_id": "r1", "clips": ["A", "B"]}}
+    ents = build_entries("d", CHAPTERS, CLIPS, shorts_done=done)
+    assert [e["clip_id"] for e in ents] == ["A", "B"]
+    assert ents[1]["short_format"] == "clip" and ents[0]["short_format"] is None
+

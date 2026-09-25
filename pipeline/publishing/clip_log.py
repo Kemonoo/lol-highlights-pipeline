@@ -72,6 +72,7 @@ def build_entries(date_label: str, chapters: list, clips: list, *,
             "speech_lang": tr.get("lang"),
             "speech_en": tr.get("text"),
             "short_youtube_id": short.get("youtube_id"),
+            "short_format": short.get("format"),     # "clip" | "ranking:<key>" (A/B)
             "filter": c,
         }
         out.append(rec)
