@@ -1176,3 +1176,6 @@ Cutest Golden Retriever Moments" style): black title band on top ("Ranking Top 5
 small as their clip plays and stays (`ranking_shorts.list_rows`, tested). Title:
 "Ranking Top 5 Pentakills | League of Legends #Shorts". Replaced the first version's big
 centred "#N" + header, which the owner did not want.
+
+2026-09-25 (later): ranking Shorts also tag the current streamer's name on their webcam
+panel — bottom-left corner (a centred face never sits there), white on a Twitch-purple box.

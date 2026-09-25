@@ -227,6 +227,12 @@ def _segment(cfg: dict, row: dict, src: Path, rank: int, title: tuple, names: di
             nm = S._clean_overlay(name)[:18]
             vf.append(f"drawtext=fontfile='{font}':text='{nm}':fontsize=44:fontcolor=white:"
                       f"borderw=5:bordercolor=black:x=150:y={y + 30}")
+    # Owner (2026-09-25): the current streamer's name also sits on their webcam panel —
+    # bottom-left corner, where a centred face never is — on a dark Twitch-purple tag.
+    who = S._clean_overlay(names.get(rank, ""))[:22]
+    if who:
+        vf.append(f"drawtext=fontfile='{font}':text='{who}':fontsize=46:fontcolor=white:"
+                  f"box=1:boxcolor=0x6441A5@0.85:boxborderw=14:x=30:y=h-th-44")
     out = seg_dir / f"seg_{rank}.mp4"
     r = subprocess.run(
         ["ffmpeg", "-y", "-i", str(layout), "-vf", ",".join(vf) + ",fps=30",
