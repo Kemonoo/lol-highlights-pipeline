@@ -164,7 +164,57 @@ def _line_score(frames, axis: int, pos: int, lo: int, hi: int) -> float:
 
 
 def snap(frames, box: tuple, band: float = 0.18, min_score: float = 0.15) -> tuple:
-    """Rough box -> the overlay's real outline. Pure numpy, so it is unit-tested.
+    """The snapped box only (see snap_sides)."""
+    return snap_sides(frames, box, band, min_score)[0]
+
+
+def pad_unsnapped(box: tuple, snapped: set, frac: float, W: int, H: int) -> tuple:
+    """Widen the sides that did NOT snap by `frac` of the box size, within the frame.
+
+    Owner (2026-09-25): a box hugging the person loses them when they lean or scratch
+    their head; prefer some room around them, but never beyond the webcam's own edge.
+    A snapped side IS that edge, so only the unsnapped sides get the margin."""
+    x, y, w, h = box
+    x0, y0, x1, y1 = x, y, x + w, y + h
+    if "l" not in snapped:
+        x0 = max(0, x0 - frac * w)
+    if "r" not in snapped:
+        x1 = min(W, x1 + frac * w)
+    if "t" not in snapped:
+        y0 = max(0, y0 - frac * h)
+    if "b" not in snapped:
+        y1 = min(H, y1 + frac * h)
+    return (int(x0), int(y0), int(x1 - x0), int(y1 - y0))
+
+
+def _motion(frames, axis: int, a: int, b: int, lo: int, hi: int) -> float:
+    """Median frame-to-frame change of the strip [a, b) across the side (lo..hi)."""
+    import numpy as np
+    if b <= a:
+        return 0.0
+    strips = [f[lo:hi, a:b] if axis == 1 else f[a:b, lo:hi] for f in frames]
+    return float(np.median([np.abs(p - q).mean() for p, q in zip(strips, strips[1:])]))
+
+
+def _outline_side(frames, side: str, axis: int, pos: int, lo: int, hi: int,
+                  lim: int) -> bool:
+    """Is a line at `pos` the OUTER edge of the overlay? The game moves outside it.
+
+    Added 2026-09-25: a webcam's own background (shelves, posters, a chair) is static
+    too, so the persistent-line test alone snapped to lines INSIDE the webcam and gave
+    face-tight boxes. The real outline has moving gameplay beyond it."""
+    k = 8
+    if side in ("l", "t"):
+        outer = _motion(frames, axis, max(0, pos - 2 - k), pos - 2, lo, hi)
+        inner = _motion(frames, axis, pos + 2, min(lim, pos + 2 + k), lo, hi)
+    else:
+        outer = _motion(frames, axis, pos + 2, min(lim, pos + 2 + k), lo, hi)
+        inner = _motion(frames, axis, max(0, pos - 2 - k), pos - 2, lo, hi)
+    return outer >= 3.0 and outer > 1.5 * inner
+
+
+def snap_sides(frames, box: tuple, band: float = 0.18, min_score: float = 0.15):
+    """Rough box -> (the overlay's real outline, sides that snapped). Pure numpy, tested.
 
     From the thumbnail session's prototype (docs/prototypes/cam_snap.py, 2026-09-25):
     the model's box is a few % off on every side (owner: cuts part of the webcam on one
@@ -173,14 +223,16 @@ def snap(frames, box: tuple, band: float = 0.18, min_score: float = 0.15) -> tup
     edge. Dark webcam on dark game measured 0.20-0.40 (real); no line at all ~0.09, in
     which case the overlay runs off-screen if the frame border is near, else the rough
     edge is kept. No rectangle (green screen, VTuber) = nothing snaps = rough box.
-    `frames` are same-size grayscale float arrays.
+    A line only counts when the game moves on its outer side (_outline_side).
+    `frames` are same-size grayscale float arrays, spread over the clip.
     """
     H, W = frames[0].shape
     x, y, w, h = box
     x0, y0, x1, y1 = x, y, x + w, y + h
     ry0, ry1 = int(y0 + 0.15 * h), int(y1 - 0.15 * h)   # middle 70% of each side
     rx0, rx1 = int(x0 + 0.15 * w), int(x1 - 0.15 * w)
-    out = {}
+    out: dict = {}
+    found: set = set()
     for side, axis, centre, span, lim in (
             ("l", 1, x0, (ry0, ry1), W), ("r", 1, x1, (ry0, ry1), W),
             ("t", 0, y0, (rx0, rx1), H), ("b", 0, y1, (rx0, rx1), H)):
@@ -189,21 +241,29 @@ def snap(frames, box: tuple, band: float = 0.18, min_score: float = 0.15) -> tup
         for pos in range(max(3, int(centre - d)), min(lim - 3, int(centre + d))):
             s = _line_score(frames, axis, pos, *span)
             s -= 0.10 * abs(pos - centre) / max(d, 1)   # ties -> closest to the model
+            if s > best[0] and s >= min_score and not _outline_side(
+                    frames, side, axis, pos, *span, lim):
+                continue                                 # a line inside the webcam
             if s > best[0]:
                 best = (s, pos)
         if best[0] >= min_score:
             out[side] = best[1]
+            found.add(side)
         else:
             edge = 0 if side in ("l", "t") else lim
-            out[side] = edge if abs(edge - centre) <= 2 * d else centre
+            if abs(edge - centre) <= 2 * d:
+                out[side] = edge
+                found.add(side)
+            else:
+                out[side] = centre
     nx0, nx1, ny0, ny1 = out["l"], out["r"], out["t"], out["b"]
     nx0 = 0 if nx0 < 8 else nx0                     # a line hugging the frame border
     ny0 = 0 if ny0 < 8 else ny0                     # IS the border
     nx1 = W if W - nx1 < 8 else nx1
     ny1 = H if H - ny1 < 8 else ny1
     if nx1 - nx0 < 0.5 * w or ny1 - ny0 < 0.5 * h:   # snapping collapsed it: distrust
-        return box
-    return (int(nx0), int(ny0), int(nx1 - nx0), int(ny1 - ny0))
+        return box, set()
+    return (int(nx0), int(ny0), int(nx1 - nx0), int(ny1 - ny0)), found
 
 
 # ── frames ────────────────────────────────────────────────────────────────────
@@ -263,7 +323,7 @@ def _is_streamer_crop(provider, jpg: bytes, small_box: tuple) -> bool:
 
 
 def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3,
-               max_n: int = 2, snap_edges: bool = True) -> list[tuple]:
+               max_n: int = 2, snap_edges: bool = True, pad: float = 0.0) -> list[tuple]:
     """Two-step VLM location (see module docstring) -> up to max_n boxes in source px.
     Raises if the provider fails, so the caller can fall back."""
     size = _size(mp4)
@@ -293,8 +353,11 @@ def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3,
     boxes = []
     for small in agreed:
         box = tuple(int(v * k) for v in small)
+        snapped: set = set()
         if grays:
-            box = snap(grays, box)
+            box, snapped = snap_sides(grays, box)
+        if pad:
+            box = pad_unsnapped(box, snapped, pad, src_w, src_h)
         check = tuple(int(v / k) for v in box)
         if not _is_streamer_crop(provider, mid, check):
             log.info("  streamer cam (vlm): a box was found but its crop is not the streamer")
@@ -340,7 +403,8 @@ def find_all(cfg: dict, mp4: Path, duration: float) -> list[tuple]:
         from ..providers import get_provider
         provider = get_provider(cfg, "vlm", vision=True)
         boxes = locate_vlm(mp4, duration, provider, int(sh.get("facecam_vlm_frames", 3)),
-                           int(sh.get("facecam_max", 2)), bool(sh.get("facecam_snap", True)))
+                           int(sh.get("facecam_max", 2)), bool(sh.get("facecam_snap", True)),
+                           float(sh.get("facecam_pad", 0.0)))
         if boxes:
             return boxes
         cand = haar()

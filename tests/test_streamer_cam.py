@@ -1,7 +1,16 @@
 """Pure parts of enrichment.streamer_cam: box parsing, frame agreement, edge snapping."""
 import numpy as np
 
-from pipeline.enrichment.streamer_cam import agree, consensus, iou, parse_boxes, snap, to_pixels
+from pipeline.enrichment.streamer_cam import (
+    agree,
+    consensus,
+    iou,
+    pad_unsnapped,
+    parse_boxes,
+    snap,
+    snap_sides,
+    to_pixels,
+)
 
 
 def test_qwen_box_is_0_to_1000_relative():
@@ -97,3 +106,27 @@ def test_snap_moves_rough_edges_onto_the_overlay_outline():
 def test_snap_keeps_the_rough_box_when_there_is_no_outline():
     frames = [_gameplay(k) for k in range(4)]
     assert snap(frames, (200, 100, 150, 120)) == (200, 100, 150, 120)
+
+
+def test_snapped_sides_are_reported():
+    frames = _frames_with_overlay(400, 200, 600, 330)
+    _, sides = snap_sides(frames, (410, 190, 180, 150))
+    assert sides == {"l", "r", "t", "b"}
+    _, none = snap_sides([_gameplay(k) for k in range(4)], (200, 100, 150, 120))
+    assert none == set()
+
+
+def test_padding_only_widens_unsnapped_sides_and_stays_in_frame():
+    assert pad_unsnapped((100, 100, 200, 100), set(), 0.1, 1920, 1080) == (80, 90, 240, 120)
+    assert pad_unsnapped((100, 100, 200, 100), {"l", "t"}, 0.1, 1920, 1080) == (100, 100, 220, 110)
+    assert pad_unsnapped((0, 1000, 200, 80), set(), 0.5, 1920, 1080) == (0, 960, 300, 120)
+
+
+def test_snap_ignores_static_lines_inside_the_webcam():
+    # 09-23 #11: a shelf inside the webcam is a static line too; the real outline is the
+    # one with moving gameplay outside it
+    frames = _frames_with_overlay(100, 100, 400, 300)
+    for f in frames:
+        f[100:300, 100:160] = 120.0          # darker wall strip -> a line at x=160
+    x, y, w, h = snap(frames, (130, 110, 265, 180))       # real edge 30 px out, shelf at 160
+    assert abs(x - 100) <= 3

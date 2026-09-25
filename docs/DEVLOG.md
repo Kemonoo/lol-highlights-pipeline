@@ -1136,3 +1136,11 @@ the 4 webcam boxes match the approved snapped ones exactly; ~25-45 s per clip wi
 webcam, ~130 s without one (called once, for the top clip). First night to watch: the
 Gemini hook + thumb words in title_hook.json, and the thumbnail on YouTube.
 
+
+2026-09-25 (later): the owner found duo-stream boxes still face-tight (09-23 #11, #16).
+Cause: snapping looks for straight lines that persist across frames, and a webcam's own
+room (shelves, posters, a chair) is static too, so it snapped to lines INSIDE the webcam.
+A line now only counts when the game moves on its outer side (outer strip change >= 3
+and > 1.5x the inner strip). Sides that still find no edge get `shorts.facecam_pad`
+(owner overlay 0.15) of room — never a snapped side, so a found webcam edge is never
+exceeded. Re-checked: 09-23 #16's two boxes now match the webcams' true extent.

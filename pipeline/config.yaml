@@ -512,6 +512,8 @@ shorts:
   facecam_max: 2              # vlm: duo streams — up to this many streamers, side by side
                               # in the Short's lower panel (3 works; rarer than it's worth)
   facecam_snap: true          # vlm: snap each rough box to the overlay's real outline
+  facecam_pad: 0.0            # vlm: margin (share of the box) added on sides that did NOT
+                              # snap to a webcam edge, so a leaning streamer stays in frame
   facecam_min_live: 3.0       # a webcam changes between frames; HUD/portrait art scored 0-2.6
   facecam_min_skin: 0.12      # share of skin-coloured pixels a face box needs (art ~0-0.07;
                               # one dim real webcam measured 0.16)
