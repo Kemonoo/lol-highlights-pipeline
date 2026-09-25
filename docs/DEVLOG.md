@@ -1289,3 +1289,20 @@ changing the rule.
 **Housekeeping:** prototype scripts for style A live in `docs/prototypes/` (reference only;
 the pipeline doesn't import them). The session's scratch renders are not in the repo.
 
+
+## 2026-09-25 — No intro; glitch / whip / pixelate transitions
+
+Owner: drop the KEMONO sting (overlay `video.intro_enabled: false`; the video opens on
+#22) and replace the dips to black between clips. First proposal (0.4s RGB split + noise
++ static crackle) was rejected; of six candidates the owner kept **whip**, **pixelate**
+and a **subtle glitch** (2-3 frames of RGB split, no noise), and rejected white flash,
+zoom punch and a Twitch-purple wipe.
+
+`production/transitions.py`: every transition is CUT-BASED — an out half baked into the
+tail of clip N and an in half into the head of N+1, meeting at a hard cut — so segments
+still render independently and concat keeps `-c copy` (xfade would need overlapping
+inputs and a re-encode of the whole video). Kinds are drawn per boundary, seeded by the
+date (re-runs reuse cached segments; a `.tr` sidecar re-renders a segment whose edges
+changed), glitch weighted 2:1:1 as the "signature" cut, never the same kind twice. Filters
+run after the overlays so captions/nameplate/badge glitch with the picture. The first
+clip keeps its fade-in, the last keeps the outro handoff fade; replays drop the tail cut.

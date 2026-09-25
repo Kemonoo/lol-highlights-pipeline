@@ -355,6 +355,12 @@ video:
                                 # after the fade completes. 0 = start on the drop (old).
   outro_handoff_fade: 1.2       # the LAST clip fades out over this instead of the usual
                                 # 0.35s, so picture and sound ease into the outro together.
+  transitions:                  # clip-to-clip cuts (production/transitions.py): glitch /
+    enabled: false              # whip / pixelate, split across the cut so segments still
+    weights:                    # concat with -c copy. Off = the old 0.3s dips to black.
+      glitch: 2                 # relative odds per boundary (seeded by date, never the
+      whip: 1                   # same kind twice in a row); 0 drops a kind
+      pixelate: 1
   outro_music_start: 0.33       # fallback drop position (frac of track) if energy detection fails
   min_clips: 3                # refuse to assemble OR publish a video with fewer clips
                               # than this. Every stage handles "zero items" gracefully,

@@ -17,6 +17,9 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-25 — Video: the brand intro is gone (owner overlay), clips are joined by
+  glitch / whip / pixelate cuts. The assemble stage text ("renders the intro, then...")
+  should say so.
 - 2026-09-25 — Shorts: speaker-coloured captions (duo lines inside each person's panel),
   2D avatars/VTubers count as the streamer. Shorts stage text could mention both.
 - 2026-09-25 — one of the 3 daily Shorts is now a TOP 5 ranking Short (publishing/

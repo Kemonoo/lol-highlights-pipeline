@@ -108,7 +108,9 @@ relative to `pipeline/`).
    time both overlapped and ran ~7 words/s — see DEVLOG 2026-09-09), skipped entirely when
    `enrichment/burned_captions.py` finds the streamer's OWN live-caption widget baked into
    the source AND the speech is already English, VO
-   ducking, 0.3s fades, 0.5x REPLAY part for clips with api_rank_score ≥ replay_min_score
+   ducking, 0.3s fades (or `video.transitions`: seeded glitch/whip/pixelate cuts split
+   across each boundary, `production/transitions.py`; owner overlay also drops the intro),
+   0.5x REPLAY part for clips with api_rank_score ≥ replay_min_score
    using api_best_moment_s) → outro (when `video.outro_music`: KEMONO logo over the
    energy-detected drop of an NCS track, `_find_drop`; else text card) → concat
    demuxer → master (looped music bed, sidechain-ducked under clip audio so music rises

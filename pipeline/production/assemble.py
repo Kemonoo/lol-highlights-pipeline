@@ -325,7 +325,9 @@ def _wants_replay(clip: dict, v: dict) -> bool:
 def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                nameplate: Path | None = None, sfx: Path | None = None,
                captions: list | None = None, tail_fade: float | None = None,
-               badge: Path | None = None) -> None:
+               badge: Path | None = None, head_tr: str | None = None,
+               tail_tr: str | None = None) -> None:
+    from . import transitions as _tr
     w, h, fps = v["width"], v["height"], v["fps"]
     dur = _duration(mp4)
     lt_end = min(v.get("lower_third_seconds", 5.5) + 0.6, max(dur - 1, 2))
@@ -353,10 +355,17 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
     # 0.35s everywhere, except the clip that hands over to the outro: cutting from a
     # peak (a pentakill scream) straight into music reads as a jumpscare, so the last
     # clip eases out over `outro_handoff_fade` instead.
+    # A transition (production/transitions) replaces the fade on its side of the cut.
     fo = float(tail_fade if tail_fade else 0.35)
     fo = max(0.2, min(fo, max(dur - 0.5, 0.2)))
-    vf += f",fade=t=in:st=0:d=0.3,fade=t=out:st={max(dur-fo,0):.2f}:d={fo:.2f}"
-    afade = (f"afade=t=in:st=0:d=0.3,"
+    if not head_tr:
+        vf += ",fade=t=in:st=0:d=0.3"
+    if not tail_tr:
+        vf += f",fade=t=out:st={max(dur-fo,0):.2f}:d={fo:.2f}"
+    fi = _tr.AUDIO_FADE_S if head_tr else 0.3
+    if tail_tr:
+        fo = _tr.AUDIO_FADE_S
+    afade = (f"afade=t=in:st=0:d={fi:.2f},"
              f"afade=t=out:st={max(dur-fo,0):.2f}:d={fo:.2f}:curve=ihsin")
 
     # assign input indices in the order the inputs are appended below
@@ -390,7 +399,9 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
         fc.append(f"[{stage}][{cd_i}:v]overlay=0:0:eof_action=pass:"
                   f"enable='lte(t,{cd_end:.2f})'[vcd]")
         stage = "vcd"
-    fc.append(f"[{stage}]null[v]")
+    # transitions last, so the cut treats overlays and captions like the picture
+    trf = _tr.head_vf(head_tr) + _tr.tail_vf(tail_tr, dur)
+    fc.append(f"[{stage}]{','.join(trf) or 'null'}[v]")
 
     # audio: clip (ducked under VO) → mix VO → mix SFX → fade
     if vo_i is not None:
@@ -446,14 +457,19 @@ def _replay_part(clip: dict, mp4: Path, out: Path, v: dict) -> bool:
 def render_segment(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
                    nameplate: Path | None = None, sfx: Path | None = None,
                    captions: list | None = None, tail_fade: float | None = None,
-                   badge: Path | None = None) -> None:
+                   badge: Path | None = None, head_tr: str | None = None,
+                   tail_tr: str | None = None) -> None:
     """Main part + optional replay, concatenated into one segment file.
+
+    `head_tr`/`tail_tr`: the transition kind at each end (production/transitions); with
+    a replay the tail transition is dropped (the replay keeps its own fades).
 
     `tail_fade` lengthens the closing fade, used on the LAST clip so the video eases
     into the outro instead of cutting from a peak straight into music."""
     main = out.with_suffix(".main.mp4")
     _main_part(clip, mp4, vo, main, v, nameplate=nameplate, sfx=sfx, captions=captions,
-               tail_fade=tail_fade if not _wants_replay(clip, v) else None, badge=badge)
+               tail_fade=tail_fade if not _wants_replay(clip, v) else None, badge=badge,
+               head_tr=head_tr, tail_tr=tail_tr if not _wants_replay(clip, v) else None)
     want_replay = _wants_replay(clip, v)
     replay = out.with_suffix(".replay.mp4")
     if want_replay and _replay_part(clip, mp4, replay, v):
@@ -560,6 +576,17 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     segments, chapters, t = [], [], 0.0
 
+    # clip-to-clip transitions: one kind per boundary, seeded by the date so a re-run
+    # plans the same ones; a segment re-renders when its planned edges change (.tr)
+    from . import transitions as _tr
+    trc = v.get("transitions", {}) or {}
+    kinds = (_tr.plan(len(clips), date_label, trc.get("weights"))
+             if trc.get("enabled", False) else [])
+
+    def tr_stale(seg: Path, key: str) -> bool:
+        m = seg.with_suffix(".tr")
+        return seg.exists() and (m.read_text() if m.exists() else "|") != key
+
     if v.get("intro_enabled", True):
         intro = seg_dir / "_intro.mp4"
         ivo = vo_dir / "_intro.mp3"
@@ -573,7 +600,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
         t += _duration(intro)
         segments.append(intro)
 
-    for c in clips:
+    for ci, c in enumerate(clips):
+        head_tr, tail_tr = _tr.edges(kinds, ci)
+        tr_key = f"{head_tr or ''}|{tail_tr or ''}"
         mp4 = raw_dir / f"{c['id']}.mp4"
         if not mp4.exists():
             lp = c.get("local_path") or ""        # NB: Path("") is "." (exists!)
@@ -589,7 +618,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 continue
         seg = seg_dir / f"{c['id']}.mp4"
         svo = vo_dir / f"{c['id']}.mp3"
-        if not seg.exists() or stale(seg, svo):
+        if not seg.exists() or stale(seg, svo) or tr_stale(seg, tr_key):
             np_path = None
             if np_cfg.get("enabled", False):
                 from . import nameplate as _np
@@ -607,8 +636,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
                                tail_fade=(float(v.get("outro_handoff_fade", 1.2))
                                           if is_last and v.get("outro_enabled", True)
                                           else None),
-                               badge=badge)
+                               badge=badge, head_tr=head_tr, tail_tr=tail_tr)
                 mark(seg, svo)
+                seg.with_suffix(".tr").write_text(tr_key)
             except Exception as e:
                 log.warning("segment failed for %s: %s", c["id"], e)
                 continue

@@ -25,6 +25,9 @@ twitch:
 
 video:
   target_clips: 22               # owner's pick: a top-22 countdown (was 20; 17ish from the 8-min rule)
+  intro_enabled: false           # owner 2026-09-25: no brand sting, open straight on clip #22
+  transitions:
+    enabled: true                # owner 2026-09-25 picked whip, pixelate, subtle glitch
   brand:
     name: KEMONO
     tagline: DAILY LEAGUE OF LEGENDS
