@@ -151,3 +151,6 @@ Built with Anthropic's `frontend-design` plugin guidance.
 - 2026-09-24 — `scripts/export_site.py`: the whole night is exported by one command;
   night-specific text is `data-n`-bound. Re-exported 09-21 (same numbers; new picks:
   caption still #16, sharper kill-feed crop, prefilter "7 min").
+- 2026-09-26 — Impeccable audit (`npx impeccable detect site/`, 37 -> 18 findings, the rest
+  false positives): --dim/--muted lifted to WCAG AA, 4-step type scale (--fs-sm/base/lg/xl),
+  glows kept only on the surviving hero tiles, no gradient headline text.
