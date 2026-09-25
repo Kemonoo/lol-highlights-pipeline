@@ -1016,3 +1016,15 @@ it is landscape and >= `shrink_height` (`lq_is_judge_quality`, pure half tested)
 otherwise the full-quality file is shrunk to 720p (checked: 1280x720, 4.7 MB, ~7 s per
 clip, ~4 min per night). Input changed -> judge cache bumped to `api_partial_v4.json`
 (exporter reads v4, falls back to v3). Judge scores may shift; watch the next nights.
+
+## 2026-09-25 — Clip log (every published clip, forever)
+
+Owner: keep a record of every clip that went into a video — link, title, everything the
+filters found — so compilation Shorts (top 5 pentakills of the week, a streamer's best of
+the month) can be built from past days. New stage `publishing/clip_log.py` after shorts,
+before cleanup → `data/clip_log.jsonl`. Backfilled from the saved work folders: 978 clips
+over 67 dates, 3.5 MB; e.g. 18 pentakills in the last 7 days. Gap: cleanup deletes
+`work/<date>/shorts/` (with the Short ids) the same night, so only 09-24's 3 Short ids
+survived — from now on the log records them before cleanup, and a rebuild carries over
+fields it can no longer see. Past Short ids are recoverable from the YouTube API if needed.
+

@@ -529,3 +529,10 @@ review:                       # python -m pipeline.tools.review_queue (review.ba
   random: 4                   # plus this many from anywhere in the night's pool
   days: 7                     # recent finished nights to offer (older ones play via Twitch)
   port: 8766
+
+clip_log:
+  enabled: true               # data/clip_log.jsonl: one line per clip in every published video
+                              # (Twitch link, filter scores, judge description, transcript,
+                              # video + Short ids). Text only, kept forever, never pruned —
+                              # the index for "top 5 of the week"/per-streamer compilations.
+                              # Backfill: python -m pipeline.publishing.clip_log --backfill

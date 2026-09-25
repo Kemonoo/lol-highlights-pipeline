@@ -25,7 +25,7 @@ from .feedback import feedback
 from .filtering import api_judge, prefilter, vlm_filter
 from .ingestion import fetch
 from .production import assemble, commentary, credits, thumbnail, tts
-from .publishing import cleanup, shorts, upload
+from .publishing import cleanup, clip_log, shorts, upload
 from .state import State
 
 log = logging.getLogger("pipeline")
@@ -46,6 +46,7 @@ STAGES = [
     ("thumbnail", thumbnail.run),
     ("upload", upload.run),
     ("shorts", shorts.run),    # vertical clips for YouTube Shorts (runs after main upload)
+    ("clip_log", clip_log.run),  # data/clip_log.jsonl: every published clip, forever
     ("cleanup", cleanup.run),  # delete old raw MP4s to free disk space
 ]
 

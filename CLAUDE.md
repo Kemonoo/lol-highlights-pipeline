@@ -137,7 +137,13 @@ relative to `pipeline/`).
     `caption_split_gap`/`caption_margin_v` — fontfile, no fontconfig). English title from
     the summary + speech (NEVER the raw native Twitch title). Shares the main upload OAuth →
     `work/<date>/shorts/`
-13. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, and
+13. `publishing/clip_log.py` — `data/clip_log.jsonl`, one line per clip of every published
+    video (Twitch link + title, streamer, all filter/judge data, English transcript,
+    countdown rank, video + Short YouTube ids). Rebuilt per date from work files (idempotent,
+    keeps ids a rebuild can no longer see), text only, never pruned — the index for
+    compilation Shorts ("top 5 pentakills of the week", per-streamer best-ofs).
+    `--backfill` logs every saved date
+14. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, and
     published masters older than `cleanup.keep_output_days` (0 = keep forever, the
     default; a master is only ever deleted when state.json holds a confirmed YouTube
     id for that date, so an un-uploaded video is never touched. meta.json always stays)

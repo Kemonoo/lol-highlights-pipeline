@@ -273,6 +273,7 @@ _STAGE_NEEDS = {
     "thumbnail": {"role:thumbnail_image"},
     "upload": {"upload"},
     "shorts": {"ffmpeg", "role:commentary"},   # generates the Short's English title
+    "clip_log": set(),
     "cleanup": set(),
     "feedback": {"role:feedback"},
 }
