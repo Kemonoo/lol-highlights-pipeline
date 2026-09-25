@@ -65,6 +65,7 @@ upload:
 shorts:
   upload: true
   privacy: public
+  facecam_avatar_motion: [15, 40]   # owner: 2D avatars / VTubers count as the streamer
   facecam_pad: 0.15              # owner: room around a person the edges didn't bound
   facecam_method: vlm            # owner pick 2026-09-25: the local vision model finds the
                                  # webcam/avatar; checked on 104 clips (DEVLOG)

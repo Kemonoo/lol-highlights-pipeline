@@ -1179,3 +1179,16 @@ centred "#N" + header, which the owner did not want.
 
 2026-09-25 (later): ranking Shorts also tag the current streamer's name on their webcam
 panel — bottom-left corner (a centred face never sits there), white on a Twitch-purple box.
+
+## 2026-09-25 — Streamer cam: animated 2D avatars / VTubers rescued
+
+The 4B crop check called the owner's 2D avatar (09-23 #27) and a VTuber (09-23 #17)
+"not the streamer". A reworded check prompt was tried and was WORSE (rejected real
+VTubers) — kept the original. Instead a box the check rejects is kept as an animated
+avatar when every frame agreed on it and its frame-to-frame change sits in
+`shorts.facecam_avatar_motion` (owner overlay [15, 40]; default off). Measured: 2D avatar
+29-30, VTuber 28-32; static drawn characters / anime art 2.1-3.1; an animated Goku meme
+alert 50-56. Only the largest rescued box is kept (a bouncing Poro sticker next to the
+VTuber also landed in the band). Verified: #27 and #17 now boxed, Goku alert and the
+static character next to 09-24 #41's webcam still rejected, all 4 owner-approved webcam
+fixtures unchanged. Small sample: watch for animated alerts in the lower panel.

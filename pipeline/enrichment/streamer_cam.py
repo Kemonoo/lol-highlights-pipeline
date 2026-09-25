@@ -296,8 +296,32 @@ def _is_streamer_crop(provider, jpg: bytes, small_box: tuple) -> bool:
     return bool(verdict.get("streamer"))
 
 
+def box_motion(grays: list, box: tuple) -> float:
+    """Median frame-to-frame change inside `box` over frames spread across the clip."""
+    import numpy as np
+    x, y, w, h = box
+    strips = [g[y:y + h, x:x + w] for g in grays]
+    if len(strips) < 2 or not strips[0].size:
+        return 0.0
+    return float(np.median([np.abs(a - b).mean() for a, b in zip(strips, strips[1:])]))
+
+
+def avatar_rescue(votes: int, frames: int, motion: float, band: tuple) -> bool:
+    """Accept a box the crop check rejected as an ANIMATED AVATAR? Pure (tested).
+
+    The 4B check calls a drawn 2D avatar or a VTuber "not the streamer" (09-23 #27, #17),
+    though the owner counts them. What sets them apart from what the check rightly
+    rejects: they sit in the same place all clip long (every frame agreed on the box)
+    and they keep moving a moderate amount. Measured 2026-09-25 (median frame change):
+    2D avatar 29, VTuber 32; static drawn characters / anime art 2.7-3.1 (too still); an
+    animated meme alert (a Goku GIF) 50 (too busy). Small sample — `band` is config."""
+    lo, hi = band
+    return votes >= frames and lo <= motion <= hi
+
+
 def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3,
-               max_n: int = 2, snap_edges: bool = True, pad: float = 0.0) -> list[tuple]:
+               max_n: int = 2, snap_edges: bool = True, pad: float = 0.0,
+               avatar_band: tuple | None = None) -> list[tuple]:
     """Two-step VLM location (see module docstring) -> up to max_n boxes in source px.
     Raises if the provider fails, so the caller can fall back."""
     size = _size(mp4)
@@ -322,22 +346,36 @@ def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3,
 
     k = src_w / 1280
     grays = (_gray_frames(mp4, [duration * (i + 1) / 7 for i in range(6)], src_w, src_h)
-             if snap_edges else [])
+             if (snap_edges or avatar_band) else [])
     mid = jpgs[len(jpgs) // 2]
-    boxes = []
+    boxes, rescued = [], []
     for small in agreed:
         box = tuple(int(v * k) for v in small)
         snapped: set = set()
-        if grays:
+        if grays and snap_edges:
             box, snapped = snap_sides(grays, box)
         if pad:
             box = pad_unsnapped(box, snapped, pad, src_w, src_h)
         check = tuple(int(v / k) for v in box)
         if not _is_streamer_crop(provider, mid, check):
-            log.info("  streamer cam (vlm): a box was found but its crop is not the streamer")
+            votes = sum(1 for bs in per_frame if any(iou(b, small) >= 0.5 for b in bs))
+            motion = box_motion(grays, box) if grays else 0.0
+            if avatar_band and avatar_rescue(votes, len(per_frame), motion, avatar_band):
+                log.info("  streamer cam (vlm): crop check said no, but it is an animated "
+                         "avatar (all %d frames, motion %.1f)", votes, motion)
+                x, y, w, h = box
+                rescued.append((x, y, min(w, src_w - x), min(h, src_h - y)))
+            else:
+                log.info("  streamer cam (vlm): a box was found but its crop is not the "
+                         "streamer (%d/%d frames, motion %.1f)", votes, len(per_frame), motion)
             continue
         x, y, w, h = box
         boxes.append((x, y, min(w, src_w - x), min(h, src_h - y)))
+    if rescued:
+        # A streamer has ONE avatar; other animated things the rescue lets through are
+        # decorations (09-23 #17: a bouncing Poro sticker next to the VTuber). Keep the
+        # largest rescued box only.
+        boxes.append(max(rescued, key=lambda b: b[2] * b[3]))
     log.info("  streamer cam (vlm): %d overlay(s) %s", len(boxes), boxes)
     return boxes
 
@@ -376,9 +414,11 @@ def find_all(cfg: dict, mp4: Path, duration: float) -> list[tuple]:
     try:
         from ..providers import get_provider
         provider = get_provider(cfg, "vlm", vision=True)
+        band = sh.get("facecam_avatar_motion")
         boxes = locate_vlm(mp4, duration, provider, int(sh.get("facecam_vlm_frames", 3)),
                            int(sh.get("facecam_max", 2)), bool(sh.get("facecam_snap", True)),
-                           float(sh.get("facecam_pad", 0.0)))
+                           float(sh.get("facecam_pad", 0.0)),
+                           tuple(float(v) for v in band) if band else None)
         if boxes:
             return boxes
         cand = haar()

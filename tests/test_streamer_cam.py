@@ -3,6 +3,8 @@ import numpy as np
 
 from pipeline.enrichment.streamer_cam import (
     agree,
+    avatar_rescue,
+    box_motion,
     consensus,
     iou,
     pad_unsnapped,
@@ -120,3 +122,18 @@ def test_padding_only_widens_unsnapped_sides_and_stays_in_frame():
     assert pad_unsnapped((100, 100, 200, 100), set(), 0.1, 1920, 1080) == (80, 90, 240, 120)
     assert pad_unsnapped((100, 100, 200, 100), {"l", "t"}, 0.1, 1920, 1080) == (100, 100, 220, 110)
     assert pad_unsnapped((0, 1000, 200, 80), set(), 0.5, 1920, 1080) == (0, 960, 300, 120)
+
+
+def test_avatar_rescue_band_measured_2026_09_25():
+    band = (15, 40)
+    assert avatar_rescue(3, 3, 29.3, band)          # 2D avatar, 09-23 #27
+    assert avatar_rescue(3, 3, 31.9, band)          # VTuber, 09-23 #17
+    assert not avatar_rescue(3, 3, 2.7, band)       # static drawn character, 09-24 #41
+    assert not avatar_rescue(3, 3, 50.0, band)      # animated meme alert, 09-23 #10
+    assert not avatar_rescue(2, 3, 29.3, band)      # not there all clip long
+
+
+def test_box_motion_is_zero_for_a_still_box():
+    frames = _frames_with_overlay(100, 100, 300, 200)
+    assert box_motion(frames, (120, 120, 100, 50)) == 0.0
+    assert box_motion(frames, (400, 250, 100, 80)) > 1.0
