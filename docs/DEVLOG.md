@@ -1227,3 +1227,65 @@ Next, in the owner's words' order:
 - Then leave the pipeline running and compare views/watch time; a fresh channel is still
   an option. Reference: a similar channel with ~6-8 long videos (no Shorts), strong
   thumbnails, ~8,000 views; KEMONO has ~3,000 over ~240 uploads.
+
+## 2026-09-25 — Handoff: thumbnails/titles session (open items and unrecorded findings)
+
+The owner is merging sessions. This entry records what existed only in that conversation.
+
+**Live from the 2026-09-25 night (owner overlay):** `thumbnail.provider: clip` (style A, white
+webcam frame) and `upload.title_mode: hook` ("<Gemini hook>... LoL Daily Clips #N"). The first
+night needs checking: the title + thumbnail on YouTube, and `work/<date>/title_hook.json`
+(hook + thumb words). Known tendencies from test runs on 09-20..09-24: the model reuses
+"Entire (Enemy) Team" phrasing, and the thumb words sometimes repeat across days ("UNSTOPPABLE?!"
+twice; yesterday's thumb is now passed in to prevent that). It rarely finds the "story"
+clip over the biggest multikill (09-24's stolen penta was only in a French Twitch title).
+The prompt is `credits._HOOK_PROMPT`. Tune it from real nights, not from these.
+
+**Not yet seen:** style A with an AVATAR/VTuber in the picture-in-picture panel (streamer_cam
+accepts avatars since 50e5325; no saved clip has one). If it looks bad, the thumbnail can
+skip avatar boxes without touching Shorts.
+
+**Owner decisions not recorded elsewhere:**
+- Channel packaging follows the channels that rank for "lol moments" (Hi im Coconut "LoL
+  Daily Moments Ep N", Protatomonster): real gameplay in the thumbnail, not champion splash
+  art; the episode number stays; the clip count ("Top 22") goes.
+- The brand intro at the START is probably not worth its seconds. Owner leans towards cutting
+  straight into clip #1 and showing the banner in the outro. NOT DONE: `video.brand` intro
+  still plays.
+- A channel redesign (banner, avatar, look) is wanted. NOT STARTED.
+- Rejected on the way to style A: champion-splash + avatar-circle thumbnails (the old
+  local design), an auto-aimed red arrow (VLM wrong 8/9), the big-webcam split layout,
+  30 px/glow borders, red text, Impact/Bahnschrift/Montserrat. Offered but unanswered:
+  Anton / Bebas Neue / Luckiest Guy (OFL fonts, would need a download).
+
+**Shorts/channel research, 2026-09-21 (owner asked; sources in that conversation):**
+- YouTube's spam policy allows "a few variations" but targets mass-produced/repetitive
+  uploads. "Repetitious" was renamed "inauthentic content" in July 2025. "Reused content"
+  (clips/compilations) is unchanged: monetizable only with added value. The lean
+  no-commentary format sits near that line; ranked/"top 5" formats with on-screen context
+  move away from it.
+- "Shadowban" is not an official mechanism. A sudden spike of low-engagement uploads can
+  be suppressed. Every Short gets its own small seed audience, and the first gate is
+  "viewed vs swiped away" (~70% strong, <30% dead). Our 0-view Shorts are failing that
+  gate; the post count is unlikely to be the cause.
+- Recommendation given: no 50/day, no extra Google accounts. If a test ground is wanted,
+  ONE Brand Account channel on the same Google account. YouTube's built-in A/B test does
+  not cover Shorts, so compare formats by their own stats (the `short_format` field in
+  clip_log / done.json is the start of that).
+- The channel's first uploads were AI-generated Shorts from an earlier project, so its
+  audience history doesn't match LoL. That slows seeding; it is not a ban.
+- Offered, NOT DONE: pull per-Short views, swipe-away rate and average % viewed via the
+  YouTube Analytics API. This needs the `yt-analytics.readonly` scope, i.e. one new OAuth
+  consent by the owner (the upload token has upload scope only). Also needed to recover the
+  Short ids for dates before 09-24 (cleanup deleted their done.json) if clip_log should
+  carry them.
+
+**Still-open bug from 2026-09-13 (VLM stage):** the pro-play check (`vlm_pro_play`,
+reject reason PRO_PLAY_UI) was right on only 2 of 7 rejects checked on 09-12. Five were
+ordinary streamers ("1V1 MID OUTPLAY", "yummi gamaplay", "Sniper"). NO_GAMEPLAY was
+9/9 correct. Worth a detector review via the review queue (`tools/review_queue.py`) before
+changing the rule.
+
+**Housekeeping:** prototype scripts for style A live in `docs/prototypes/` (reference only;
+the pipeline doesn't import them). The session's scratch renders are not in the repo.
+
