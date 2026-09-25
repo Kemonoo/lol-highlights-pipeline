@@ -473,7 +473,7 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
   clip_border_color: "#E10600"   # torero red
   clip_text_color: "#FFE600"  # Arial Black, black edge, top-left
   clip_text_cap: QUADRA KILL  # text never gets bigger than this string would at 800 px
-  clip_cam_color: "#40E0D0"   # turquoise frame round the webcam panel
+  clip_cam_color: "#FFFFFF"   # frame round the webcam panel (owner: white; turquoise tried)
   clip_cam_width: 420         # webcam panel width (grows up to 560 to cover the original)
   clip_cam_inset: 40          # px between the webcam panel and the border
   face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")

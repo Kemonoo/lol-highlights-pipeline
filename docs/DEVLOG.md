@@ -1126,3 +1126,13 @@ screen ("none") unchanged. Still missed: the 2D avatar 09-23 #27 (its crop fails
 runs too); only for the Shorts/thumbnail clips.
 Coordination: the thumbnail session and this one agreed via SendMessage who edits which
 file (this one: streamer_cam.py, shorts.py; that one: thumbnail.py, prototypes).
+
+## 2026-09-25 — Switched on: style A thumbnails + hook titles (owner overlay)
+
+`config.kemono.yaml`: `thumbnail.provider: clip`, `upload.title_mode: hook`. Webcam frame
+changed from turquoise to WHITE (owner's final call; `clip_cam_color`). Checked before the
+switch: 09-24 re-rendered through the Shorts session's final streamer_cam.find (ce0e74a) —
+the 4 webcam boxes match the approved snapped ones exactly; ~25-45 s per clip with a
+webcam, ~130 s without one (called once, for the top clip). First night to watch: the
+Gemini hook + thumb words in title_hook.json, and the thumbnail on YouTube.
+

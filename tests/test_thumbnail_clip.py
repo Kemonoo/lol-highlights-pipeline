@@ -51,9 +51,9 @@ def test_compose_clip_border_webcam_frame_and_size():
     img = compose_clip(_frame(), (0, 750, 470, 330), "ONE SHOT", {})
     assert img.size == (THUMB_W, THUMB_H)
     assert img.getpixel((3, THUMB_H // 2)) == (225, 6, 0)           # red border
-    # turquoise frame of the webcam panel, bottom-left, inset from the border
+    # white frame of the webcam panel, bottom-left, inset from the border
     px = np.asarray(img)
-    turq = (np.abs(px.astype(int) - (64, 224, 208)).sum(axis=2) < 40)
+    turq = (np.abs(px.astype(int) - (255, 255, 255)).sum(axis=2) < 40)
     ys, xs = np.nonzero(turq)
     assert xs.min() >= 40 - 1 and xs.max() < THUMB_W // 2 and ys.max() <= THUMB_H - 40
 
@@ -62,4 +62,4 @@ def test_compose_clip_without_webcam_or_text():
     img = compose_clip(_frame(), None, "", {"clip_border_px": 0})
     assert img.size == (THUMB_W, THUMB_H)
     px = np.asarray(img).astype(int)
-    assert not (np.abs(px - (64, 224, 208)).sum(axis=2) < 40).any()   # no panel
+    assert not (np.abs(px - (255, 255, 255)).sum(axis=2) < 40).any()   # no panel

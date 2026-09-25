@@ -60,6 +60,7 @@ upload:
   enabled: true
   privacy: public                # goes live on the channel as soon as it finishes
   allow_reupload: false          # idempotency: a crash-retry must not double-post
+  title_mode: hook               # owner pick 2026-09-25: "<Gemini hook>... LoL Daily Clips #N"
 
 shorts:
   upload: true
@@ -70,9 +71,10 @@ shorts:
                                  # (1.45 cut too much of the fight; 1.0 = whole frame)
 
 thumbnail:
-  provider: local                 # gemini needs a BILLED API key (free tier quota is 0 for
-                                   # image models - verified 2026-08-23, every call 429s).
-                                   # Switch back to gemini if billing ever gets enabled.
+  provider: clip                  # owner pick 2026-09-25: style A (best-moment gameplay +
+                                   # webcam picture-in-picture + 1-3 words, red border). Free.
+                                   # gemini would need a BILLED key (free image quota is 0,
+                                   # verified 2026-08-23); local = the old splash+avatar design.
 
 cleanup:
   keep_output_days: 7             # this channel uploads publicly, so YouTube holds the

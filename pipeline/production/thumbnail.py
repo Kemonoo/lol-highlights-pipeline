@@ -1055,7 +1055,7 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
 #   * frame: of 5 frames within ±1.5 s of the judge's best moment, the most colourful
 #     centre (effects = the fight), zoomed `clip_zoom` toward the most saturated area
 #   * webcam: streamer_cam.find()'s box (already snapped to the overlay's edges), in the
-#     bottom corner on its own side, inset from the border, framed turquoise. Wherever the
+#     bottom corner on its own side, inset from the border, framed white. Wherever the
 #     ORIGINAL webcam lands in the zoomed frame is blurred first — the face never shows twice
 #   * text: Arial Black, yellow + black edge, top-left, size CAPPED at what "QUADRA KILL"
 #     gets, so short words ("ONE SHOT") don't blow up to half the frame
@@ -1065,7 +1065,7 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
 
 _CLIP_DEFAULTS = {
     "clip_zoom": 1.25, "clip_border_px": 15, "clip_border_color": "#E10600",
-    "clip_text_color": "#FFE600", "clip_cam_color": "#40E0D0", "clip_cam_width": 420,
+    "clip_text_color": "#FFE600", "clip_cam_color": "#FFFFFF", "clip_cam_width": 420,
     "clip_cam_inset": 40, "clip_text_cap": "QUADRA KILL",
 }
 
