@@ -509,11 +509,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 log.warning("  trim failed - using full clip: %s", e)
                 trim_tmp = None
 
-        # 2. Face cam detection (anywhere in frame; live + skin gates)
-        facecam = (_detect_facecam(clip_src, min(duration, target_s),
-                                   float(sh.get("facecam_min_live", 3.0)),
-                                   float(sh.get("facecam_min_skin", 0.12)))
-                   if detect_face else None)
+        # 2. Where is the streamer (webcam or avatar)? enrichment/streamer_cam
+        if detect_face:
+            from ..enrichment.streamer_cam import find as _find_streamer
+            facecam = _find_streamer(cfg, clip_src, min(duration, target_s))
+        else:
+            facecam = None
         game_h  = int(TARGET_H * 0.60) if facecam else TARGET_H
         face_h  = TARGET_H - game_h
 

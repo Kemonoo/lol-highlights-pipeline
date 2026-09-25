@@ -450,7 +450,7 @@ def _expression_scores(crops: list) -> list:
 
 
 def _reaction_face(clip: dict, mp4: Path, best_s: float,
-                   samples: int = 9) -> "Image.Image | None":
+                   samples: int = 9, cfg: dict | None = None) -> "Image.Image | None":
     """Pick the streamer's most EXPRESSIVE facecam frame near the peak moment.
 
     Was: one frame at best_s. That is whatever expression happened at that instant, and
@@ -464,7 +464,11 @@ def _reaction_face(clip: dict, mp4: Path, best_s: float,
 
         from ..publishing.shorts import _detect_facecam, _extract_frame
         dur = float(clip.get("duration", 30) or 30)
-        region = _detect_facecam(mp4, dur)
+        if cfg is not None:                       # same locator as the Shorts
+            from ..enrichment.streamer_cam import find
+            region = find(cfg, mp4, dur)
+        else:
+            region = _detect_facecam(mp4, dur)
         if not region:
             return None
         x, y, w, h = (int(v) for v in region)
@@ -660,7 +664,7 @@ def generate_variants(cfg: dict, date_label: str, n: int = 3,
                  if splash else None)
 
     mp4 = _resolve_mp4(top, raw_dir)
-    face = (_reaction_face(top, mp4, best_s, int(th.get("face_samples", 9)))
+    face = (_reaction_face(top, mp4, best_s, int(th.get("face_samples", 9)), cfg)
             if mp4 else None)
     used_facecam = face is not None
     if face is None and top.get("broadcaster_id"):

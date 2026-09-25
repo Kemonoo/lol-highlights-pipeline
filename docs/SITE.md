@@ -17,6 +17,9 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-25 — Shorts/thumbnails now locate the streamer with the local vision model
+  (webcam OR VTuber/avatar), Haar as a model-confirmed fallback. Shorts stage text
+  ("face moves between frames and shows skin tones") and open problem P3 are out of date.
 - 2026-09-24 — the judge now watches 720p (open problem P2 is fixed: remove it); judge
   cache is `api_partial_v4.json` (exporter handles both).
 - 2026-09-25 — new stage `clip_log` between shorts and cleanup (data/clip_log.jsonl,

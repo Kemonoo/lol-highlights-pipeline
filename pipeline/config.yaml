@@ -492,6 +492,10 @@ shorts:
   detect_facecam: true        # detect the webcam anywhere in frame; split-screen layout if found
   center_zoom: 1.0            # no-webcam layout: >1 zooms the centred gameplay and crops
                               # its sides (1.0 = whole frame, the old look)
+  facecam_method: haar        # haar = face detector below; vlm = the local vision model
+                              # locates the webcam/avatar overlay (enrichment/streamer_cam;
+                              # falls back to haar when the vlm role is unreachable)
+  facecam_vlm_frames: 3       # vlm: frames asked; the box must agree on 2 of them
   facecam_min_live: 3.0       # a webcam changes between frames; HUD/portrait art scored 0-2.6
   facecam_min_skin: 0.12      # share of skin-coloured pixels a face box needs (art ~0-0.07;
                               # one dim real webcam measured 0.16)

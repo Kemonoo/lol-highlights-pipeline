@@ -1047,3 +1047,26 @@ Bahnschrift Bold Condensed or Arial Black — final pick pending). The auto-aime
 was dropped: qwen3-vl boxed the wrong thing on 8/9 frames when asked for the player's
 champion.
 
+
+## 2026-09-25 — Streamer location by the local vision model (enrichment/streamer_cam)
+
+The owner asked whether the local VLM could replace the Haar face detector for Shorts
+and thumbnails. Qwen3-VL is trained for grounding, so it answers the real question
+("where is the streamer's overlay?") and returns the whole webcam rectangle instead of
+face + padding. Owner decision: VTuber models and simple animated 2D avatars COUNT as
+the streamer (they are the player's presence and they move).
+
+Design: ask for the box on 3 frames, keep it when 2 agree (IoU >= 0.5); then ask about
+the crop alone "streamer, or game/UI/static art?". If the model finds nothing, the Haar
+candidate is used only when the model confirms its crop. VLM role unreachable -> Haar.
+No `schema=` on these calls: with images, Ollama's constrained decoding often returned
+empty from qwen3-vl and the provider re-asked, doubling every call.
+
+Measured on all 104 downloaded clips of 09-23 + 09-24 (Haar vs VLM, reviewed by eye):
+the VLM found ~17 webcams Haar missed (small, dark, VTuber) and never boxed game art;
+Haar-only picks it missed (09-23 #11, #16; 09-24 #24, #35) are recovered by the
+confirmed fallback, which also rejected Haar's menu-screen pick. Remaining: one wrong box
+on a non-gameplay screen (09-23 #29), and a 2D drawn avatar (09-23 #27) whose crop the
+model calls "not the streamer" despite the prompt. ~20-30 s per clip, only for the
+Shorts/thumbnail clips (a few minutes per night). `shorts.facecam_method` (default haar;
+owner overlay vlm), `facecam_vlm_frames`.
