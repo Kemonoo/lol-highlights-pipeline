@@ -456,6 +456,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
 
     count      = sh.get("count", 3)
+    rk = cfg.get("ranking_shorts", {})
+    if rk.get("enabled", False):              # a ranking Short takes over these slots
+        count = max(0, count - int(rk.get("replace_slots", 1)))
     candidates = sorted(clips, key=lambda c: -c.get("api_rank_score", 0))[:count]
 
     privacy      = sh.get("privacy", "public")
@@ -592,11 +595,25 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if vid_id:
                 url = f"https://youtube.com/shorts/{vid_id}"
                 log.info("  uploaded: %s", url)
-                done[clip_id] = {"youtube_id": vid_id, "url": url}
+                done[clip_id] = {"youtube_id": vid_id, "url": url, "format": "clip"}
             else:
-                done[clip_id] = {"rendered": str(v_final)}
+                done[clip_id] = {"rendered": str(v_final), "format": "clip"}
         else:
-            done[clip_id] = {"rendered": str(v_final)}
+            done[clip_id] = {"rendered": str(v_final), "format": "clip"}
+
+    # The ranking Short (publishing/ranking_shorts): TOP N of one category from every
+    # clip ever published. Its own state file makes it once-per-date.
+    if rk.get("enabled", False) and "ranking" not in done:
+        from . import ranking_shorts
+        up = ((lambda mp4, title, desc, tags: _upload(mp4, title, desc, tags, privacy, data))
+              if sh.get("upload", True) else None)
+        try:
+            entry = ranking_shorts.make(cfg, state, date_label, up)
+        except Exception as e:                       # never costs the regular Shorts
+            log.warning("ranking short failed: %s", e)
+            entry = None
+        if entry:
+            done["ranking"] = entry
 
     done_f.write_text(json.dumps(done, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("shorts: %d processed", len(done))

@@ -1149,3 +1149,21 @@ Kept: `shorts.facecam_pad` (owner overlay 0.15) of room on sides with NO edge fo
 never a snapped side. Regression fixtures (all restored, IoU >= 0.99): Kesha
 (10,762,521,318), Livinha (1165,796,452,284), Walou (0,571,385,370), Gin (31,19,443,249).
 Known limit: 09-23 #11-style tight boxes stay tight (owner: acceptable).
+
+## 2026-09-25 — Ranking Shorts (publishing/ranking_shorts.py)
+
+Owner: replace one of the 3 daily Shorts with the classic countdown format ("TOP 5
+PENTAKILLS", "TOP 5 OUTPLAYS", "TOP 5 YASUO PLAYS") and compare formats by views. Built
+from `data/clip_log.jsonl` (the thumbnail session's clip log: 978 published clips; 147
+match "penta", 90 outplays, 48 Yasuo...). Old clips re-download fine (June clips, ~5 s
+each); nothing is kept beyond the day's work folder.
+Selection (pure, tested): category regex over twitch title + judge description + VLM
+summary + banners; judge `api_rank_score` >= 6, best first, max 2 per streamer, never a
+clip used before (`data/ranking_shorts.json`); category of the day = used longest ago
+with enough clips. Each entry: 10 s around the judge's best moment (6 s build-up), same
+vertical layout as a regular Short (webcam split via streamer_cam, else zoomed centre),
+"TOP 5 <LABEL>" header, big yellow "#N", streamer name; concat #5 -> #1 = 50 s. Credits
+for all 5 streamers + clip links in the description. Once per date; a failure never costs
+the regular Shorts. Every Short's `format` ("clip" / "ranking:<key>") goes to done.json
+for the A/B comparison. Test render (upload off) on 09-24: TOP 5 Pentakills from 104
+candidates, 5/5 webcams, 50 s, ~4 min. Default off; owner overlay on.

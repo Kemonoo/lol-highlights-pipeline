@@ -523,6 +523,30 @@ shorts:
   caption_split_gap: 190      # split layout: px captions sit above the facecam, clearing the in-game
                               # HUD too (lower third of the gameplay panel)
 
+ranking_shorts:               # publishing/ranking_shorts: "TOP 5 PENTAKILLS"-style Shorts built
+  enabled: false              # from every clip ever published (data/clip_log.jsonl)
+  replace_slots: 1            # daily Short slots it takes over (shorts.count stays the total)
+  count: 5                    # clips per ranking, shown #5 -> #1
+  segment_seconds: 10         # per clip (5 x 10 s stays under the Shorts limit)
+  pre_roll_s: 6               # build-up before the judge's best moment
+  min_score: 6.0              # judge api_rank_score a clip needs to be ranked
+  max_per_streamer: 2         # variety: at most this many clips of one streamer per ranking
+  title: "TOP {n} {LABEL} | League of Legends #Shorts"
+  # Category of the day = the one used longest ago that still has `count` unused clips.
+  # `pattern` is a regex over the Twitch title + the judge's description + banners read
+  # (the clip log has no champion field, so champion categories match that text).
+  categories:
+    - {key: pentakills, label: Pentakills, pattern: 'penta'}
+    - {key: outplays, label: Outplays, pattern: '\b1\s*v\s*[2-5]\b|outplay'}
+    - {key: multikills, label: Multikills, pattern: 'quadra|triple kill|multikill|multi-kill'}
+    - {key: steals, label: Objective Steals, pattern: '\bsteal|\bstole'}
+    - {key: yasuo, label: Yasuo Plays, pattern: '\byasuo\b'}
+    - {key: ahri, label: Ahri Plays, pattern: '\bahri\b'}
+    - {key: vayne, label: Vayne Plays, pattern: '\bvayne\b'}
+    - {key: yone, label: Yone Plays, pattern: '\byone\b'}
+    - {key: master_yi, label: Master Yi Plays, pattern: 'master yi'}
+    - {key: lee_sin, label: Lee Sin Plays, pattern: 'lee sin'}
+
 cleanup:
   enabled: true
   keep_raw_days: 1            # keep raw MP4s for this many days back (for feedback reprocessing)

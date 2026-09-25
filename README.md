@@ -30,7 +30,8 @@ and runs on free local models by default — no API key or billing required.
 - **Speech captions in any language** — faster-whisper detects the language and
   translates to English; the text is burned onto every clip, so the video works muted.
 - **Publishing** — title, chapters, per-streamer credits, thumbnail, resumable YouTube
-  upload, and 3 derived vertical Shorts.
+  upload, and 3 derived vertical Shorts — optionally one of them a "TOP 5" ranking
+  (pentakills, outplays, champion plays) built from every clip published so far.
 - **Cached and resumable** — interrupt any run and re-run; it picks up where it stopped.
 - **Auditable** — every run writes `data/work/<date>/report.html`, a visual record of
   every keep/reject decision with thumbnails, scores, and reasons.

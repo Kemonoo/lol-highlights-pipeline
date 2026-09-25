@@ -17,6 +17,8 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-25 — one of the 3 daily Shorts is now a TOP 5 ranking Short (publishing/
+  ranking_shorts.py). Rows H3/S9 ("three Shorts" from the top clips) need a line.
 - 2026-09-25 — duo streams: Shorts show up to two webcams side by side; webcam boxes
   are snapped to the overlay's edges.
 - 2026-09-25 — Shorts/thumbnails now locate the streamer with the local vision model

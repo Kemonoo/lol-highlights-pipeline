@@ -71,6 +71,10 @@ shorts:
   center_zoom: 1.3               # owner pick: no-webcam Shorts zoom in slightly on the centre
                                  # (1.45 cut too much of the fight; 1.0 = whole frame)
 
+ranking_shorts:
+  enabled: true                  # owner 2026-09-25: one of the 3 daily Shorts becomes a
+                                 # TOP 5 ranking (pentakills, outplays, champion plays...)
+
 thumbnail:
   provider: clip                  # owner pick 2026-09-25: style A (best-moment gameplay +
                                    # webcam picture-in-picture + 1-3 words, red border). Free.

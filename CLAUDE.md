@@ -143,7 +143,12 @@ relative to `pipeline/`).
     audio + English speech captions (drawtext, `_caption_filters`, layout-aware height via
     `caption_split_gap`/`caption_margin_v` — fontfile, no fontconfig). English title from
     the summary + speech (NEVER the raw native Twitch title). Shares the main upload OAuth →
-    `work/<date>/shorts/`
+    `work/<date>/shorts/`. Where the streamer is: `enrichment/streamer_cam.py` (`vlm`
+    role locates webcam/VTuber overlays, up to 2 for duo streams, snapped to the overlay's
+    edges; Haar = model-confirmed fallback; `shorts.facecam_method`). One daily slot
+    (`ranking_shorts.replace_slots`) goes to `publishing/ranking_shorts.py`: a TOP 5 of one
+    category (regex over clip text) from `data/clip_log.jsonl`, clips re-downloaded from
+    Twitch, never reused (`data/ranking_shorts.json`); done.json records each Short's `format`
 13. `publishing/clip_log.py` — `data/clip_log.jsonl`, one line per clip of every published
     video (Twitch link + title, streamer, all filter/judge data, English transcript,
     countdown rank, video + Short YouTube ids). Rebuilt per date from work files (idempotent,
