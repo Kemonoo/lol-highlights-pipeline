@@ -1210,3 +1210,20 @@ other voices teal. One Gemini call per Short with speech + a webcam; any failure
 plain captions. Note: when the source already burns English captions, Shorts draw none
 of ours (2026-09-24 rule), so colours only show on clips we caption.
 `shorts.speaker_colors` (default false; owner overlay true).
+
+## 2026-09-25 — Open items after the Shorts/webcam round (owner feedback, not started)
+
+Owner verified by ear: speaker labelling on the Dantes duo clip is correct (the right
+webcam was silent; he was watching the other stream). Double captions on clips whose
+streamer burns in their own live captions are accepted as a fact of the source.
+Next, in the owner's words' order:
+- Channel identity: new avatar (currently a random AI face) and banner (currently a Lee Sin
+  splash), and possibly a new, more League-specific name than "KEMONO".
+- Intro: owner wants it REMOVED (straight into the clips). Outro: redesign.
+- Countdown badge (#N) and streamer nameplate animation: redesign in the new channel theme
+  once the identity is chosen — keep all on-screen graphics one visual family.
+- Transitions: quick, simple cuts with a short noise/glitch hit between clips (what the
+  successful compilation channels use) to lift watch time.
+- Then leave the pipeline running and compare views/watch time; a fresh channel is still
+  an option. Reference: a similar channel with ~6-8 long videos (no Shorts), strong
+  thumbnails, ~8,000 views; KEMONO has ~3,000 over ~240 uploads.
