@@ -1,5 +1,7 @@
-"""Pure parts of enrichment.streamer_cam: box conversion and frame agreement."""
-from pipeline.enrichment.streamer_cam import agree, iou, to_pixels
+"""Pure parts of enrichment.streamer_cam: box parsing, frame agreement, edge snapping."""
+import numpy as np
+
+from pipeline.enrichment.streamer_cam import agree, consensus, iou, parse_boxes, snap, to_pixels
 
 
 def test_qwen_box_is_0_to_1000_relative():
@@ -19,15 +21,23 @@ def test_slivers_and_whole_frame_are_not_overlays():
     assert to_pixels([1, 2, 3], 1280, 720) is None
 
 
+def test_parse_accepts_the_shapes_a_small_model_produces():
+    two = {"streamers": [{"bbox_2d": [0, 0, 200, 200]}, {"bbox_2d": [700, 700, 900, 900]}]}
+    assert len(parse_boxes(two, 1000, 1000)) == 2
+    assert len(parse_boxes([[0, 0, 200, 200]], 1000, 1000)) == 1
+    assert len(parse_boxes({"streamer": True, "bbox_2d": [0, 0, 200, 200]}, 1000, 1000)) == 1
+    assert parse_boxes({"streamer": False, "bbox_2d": [0, 0, 200, 200]}, 1000, 1000) == []
+    assert parse_boxes({"streamers": []}, 1000, 1000) == []
+    assert parse_boxes(None, 1000, 1000) == []
+
+
 def test_iou():
     assert iou((0, 0, 10, 10), (0, 0, 10, 10)) == 1.0
     assert iou((0, 0, 10, 10), (20, 20, 5, 5)) == 0.0
 
 
 def test_two_of_three_frames_agree():
-    cam = (970, 480, 300, 230)
-    near = (975, 485, 295, 225)
-    stray = (100, 100, 80, 80)                    # one frame boxed something else
+    cam, near, stray = (970, 480, 300, 230), (975, 485, 295, 225), (100, 100, 80, 80)
     x, y, w, h = agree([cam, stray, near])
     assert abs(x - 972) <= 1 and abs(w - 297) <= 1
 
@@ -35,4 +45,55 @@ def test_two_of_three_frames_agree():
 def test_one_box_alone_is_not_enough():
     assert agree([(970, 480, 300, 230), None, None]) is None
     assert agree([None, None, None]) is None
-    assert agree([(0, 0, 100, 100), (500, 300, 100, 100), None]) is None
+
+
+def test_duo_stream_keeps_both_webcams():
+    # 09-24 #24 (Dantes): one webcam top-left, one bottom-left, both seen on most frames
+    top, bottom = (0, 0, 300, 200), (0, 380, 330, 300)
+    frames = [[top, bottom], [bottom, top], [(2, 385, 325, 295)]]
+    got = consensus(frames, max_n=2)
+    assert len(got) == 2 and got[0][1] > 300 and got[1][1] < 50   # bottom has 3 votes
+
+
+def test_a_frame_votes_once_and_overlapping_boxes_are_one_overlay():
+    cam = (970, 480, 300, 230)
+    frames = [[cam, (980, 490, 280, 210)], [], []]   # the same overlay twice, one frame
+    assert consensus(frames) == []
+    assert len(consensus([[cam], [(960, 470, 320, 250)], []])) == 1
+
+
+def test_max_n_caps_the_count():
+    boxes = [(0, 0, 100, 100), (400, 0, 100, 100), (800, 0, 100, 100)]
+    assert len(consensus([boxes, boxes], max_n=2)) == 2
+    assert len(consensus([boxes, boxes], max_n=3)) == 3
+
+
+def _gameplay(k):
+    """A smooth, shifting gradient with mild noise: neighbouring pixels differ by far
+    less than snap's 18-grey step, as in a real game frame."""
+    rng = np.random.default_rng(k)
+    yy, xx = np.mgrid[0:360, 0:640]
+    base = 80 + 30 * np.sin((xx + 25 * k) / 60.0) * np.cos((yy - 15 * k) / 45.0)
+    return (base + rng.uniform(-4, 4, base.shape)).astype(np.float32)
+
+
+def _frames_with_overlay(x0, y0, x1, y1, n=4, seed=0):
+    """Moving 'gameplay' (smooth, like a real frame) with a flat rectangle pasted on top."""
+    out = []
+    for k in range(n):
+        f = _gameplay(k + seed)
+        f[y0:y1, x0:x1] = 200.0
+        out.append(f)
+    return out
+
+
+def test_snap_moves_rough_edges_onto_the_overlay_outline():
+    frames = _frames_with_overlay(400, 200, 600, 330)
+    x, y, w, h = snap(frames, (410, 190, 180, 150))        # a few % off on every side
+    assert abs(x - 400) <= 3 and abs(y - 200) <= 3
+    assert abs(x + w - 600) <= 3 and abs(y + h - 330) <= 3
+
+
+def test_snap_keeps_the_rough_box_when_there_is_no_outline():
+    frames = [_gameplay(k) for k in range(4)]
+    assert snap(frames, (200, 100, 150, 120)) == (200, 100, 150, 120)

@@ -315,26 +315,36 @@ def _shorts_enc(cfg: dict) -> list[str]:
     return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
 
 
-def _render_short(mp4: Path, out: Path, facecam: tuple | None,
+def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
                   caption_words: list[dict], cap_mv: int, game_h: int,
                   cfg: dict) -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
-    (no voiceover, no music)."""
+    (no voiceover, no music).
+
+    `facecam` is one box or a list of them (duo streams: the streamers sit side by side
+    in the lower panel, left to right as on the stream)."""
     face_h = TARGET_H - game_h
     parts: list[str] = []
+    cams = ([facecam] if isinstance(facecam, tuple) else list(facecam or []))[:3]
+    cams.sort(key=lambda b: b[0])
 
-    if facecam:
-        cx, cy, cw, ch = facecam
-        parts += [
-            "[0:v]split=2[vgame][vface]",
-            f"[vgame]scale={TARGET_W}:{game_h}:force_original_aspect_ratio=increase,"
-            f"crop={TARGET_W}:{game_h}[game]",
-            f"[vface]crop={cw}:{ch}:{cx}:{cy},"
-            f"scale={TARGET_W}:{face_h}:force_original_aspect_ratio=increase,"
-            f"crop={TARGET_W}:{face_h}[face]",
-            "[game][face]vstack=inputs=2[cur]",
-        ]
+    if cams:
+        n = len(cams)
+        cell_w = TARGET_W // n // 2 * 2
+        parts.append(f"[0:v]split={n + 1}[vgame]" + "".join(f"[vf{i}]" for i in range(n)))
+        parts.append(f"[vgame]scale={TARGET_W}:{game_h}:force_original_aspect_ratio=increase,"
+                     f"crop={TARGET_W}:{game_h}[game]")
+        for i, (cx, cy, cw, ch) in enumerate(cams):
+            parts.append(f"[vf{i}]crop={cw}:{ch}:{cx}:{cy},"
+                         f"scale={cell_w}:{face_h}:force_original_aspect_ratio=increase,"
+                         f"crop={cell_w}:{face_h}[face{i}]")
+        if n == 1:
+            parts.append("[game][face0]vstack=inputs=2[cur]")
+        else:
+            row = "".join(f"[face{i}]" for i in range(n))
+            parts.append(f"{row}hstack=inputs={n},scale={TARGET_W}:{face_h}[faces]")
+            parts.append("[game][faces]vstack=inputs=2[cur]")
     else:
         # No webcam: the gameplay sits centred over a blurred copy of itself. center_zoom
         # > 1 scales it up and crops the sides (the action is almost always mid-screen),
@@ -511,8 +521,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
         # 2. Where is the streamer (webcam or avatar)? enrichment/streamer_cam
         if detect_face:
-            from ..enrichment.streamer_cam import find as _find_streamer
-            facecam = _find_streamer(cfg, clip_src, min(duration, target_s))
+            from ..enrichment.streamer_cam import find_all as _find_streamers
+            facecam = _find_streamers(cfg, clip_src, min(duration, target_s)) or None
         else:
             facecam = None
         game_h  = int(TARGET_H * 0.60) if facecam else TARGET_H

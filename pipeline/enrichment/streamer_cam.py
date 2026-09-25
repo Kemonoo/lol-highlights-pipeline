@@ -1,28 +1,33 @@
-"""Where is the streamer on screen? Their webcam, or the avatar that stands in for them.
+"""Where are the streamers on screen? Their webcams, or the avatars that stand in for them.
 
-Used by Shorts (split layout: gameplay above, streamer below) and by the thumbnail's
-reaction face. Returns a crop box in source pixels, or None (Shorts then use the zoomed
-centre layout).
+Used by Shorts (split layout: gameplay above, streamer(s) below) and by the thumbnail's
+reaction face. `find_all()` returns up to `shorts.facecam_max` boxes in source pixels
+(empty = no streamer; Shorts then use the zoomed centre layout); `find()` returns the
+largest one or None.
 
 ### Why the local vision model, and why still two steps
 
 The Haar face detector (shorts._detect_facecam) finds FACES, which is the wrong question:
 it boxed HUD champion portraits, minimap art and anime stickers, missed small or dark
 webcams, and even when right it returned face + padding, not the webcam's frame. The
-`vlm` role (Qwen3-VL, trained for grounding) answers the right question directly and
-returns the whole overlay rectangle. Measured 2026-09-24 on 9 hard clips from 09-23:
-it boxed all 5 webcams including 4 the Haar detector missed, and said "none" on the
-menu screen and the no-webcam clip.
+`vlm` role (Qwen3-VL, trained for grounding) answers the right question directly. On the
+104 downloaded clips of 2026-09-23/24 it found ~17 webcams Haar missed and never boxed
+game art (DEVLOG 2026-09-25).
 
-Owner decision (2026-09-25): VTuber models (3D) and simple animated 2D avatars COUNT —
-they are the player's on-stream presence and they move, which is what the lower panel
-is for. What does not count: champion portraits, items, the minimap, menus, stickers
-and other static pictures.
+Owner decisions (2026-09-25):
+  * VTuber models (3D) and simple animated 2D avatars COUNT — they are the player's
+    on-stream presence and they move. Not: champion portraits, items, the minimap,
+    menus, stickers and other static pictures.
+  * Duo streams are common (two webcams, e.g. Dantes on 09-24): account for two, at most
+    three. The first version asked for "the" overlay and on duo clips boxed one webcam,
+    or a box straddling both.
 
-Step 1 asks for the box on three frames and keeps it only when two agree (a small model
-occasionally boxes something different on one frame). Step 2 asks a narrower question
-about the crop alone — "streamer or part of the game/UI?" — which is where a 4B model
-is reliable. Both steps are one simple question each (small models fail compound ones).
+Step 1 asks for every overlay's box on three frames; an overlay is kept when two frames
+agree on it (a small model occasionally boxes something different on one frame). The
+agreed box is then SNAPPED to the overlay's real outline (see snap()). Step 2 asks a
+narrower question about each crop alone — "streamer or part of the game/UI?" — which is
+where a 4B model is reliable. Each step is one simple question (small models fail
+compound ones).
 
 No `vlm` role reachable -> the Haar detector, so a missing Ollama never costs a Short.
 """
@@ -34,13 +39,14 @@ from pathlib import Path
 log = logging.getLogger("pipeline.streamer_cam")
 
 LOCATE_PROMPT = (
-    "This is a frame from a League of Legends Twitch stream. Streamers usually show "
-    "themselves in an overlay: a live webcam of the real person, OR an animated avatar "
-    "that represents them (a VTuber model or a simple 2D character). "
-    "Is there such an overlay of the streamer? Game elements do not count: champions, "
-    "champion portraits, item icons, the minimap, menus, emotes and stickers. "
-    "If yes, give the bounding box of the whole overlay. Answer ONLY JSON: "
-    '{"streamer": true, "bbox_2d": [x1, y1, x2, y2]} or {"streamer": false}'
+    "This is a frame from a League of Legends Twitch stream. Streamers show themselves in "
+    "overlays: a live webcam of a real person, OR an animated avatar that represents them "
+    "(a VTuber model or a simple 2D character). Some streams show TWO streamers, each in "
+    "their own overlay. Game elements do not count: champions, champion portraits, item "
+    "icons, the minimap, menus, emotes and stickers. "
+    "List the bounding box of EVERY streamer overlay (the whole overlay, not just the "
+    "face). Answer ONLY JSON: "
+    '{"streamers": [{"bbox_2d": [x1, y1, x2, y2]}, ...]} or {"streamers": []}'
 )
 CHECK_PROMPT = (
     "This image is cropped from a video game stream. Is it the streamer themselves — a "
@@ -73,6 +79,27 @@ def to_pixels(box, w: int, h: int) -> tuple | None:
     return (int(x1 * w / 1000), int(y1 * h / 1000), int(bw), int(bh))
 
 
+def parse_boxes(ans, w: int, h: int) -> list[tuple]:
+    """Every box in a locate answer, in pixels. Tolerates the shapes a small model
+    actually produces: {"streamers": [...]}, a bare list, or the old single-box
+    {"streamer": true, "bbox_2d": [...]}."""
+    if isinstance(ans, dict) and "bbox_2d" in ans:
+        items = [ans] if ans.get("streamer", True) else []
+    elif isinstance(ans, dict):
+        items = ans.get("streamers") or []
+    elif isinstance(ans, list):
+        items = ans
+    else:
+        items = []
+    out = []
+    for it in items:
+        raw = it.get("bbox_2d") if isinstance(it, dict) else it
+        b = to_pixels(raw, w, h)
+        if b:
+            out.append(b)
+    return out
+
+
 def iou(a: tuple, b: tuple) -> float:
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
@@ -83,23 +110,103 @@ def iou(a: tuple, b: tuple) -> float:
     return inter / union if union else 0.0
 
 
+def _mean(boxes: list) -> tuple:
+    return tuple(int(sum(v[i] for v in boxes) / len(boxes)) for i in range(4))
+
+
 def agree(boxes: list, min_votes: int = 2, min_iou: float = 0.5) -> tuple | None:
     """The box most other frames agree with (IoU >= min_iou), averaged over its group.
+    `boxes` holds one entry per sampled frame: a pixel box, or None."""
+    found = consensus([[b] if b else [] for b in boxes], min_votes, min_iou, 1)
+    return found[0] if found else None
 
-    `boxes` holds one entry per sampled frame: a pixel box, or None for "no streamer".
+
+def consensus(per_frame: list[list], min_votes: int = 2, min_iou: float = 0.5,
+              max_n: int = 2) -> list[tuple]:
+    """Overlays that at least `min_votes` frames agree on, most-voted first, at most max_n.
+
+    per_frame[k] = the boxes frame k reported. A frame votes at most once per overlay.
+    Overlays that overlap an already-kept one (IoU > 0.3) are the same overlay boxed
+    differently, not a second streamer."""
+    all_boxes = [(k, b) for k, bs in enumerate(per_frame) for b in bs]
+    groups = []
+    for _, b in all_boxes:
+        members, frames = [], set()
+        for k2, o in sorted(all_boxes, key=lambda kb: -iou(b, kb[1])):
+            if k2 not in frames and iou(b, o) >= min_iou:
+                members.append(o)
+                frames.add(k2)
+        if len(frames) >= min_votes:
+            groups.append((len(frames), _mean(members)))
+    groups.sort(key=lambda g: (-g[0], -(g[1][2] * g[1][3])))
+    kept: list[tuple] = []
+    for _, box in groups:
+        if all(iou(box, k) <= 0.3 for k in kept):
+            kept.append(box)
+        if len(kept) >= max_n:
+            break
+    return kept
+
+
+def _line_score(frames, axis: int, pos: int, lo: int, hi: int) -> float:
+    """How much of the side's length (lo..hi) has a step edge at `pos` — median/min mix
+    over frames, because an overlay's outline is there in EVERY frame and a gameplay
+    edge is not. axis=1: vertical line at column pos; axis=0: horizontal at row pos."""
+    import numpy as np
+    scores = []
+    for f in frames:
+        if axis == 1:
+            a, b = f[lo:hi, pos - 2], f[lo:hi, pos + 1]
+        else:
+            a, b = f[pos - 2, lo:hi], f[pos + 1, lo:hi]
+        scores.append(float((np.abs(a - b) > 18).mean()))
+    return float(np.median(scores)) * 0.5 + min(scores) * 0.5
+
+
+def snap(frames, box: tuple, band: float = 0.18, min_score: float = 0.15) -> tuple:
+    """Rough box -> the overlay's real outline. Pure numpy, so it is unit-tested.
+
+    From the thumbnail session's prototype (docs/prototypes/cam_snap.py, 2026-09-25):
+    the model's box is a few % off on every side (owner: cuts part of the webcam on one
+    side, takes some gameplay on another). A webcam is a rectangle pasted over the game,
+    so per side take the strongest persistent straight line within ±`band` of the rough
+    edge. Dark webcam on dark game measured 0.20-0.40 (real); no line at all ~0.09, in
+    which case the overlay runs off-screen if the frame border is near, else the rough
+    edge is kept. No rectangle (green screen, VTuber) = nothing snaps = rough box.
+    `frames` are same-size grayscale float arrays.
     """
-    real = [b for b in boxes if b]
-    best: list = []
-    for b in real:
-        group = [o for o in real if iou(b, o) >= min_iou]
-        if len(group) > len(best):
-            best = group
-    if len(best) < min_votes:
-        return None
-    return tuple(int(sum(v[i] for v in best) / len(best)) for i in range(4))
+    H, W = frames[0].shape
+    x, y, w, h = box
+    x0, y0, x1, y1 = x, y, x + w, y + h
+    ry0, ry1 = int(y0 + 0.15 * h), int(y1 - 0.15 * h)   # middle 70% of each side
+    rx0, rx1 = int(x0 + 0.15 * w), int(x1 - 0.15 * w)
+    out = {}
+    for side, axis, centre, span, lim in (
+            ("l", 1, x0, (ry0, ry1), W), ("r", 1, x1, (ry0, ry1), W),
+            ("t", 0, y0, (rx0, rx1), H), ("b", 0, y1, (rx0, rx1), H)):
+        d = int(band * (w if axis == 1 else h))
+        best = (0.0, centre)
+        for pos in range(max(3, int(centre - d)), min(lim - 3, int(centre + d))):
+            s = _line_score(frames, axis, pos, *span)
+            s -= 0.10 * abs(pos - centre) / max(d, 1)   # ties -> closest to the model
+            if s > best[0]:
+                best = (s, pos)
+        if best[0] >= min_score:
+            out[side] = best[1]
+        else:
+            edge = 0 if side in ("l", "t") else lim
+            out[side] = edge if abs(edge - centre) <= 2 * d else centre
+    nx0, nx1, ny0, ny1 = out["l"], out["r"], out["t"], out["b"]
+    nx0 = 0 if nx0 < 8 else nx0                     # a line hugging the frame border
+    ny0 = 0 if ny0 < 8 else ny0                     # IS the border
+    nx1 = W if W - nx1 < 8 else nx1
+    ny1 = H if H - ny1 < 8 else ny1
+    if nx1 - nx0 < 0.5 * w or ny1 - ny0 < 0.5 * h:   # snapping collapsed it: distrust
+        return box
+    return (int(nx0), int(ny0), int(nx1 - nx0), int(ny1 - ny0))
 
 
-# ── model calls ───────────────────────────────────────────────────────────────
+# ── frames ────────────────────────────────────────────────────────────────────
 
 def _frame_jpg(mp4: Path, t: float, width: int = 1280) -> bytes | None:
     with tempfile.TemporaryDirectory() as td:
@@ -108,6 +215,21 @@ def _frame_jpg(mp4: Path, t: float, width: int = 1280) -> bytes | None:
                         "-vf", f"scale={width}:-2", "-q:v", "3", str(out)],
                        capture_output=True)
         return out.read_bytes() if out.exists() else None
+
+
+def _gray_frames(mp4: Path, times: list, w: int, h: int) -> list:
+    import numpy as np
+    from PIL import Image
+    out = []
+    with tempfile.TemporaryDirectory() as td:
+        for i, t in enumerate(times):
+            p = Path(td) / f"{i}.png"
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t:.2f}", "-i",
+                            str(mp4), "-frames:v", "1", "-vf", f"scale={w}:{h}", str(p)],
+                           capture_output=True)
+            if p.exists():
+                out.append(np.asarray(Image.open(p).convert("L")).astype(np.float32))
+    return out
 
 
 def _size(mp4: Path) -> tuple[int, int] | None:
@@ -132,42 +254,55 @@ def _crop_jpg(jpg: bytes, box: tuple) -> bytes | None:
     return buf.tobytes() if ok else None
 
 
-def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3) -> tuple | None:
-    """Two-step VLM location (see module docstring). Raises if the provider fails, so
-    the caller can fall back; returns None when there is no streamer overlay."""
+# ── model calls ───────────────────────────────────────────────────────────────
+
+def _is_streamer_crop(provider, jpg: bytes, small_box: tuple) -> bool:
+    crop = _crop_jpg(jpg, small_box)
+    verdict = (provider.complete_json(CHECK_PROMPT, images=[crop]) if crop else None) or {}
+    return bool(verdict.get("streamer"))
+
+
+def locate_vlm(mp4: Path, duration: float, provider, frames: int = 3,
+               max_n: int = 2, snap_edges: bool = True) -> list[tuple]:
+    """Two-step VLM location (see module docstring) -> up to max_n boxes in source px.
+    Raises if the provider fails, so the caller can fall back."""
     size = _size(mp4)
     if not size:
-        return None
+        return []
     src_w, src_h = size
-    jpgs, boxes = [], []
-    for k in range(frames):
-        t = duration * (k + 1) / (frames + 1)
+    small_h = round(1280 * src_h / src_w)
+    times = [duration * (k + 1) / (frames + 1) for k in range(frames)]
+    jpgs, per_frame = [], []
+    for t in times:
         jpg = _frame_jpg(mp4, t)
         if jpg is None:
             continue
-        ans = provider.complete_json(LOCATE_PROMPT, images=[jpg]) or {}
-        box = to_pixels(ans.get("bbox_2d"), 1280, round(1280 * src_h / src_w)) \
-            if ans.get("streamer") else None
+        ans = provider.complete_json(LOCATE_PROMPT, images=[jpg])
         jpgs.append(jpg)
-        boxes.append(box)
-    small = agree(boxes)
-    if small is None:
+        per_frame.append(parse_boxes(ans, 1280, small_h))
+    agreed = consensus(per_frame, max_n=max_n)
+    if not agreed:
         log.info("  streamer cam (vlm): none (%s)",
-                 ", ".join("-" if b is None else "box" for b in boxes))
-        return None
-    # step 2 on the frame whose box is closest to the agreed one
-    i = max((j for j, b in enumerate(boxes) if b), key=lambda j: iou(boxes[j], small))
-    crop = _crop_jpg(jpgs[i], small)
-    verdict = (provider.complete_json(CHECK_PROMPT, images=[crop])
-               if crop else None) or {}
-    if not verdict.get("streamer"):
-        log.info("  streamer cam (vlm): box found but the crop is not the streamer")
-        return None
+                 ", ".join(str(len(b)) for b in per_frame))
+        return []
+
     k = src_w / 1280
-    x, y, w, h = (int(v * k) for v in small)
-    log.info("  streamer cam (vlm): %d/%d frames agree, box=(%d,%d %dx%d)",
-             sum(1 for b in boxes if b and iou(b, small) >= 0.5), len(boxes), x, y, w, h)
-    return (x, y, min(w, src_w - x), min(h, src_h - y))
+    grays = (_gray_frames(mp4, [duration * (i + 1) / 7 for i in range(6)], src_w, src_h)
+             if snap_edges else [])
+    mid = jpgs[len(jpgs) // 2]
+    boxes = []
+    for small in agreed:
+        box = tuple(int(v * k) for v in small)
+        if grays:
+            box = snap(grays, box)
+        check = tuple(int(v / k) for v in box)
+        if not _is_streamer_crop(provider, mid, check):
+            log.info("  streamer cam (vlm): a box was found but its crop is not the streamer")
+            continue
+        x, y, w, h = box
+        boxes.append((x, y, min(w, src_w - x), min(h, src_h - y)))
+    log.info("  streamer cam (vlm): %d overlay(s) %s", len(boxes), boxes)
+    return boxes
 
 
 def is_streamer(provider, mp4: Path, duration: float, box: tuple) -> bool:
@@ -178,41 +313,47 @@ def is_streamer(provider, mp4: Path, duration: float, box: tuple) -> bool:
     if not jpg:
         return False
     k = 1280 / size[0]
-    crop = _crop_jpg(jpg, tuple(int(v * k) for v in box))
-    verdict = (provider.complete_json(CHECK_PROMPT, images=[crop]) if crop else None) or {}
-    return bool(verdict.get("streamer"))
+    return _is_streamer_crop(provider, jpg, tuple(int(v * k) for v in box))
 
 
-def find(cfg: dict, mp4: Path, duration: float) -> tuple | None:
-    """The streamer's on-screen box for Shorts/thumbnails, per `shorts.facecam_method`.
+def find_all(cfg: dict, mp4: Path, duration: float) -> list[tuple]:
+    """The streamers' on-screen boxes for Shorts/thumbnails, per `shorts.facecam_method`.
 
-    "haar": the face detector with the live-face gates (shorts._detect_facecam).
-    "vlm":  the local vision model locates the overlay (locate_vlm). When it finds none,
-            the face detector's candidate gets a second chance, but only if the model
-            confirms that crop is the streamer — on 2026-09-23 the model alone missed a
-            2D avatar and two webcams the face detector had found. The vlm role being
+    "haar": the face detector with the live-face gates (shorts._detect_facecam), 0-1 box.
+    "vlm":  the local vision model locates and snaps the overlays (locate_vlm). When it
+            finds none, the face detector's candidate gets a second chance, but only if
+            the model confirms that crop is the streamer — on 2026-09-23 the model alone
+            missed a few webcams the face detector had found. The vlm role being
             unreachable falls back to plain "haar".
     """
     from ..publishing.shorts import _detect_facecam
     sh = cfg.get("shorts", {})
 
     def haar():
-        return _detect_facecam(mp4, duration, float(sh.get("facecam_min_live", 3.0)),
-                               float(sh.get("facecam_min_skin", 0.12)))
+        b = _detect_facecam(mp4, duration, float(sh.get("facecam_min_live", 3.0)),
+                            float(sh.get("facecam_min_skin", 0.12)))
+        return [b] if b else []
 
     if sh.get("facecam_method", "haar") != "vlm":
         return haar()
     try:
         from ..providers import get_provider
         provider = get_provider(cfg, "vlm", vision=True)
-        box = locate_vlm(mp4, duration, provider, int(sh.get("facecam_vlm_frames", 3)))
-        if box:
-            return box
+        boxes = locate_vlm(mp4, duration, provider, int(sh.get("facecam_vlm_frames", 3)),
+                           int(sh.get("facecam_max", 2)), bool(sh.get("facecam_snap", True)))
+        if boxes:
+            return boxes
         cand = haar()
-        if cand and is_streamer(provider, mp4, duration, cand):
+        if cand and is_streamer(provider, mp4, duration, cand[0]):
             log.info("  streamer cam: face detector's box confirmed by the vlm")
             return cand
-        return None
+        return []
     except Exception as e:                            # Ollama down, model missing, ...
         log.warning("  streamer cam: vlm unavailable (%s) - using the face detector", e)
         return haar()
+
+
+def find(cfg: dict, mp4: Path, duration: float) -> tuple | None:
+    """The largest streamer overlay (the thumbnail wants one face), or None."""
+    boxes = find_all(cfg, mp4, duration)
+    return max(boxes, key=lambda b: b[2] * b[3]) if boxes else None

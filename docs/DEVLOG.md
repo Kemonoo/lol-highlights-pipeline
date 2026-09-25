@@ -1106,3 +1106,23 @@ module, so the thumbnail does NOT snap again. Default provider stays `local`; th
 overlay switches to `clip` together with `upload.title_mode: hook` (the thumbnail's words
 come from the same title_hook.json).
 
+
+## 2026-09-25 — Streamer cam: duo streams + edge snapping
+
+Owner review of the 104-clip sheets: the VLM boxes are better on average, but (a) duo
+streams (two webcams — e.g. Dantes, #22 in the 09-24 video) got one webcam or a box
+straddling both, and (b) boxes are a few % off the real overlay (cut one side, include
+gameplay on another). Now: the locate prompt asks for EVERY streamer overlay; boxes that
+2 of 3 frames agree on are kept, up to `shorts.facecam_max` (2); each is snapped to the
+overlay's outline with the thumbnail session's cam_snap method (strongest persistent
+straight line per side, accept >= 0.15, else frame border if near, else rough edge —
+moved from docs/prototypes into streamer_cam.snap, tested on synthetic frames). Duo
+Shorts put the streamers side by side in the lower panel. `find()` (largest box) is what
+the thumbnail uses; `find_all()` the Shorts.
+Checked on the owner's named clips: both webcams found and snapped on 09-23 #11, #16 and
+09-24 #24; 09-24 #26 now covers the whole webcam; the dark webcam (#41) and the menu
+screen ("none") unchanged. Still missed: the 2D avatar 09-23 #27 (its crop fails the
+"is this the streamer" check). ~25-60 s per clip (up to ~3 min when the Haar fallback
+runs too); only for the Shorts/thumbnail clips.
+Coordination: the thumbnail session and this one agreed via SendMessage who edits which
+file (this one: streamer_cam.py, shorts.py; that one: thumbnail.py, prototypes).

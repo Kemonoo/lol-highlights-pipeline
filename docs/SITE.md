@@ -17,6 +17,8 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
+- 2026-09-25 — duo streams: Shorts show up to two webcams side by side; webcam boxes
+  are snapped to the overlay's edges.
 - 2026-09-25 — Shorts/thumbnails now locate the streamer with the local vision model
   (webcam OR VTuber/avatar), Haar as a model-confirmed fallback. Shorts stage text
   ("face moves between frames and shows skin tones") and open problem P3 are out of date.
