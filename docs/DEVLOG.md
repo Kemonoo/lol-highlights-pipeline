@@ -1097,3 +1097,12 @@ not wired in): `docs/prototypes/` — thumb_style_a.py renders it, cam_snap.py s
   Belongs in enrichment/streamer_cam.py so Shorts get it too; no rectangle (green screen,
   VTuber) = nothing snaps = rough box kept.
 
+## 2026-09-25 — Style A built: `thumbnail.provider: clip`
+
+The spec above is now `compose_clip` + `generate_clip` in production/thumbnail.py (pure
+geometry tested in tests/test_thumbnail_clip.py). The webcam box comes from
+`streamer_cam.find()` — the Shorts session is moving cam_snap's edge snapping into that
+module, so the thumbnail does NOT snap again. Default provider stays `local`; the owner
+overlay switches to `clip` together with `upload.title_mode: hook` (the thumbnail's words
+come from the same title_hook.json).
+

@@ -1047,11 +1047,234 @@ def generate_gemini(cfg: dict, date_label: str) -> Path | None:
     return out
 
 
+# ── "clip" design (style A, owner-approved 2026-09-25) ─────────────────────────
+#
+# What the channels that rank for "lol moments" do: a SHARP gameplay frame from the best
+# clip, the streamer's webcam as a picture-in-picture, 1-3 loud words, a coloured border.
+# Chosen over five rounds of mockups (docs/prototypes/, DEVLOG 2026-09-25):
+#   * frame: of 5 frames within ±1.5 s of the judge's best moment, the most colourful
+#     centre (effects = the fight), zoomed `clip_zoom` toward the most saturated area
+#   * webcam: streamer_cam.find()'s box (already snapped to the overlay's edges), in the
+#     bottom corner on its own side, inset from the border, framed turquoise. Wherever the
+#     ORIGINAL webcam lands in the zoomed frame is blurred first — the face never shows twice
+#   * text: Arial Black, yellow + black edge, top-left, size CAPPED at what "QUADRA KILL"
+#     gets, so short words ("ONE SHOT") don't blow up to half the frame
+#   * border: torero red, 15 px (30 px and a glow were rejected as heavy/cheap)
+# Dropped: a red arrow at the player's champion — the local VLM boxed the wrong thing on
+# 8/9 frames, and a wrong arrow is worse than none.
+
+_CLIP_DEFAULTS = {
+    "clip_zoom": 1.25, "clip_border_px": 15, "clip_border_color": "#E10600",
+    "clip_text_color": "#FFE600", "clip_cam_color": "#40E0D0", "clip_cam_width": 420,
+    "clip_cam_inset": 40, "clip_text_cap": "QUADRA KILL",
+}
+
+
+def _rgb(v, default=(255, 255, 255)) -> tuple:
+    if isinstance(v, (list, tuple)) and len(v) == 3:
+        return tuple(int(x) for x in v)
+    s = str(v or "").lstrip("#")
+    try:
+        return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return default
+
+
+def action_centre(hsv) -> tuple[float, float]:
+    """(x, y) in 0-1 of the most saturated+bright area of a small HSV array (h, w, 3).
+
+    Pure. Masks where the fight never is: the bottom HUD, the score bar, and the
+    minimap/scoreboard column. Callers zero the webcam region before calling."""
+    import numpy as np
+    from PIL import Image, ImageFilter
+    a = np.asarray(hsv, dtype=float)
+    h, w = a.shape[:2]
+    m = (a[..., 1] / 255) * (a[..., 2] / 255)
+    m[int(h * 0.80):] = 0
+    m[:int(h * 0.08)] = 0
+    m[:, int(w * 0.80):] = 0
+    m[:, :int(w * 0.08)] = 0
+    if not m.any():
+        return 0.5, 0.5
+    b = np.asarray(Image.fromarray((m * 255).astype("uint8"))
+                   .filter(ImageFilter.GaussianBlur(max(2, w // 16))), dtype=float)
+    yy, xx = np.unravel_index(b.argmax(), b.shape)
+    return xx / w, yy / h
+
+
+def zoom_window(cx: float, cy: float, zoom: float, sw: int, sh: int) -> tuple:
+    """(x0, y0, w, h) source window of a `zoom`x crop centred near (cx, cy), kept in frame."""
+    cw, ch = sw / zoom, sh / zoom
+    x0 = min(max(cx * sw - cw / 2, 0), sw - cw)
+    y0 = min(max(cy * sh - ch / 2, 0), sh - ch)
+    return x0, y0, cw, ch
+
+
+def project_box(box, window, out_w: int, out_h: int) -> tuple | None:
+    """Source box (x, y, w, h) -> integer rect in the zoomed output, clipped; None if off."""
+    x, y, bw, bh = box
+    x0, y0, cw, ch = window
+    sx, sy = out_w / cw, out_h / ch
+    r = (int(max((x - x0) * sx, 0)), int(max((y - y0) * sy, 0)),
+         int(min((x + bw - x0) * sx, out_w)), int(min((y + bh - y0) * sy, out_h)))
+    return r if r[2] > r[0] and r[3] > r[1] else None
+
+
+def _frame_at(mp4: Path, t: float) -> "Image.Image | None":
+    import subprocess
+    import tempfile
+
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "f.png"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(t, 0):.2f}",
+                        "-i", str(mp4), "-frames:v", "1", str(p)], capture_output=True)
+        if not p.exists():
+            return None
+        return Image.open(p).convert("RGB")
+
+
+def _busiest_frame(mp4: Path, best_s: float, duration: float) -> "Image.Image | None":
+    """Of 5 frames around the peak, the one with the most colour in the centre."""
+    import numpy as np
+    best = None
+    for dt in (-1.5, -0.75, 0.0, 0.75, 1.5):
+        t = min(max(best_s + dt, 0.2), max(duration - 0.3, 0.2))
+        im = _frame_at(mp4, t)
+        if im is None:
+            continue
+        a = np.asarray(im.resize((192, 108)).convert("HSV"), dtype=float)
+        score = ((a[..., 1] / 255) * (a[..., 2] / 255))[10:86, 15:153].mean()
+        if best is None or score > best[0]:
+            best = (score, im)
+    return best[1] if best else None
+
+
+def _pop(img: "Image.Image") -> "Image.Image":
+    from PIL import ImageEnhance, ImageFilter
+    img = ImageEnhance.Color(img).enhance(1.35)
+    img = ImageEnhance.Contrast(img).enhance(1.12)
+    return img.filter(ImageFilter.UnsharpMask(2, 80, 2))
+
+
+def compose_clip(frame: "Image.Image", box: tuple | None, text: str, opts: dict) -> "Image.Image":
+    """Style A from a full-resolution frame and the webcam box in its pixels (or None)."""
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFilter
+    o = {**_CLIP_DEFAULTS, **(opts or {})}
+    W, H = THUMB_W, THUMB_H
+    sw, sh = frame.size
+
+    small = np.array(frame.resize((192, 108)).convert("HSV"))
+    if box:                                   # the webcam is colourful but not the fight
+        x, y, bw, bh = box
+        fx, fy = 192 / sw, 108 / sh
+        small[int(y * fy):int((y + bh) * fy) + 1, int(x * fx):int((x + bw) * fx) + 1] = 0
+    cx, cy = action_centre(small)
+    # lean toward the action, not all the way: the full move often cut the fight in half
+    cx, cy = 0.5 + (cx - 0.5) * 0.6, 0.5 + (cy - 0.5) * 0.6
+    win = zoom_window(cx, cy, float(o["clip_zoom"]), sw, sh)
+    x0, y0, cw, ch = win
+    img = _pop(frame.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
+               .resize((W, H), Image.LANCZOS))
+
+    if box:
+        r = project_box(box, win, W, H)
+        if r:                                 # blur the original webcam out of the frame
+            img.paste(img.crop(r).filter(ImageFilter.GaussianBlur(28)), r[:2])
+        x, y, bw, bh = box
+        m = int(o["clip_cam_inset"])
+        covered = (r[2] - r[0]) if r else 0
+        w = int(min(max(int(o["clip_cam_width"]), covered - m + 20), 560))
+        h = int(w * bh / bw)
+        if h > 380:
+            h, w = 380, int(380 * bw / bh)
+        cam = _pop(frame.crop((int(x), int(y), int(x + bw), int(y + bh)))
+                   .resize((w, h), Image.LANCZOS))
+        e = 7
+        panel = Image.new("RGB", (w + 2 * e, h + 2 * e), _rgb(o["clip_cam_color"]))
+        panel.paste(cam, (e, e))
+        left = x + bw / 2 < sw / 2
+        img.paste(panel, (m if left else W - panel.width - m, H - panel.height - m))
+
+    d = ImageDraw.Draw(img)
+    if text:
+        size = 150                            # the cap: what the reference text gets
+        while size > 40 and _font(size).getlength(str(o["clip_text_cap"])) > 800:
+            size -= 4
+        while size > 40 and _font(size).getlength(text) > 800:
+            size -= 4
+        d.text((46, 40), text, font=_font(size), fill=_rgb(o["clip_text_color"]),
+               stroke_width=max(6, size // 14), stroke_fill=(0, 0, 0))
+    bpx = int(o["clip_border_px"])
+    if bpx > 0:
+        d.rectangle((0, 0, W - 1, H - 1), outline=_rgb(o["clip_border_color"]), width=bpx)
+    return img
+
+
+def thumb_text(work: Path, clips: list, date_label: str) -> str:
+    """The 1-3 words: the day's title_hook.json 'thumb' (LLM), else the keyword hook."""
+    from .credits import HOOK_CACHE, _hook
+    try:
+        t = json.loads((work / HOOK_CACHE).read_text(encoding="utf-8")
+                       .rstrip("\x00")).get("thumb", "")
+        if t:
+            return t
+    except (OSError, ValueError):
+        pass
+    return _ask(_hook(clips, date_label))
+
+
+def generate_clip(cfg: dict, date_label: str) -> Path | None:
+    data = Path(cfg["paths"]["data_abs"])
+    work = data / "work" / date_label
+    src = work / "vlm_filtered.json"
+    if not src.exists():
+        return None
+    clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
+    if not clips:
+        return None
+    top = max(clips, key=lambda c: c.get("api_rank_score", 0))
+    mp4 = _resolve_mp4(top, data / "raw" / date_label)
+    if not mp4:
+        return None
+    dur = float(top.get("duration", 30) or 30)
+    frame = _busiest_frame(mp4, float(top.get("api_best_moment_s", 0) or 0), dur)
+    if frame is None:
+        return None
+    box = None
+    try:
+        from ..enrichment.streamer_cam import find
+        box = find(cfg, mp4, dur)
+        if box:                          # locator works in source px; the frame may differ
+            from ..enrichment.streamer_cam import _size
+            iw, ih = _size(mp4) or frame.size
+            kx, ky = frame.width / iw, frame.height / ih
+            box = (box[0] * kx, box[1] * ky, box[2] * kx, box[3] * ky)
+    except Exception as e:
+        log.info("  thumbnail: no webcam box (%s)", e)
+    text = thumb_text(work, clips, date_label)
+    img = compose_clip(frame, box, text, cfg.get("thumbnail", {}))
+    out = work / "thumbnail.jpg"
+    img.save(str(out), "JPEG", quality=92)
+    log.info("thumbnail (clip) -> %s  text=%r  webcam=%s", out.name, text,
+             "yes" if box else "no")
+    return out
+
+
 def generate(cfg: dict, date_label: str) -> Path | None:
     th = cfg.get("thumbnail", {})
     if not th.get("enabled", True):
         log.info("thumbnail disabled")
         return None
+
+    if th.get("provider", "local") == "clip":
+        try:
+            p = generate_clip(cfg, date_label)
+            if p:
+                return p
+        except Exception as e:
+            log.warning("clip thumbnail failed (%s) — using local design", e)
 
     if th.get("provider", "local") == "gemini":
         try:

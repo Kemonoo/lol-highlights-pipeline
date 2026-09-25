@@ -118,8 +118,12 @@ relative to `pipeline/`).
    templates; `hook` = "<LLM hook>... LoL Daily Clips #N" (owner-approved 2026-09-25; the
    `commentary` role writes hook + 1-3 word thumbnail text once per date →
    `work/<date>/title_hook.json`, keyword fallback uncached)
-10. `production/thumbnail.py` — 1280×720 thumbnail, two providers (`thumbnail.provider`,
-    now defaulting to `local` so a fresh clone needs no billing):
+10. `production/thumbnail.py` — 1280×720 thumbnail, three providers (`thumbnail.provider`,
+    defaulting to `local` so a fresh clone needs no billing). `clip` (style A, owner-approved
+    2026-09-25, `compose_clip`): sharp best-moment gameplay zoomed toward the fight, the
+    streamer's webcam (streamer_cam.find, snapped box) as a turquoise-framed picture-in-
+    picture with the ORIGINAL webcam blurred out, 1-3 words from title_hook.json in Arial
+    Black yellow (size capped), torero-red border; `clip_*` keys; falls back to local.
     `gemini` builds a viral reaction thumbnail via the `thumbnail_image` role
     ("Nano Banana", paid ~$0.04/img): picks the highest-ranked clip WITH a detectable
     facecam, has the model enhance that facecam into an over-the-top excited/shocked
