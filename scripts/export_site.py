@@ -313,11 +313,23 @@ def export_media(args, work, raw, night, clips, chapters, transcripts, burned, a
             subprocess.run(["magick", str(src), "-quality", "82", str(ASSETS / f"thumb_{i}.jpg")],
                            check=True)
 
+    # Stills at 6s: the sharpest regular Short (a no-webcam Short is mostly blurred fill,
+    # which reads as a broken image) next to the ranking Short when there is one.
     shorts = sorted((work / "shorts").glob("*.mp4")) if (work / "shorts").exists() else []
-    for i, s in enumerate(shorts[:2], 1):
-        ff("-ss", "6", "-i", s, "-frames:v", "1", "-vf", "scale=540:-1", "-q:v", "4",
-           ASSETS / f"short_{i}.jpg")
-    if len(shorts) < 2:
+    ranking = [x for x in shorts if x.name.startswith("ranking_")]
+    stills = []
+    for x in [x for x in shorts if x not in ranking] + ranking:
+        tmp = ASSETS / f"_short_{len(stills)}.jpg"
+        ff("-ss", "6", "-i", x, "-frames:v", "1", "-vf", "scale=540:-1", "-q:v", "4", tmp)
+        if tmp.exists():
+            stills.append((x in ranking, detail(tmp), tmp))
+    regular = sorted([t for t in stills if not t[0]], key=lambda t: -t[1])
+    pick = (regular[:1] + [t for t in stills if t[0]][:1] + regular[1:])[:2]
+    for i, (_, _, tmp) in enumerate(pick, 1):
+        shutil.copy(tmp, ASSETS / f"short_{i}.jpg")
+    for _, _, tmp in stills:
+        tmp.unlink(missing_ok=True)
+    if len(pick) < 2:
         warn("fewer than 2 Shorts in work/<date>/shorts; short stills kept")
     return info
 
