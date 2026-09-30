@@ -31,3 +31,8 @@ set "SLEEP_IDLE_MINUTES=5"
 
 REM Seconds before the single automatic retry of a failed run.
 REM     set "RETRY_SECONDS=600"
+
+REM The scheduled run has no console window (conhost --headless; everything goes to
+REM data\logs). On Windows older than 10 1809 that fails - get the window back with
+REM this, then re-run setup_schedule.bat.
+REM     set "VISIBLE_CONSOLE=1"

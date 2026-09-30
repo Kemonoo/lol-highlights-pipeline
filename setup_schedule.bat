@@ -21,15 +21,24 @@ set "CONFIG="
 set "SLEEP_AFTER=0"
 set "SLEEP_PROMPT_SECONDS=120"
 set "SLEEP_IDLE_MINUTES=5"
+set "VISIBLE_CONSOLE=0"
 if exist ".\auto_run.local.cmd" call ".\auto_run.local.cmd"
 
 echo.
 echo  Registering "LoL Daily Highlights" to run every day at %RUNTIME%.
 echo.
 
+REM conhost --headless: no console window. The run logs to data\logs anyway, and
+REM an empty-looking cmd window invites closing it - which Ctrl-C's the pipeline
+REM (2026-09-30). The prompts (missed run, sleep) are their own windows and still
+REM show. Older Windows without --headless: set VISIBLE_CONSOLE=1 in
+REM auto_run.local.cmd to get the plain cmd window back.
+set "LAUNCH=conhost.exe --headless cmd.exe"
+if "%VISIBLE_CONSOLE%"=="1" set "LAUNCH=cmd.exe"
+
 schtasks /create ^
   /tn "LoL Daily Highlights" ^
-  /tr "cmd.exe /c \"\"%~dp0run_daily_auto.bat\" %RUNTIME%\"" ^
+  /tr "%LAUNCH% /c \"\"%~dp0run_daily_auto.bat\" %RUNTIME%\"" ^
   /sc daily ^
   /st %RUNTIME% ^
   /ru "%USERNAME%" ^
