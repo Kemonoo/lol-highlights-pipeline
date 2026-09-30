@@ -180,6 +180,8 @@ data/training/dataset_*.json), `tools/review_clips.py` (Tkinter labeling UI for 
 data), `tools/train_classifier.py` (logistic regression on labeled clips — ADVISORY: prints
 feature weights + threshold suggestions; the pipeline never loads its model.json),
 `tools/debug_facecam.py` (facecam-detection debug visualizer),
+`tools/yt_analytics.py` (impressions/CTR/retention/traffic sources per upload; own read-only
+token `data/yt_analytics_token.json` so the upload token never needs re-consent),
 `tools/gen_sfx.py` (numpy-synthesized nameplate notification SFX → assets/sfx/nameplate.wav).
 `production/nameplate.py` renders the per-clip animated streamer card with PIL (write-on
 letters + cyan/orange glow, framed Twitch avatar reusing `thumbnail._twitch_pfp`), packs
