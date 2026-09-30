@@ -4,7 +4,12 @@
 #   crontab -e
 #   0 3 * * *  cd /path/to/lol-highlights-pipeline && ./run_daily.sh
 #
-# One retry after 10 minutes if the run fails — covers Ollama still starting, a network
+# Missed nights: every date since the newest finished one, up to yesterday, is
+# rendered oldest first (schedule.catch_up_days, pipeline/catchup.py); uploads are
+# spaced upload.min_gap_hours apart. cron itself never re-runs a missed job - use
+# anacron or a systemd timer with Persistent=true if the machine is often off.
+#
+# One retry per date after 10 minutes if the run fails — covers Ollama still starting, a network
 # blip, or a rate limit. Per-stage caches mean the retry only redoes what's missing.
 #
 # Settings come from the environment, or from auto_run.local.sh if you create one
@@ -48,7 +53,7 @@ LOG="data/logs/auto_$(date +%F).log"
 # ${a[@]+"${a[@]}"} rather than "${a[@]}": under `set -u`, bash before 4.4 treats an
 # empty array as unbound and aborts the script.
 run_once() {
-    ${KEEP_AWAKE[@]+"${KEEP_AWAKE[@]}"} "$PYTHON" -m pipeline.run_daily \
+    ${KEEP_AWAKE[@]+"${KEEP_AWAKE[@]}"} "$PYTHON" -m pipeline.run_daily --date "$1" \
         ${ARGS[@]+"${ARGS[@]}"} ${EXTRA[@]+"${EXTRA[@]}"}
 }
 
@@ -56,14 +61,20 @@ EXTRA=("$@")
 
 {
     echo "==== run started $(date) ===="
-    run_once
-    EXITCODE=$?
-    if [ "$EXITCODE" -ne 0 ]; then
-        echo "==== run failed, retrying in ${RETRY_SECONDS}s ===="
-        sleep "$RETRY_SECONDS"
-        run_once
-        EXITCODE=$?
-    fi
+    DATES=$("$PYTHON" -m pipeline.catchup ${ARGS[@]+"${ARGS[@]}"} | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+    echo "==== dates: ${DATES:-none (yesterday already finished)} ===="
+    EXITCODE=0
+    for d in $DATES; do
+        run_once "$d"
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "==== $d failed, retrying in ${RETRY_SECONDS}s ===="
+            sleep "$RETRY_SECONDS"
+            run_once "$d"
+            rc=$?
+        fi
+        [ "$rc" -ne 0 ] && EXITCODE=$rc
+    done
     echo "==== run finished $(date) (exit $EXITCODE) ===="
 } >> "$LOG" 2>&1
 

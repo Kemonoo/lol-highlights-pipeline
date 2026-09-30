@@ -82,7 +82,9 @@ Registering a Twitch app and setting up YouTube OAuth are walked through in
 
 `setup_schedule.bat` (Windows) registers a Task Scheduler job — 03:00 by default, and
 allowed to **wake the PC** to do it. It can also **put the PC back to sleep** afterwards,
-behind a countdown you can cancel; that part is off unless you turn it on. Read
+behind a countdown you can cancel; that part is off unless you turn it on. If the PC
+was off, the run starts once it's back on (asking first if you're there) and renders
+every missed day, spacing the uploads a few hours apart. Read
 **[Running it daily](docs/setup.md#7-running-it-daily)** before enabling either.
 
 A full run takes a while, so progress is readable from another terminal:

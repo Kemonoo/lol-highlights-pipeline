@@ -24,6 +24,7 @@ registers it with `WakeToRun`). The bat wraps the run in `scripts/keep_awake.ps1
 (a wake-timer wake is an *unattended* wake — Windows re-sleeps it after ~2 min) and,
 when `SLEEP_AFTER=1`, suspends afterwards via `scripts/sleep_prompt.ps1` (skips its
 cancel window when the session is already idle; every ambiguous case = stay awake).
+Missed nights (PC off): the task has StartWhenAvailable; a start > `LATE_MINUTES` after its slot asks first when someone is at the PC (`scripts/missed_run_prompt.ps1`, no answer = run, "Tonight" = postpone), then `pipeline/catchup.py` lists every unfinished date since the newest finished one (`schedule.catch_up_days`) and the bat runs each with `--date`; `upload.min_gap_hours` schedules later uploads (publishAt) and their Shorts.
 Per-machine settings live in the gitignored `auto_run.local.cmd` (`CONFIG`,
 `SLEEP_AFTER`, ...) so the committed bat keeps shipping harmless defaults — same split
 as config.yaml vs. overlays.

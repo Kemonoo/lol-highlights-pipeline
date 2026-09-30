@@ -1306,3 +1306,32 @@ date (re-runs reuse cached segments; a `.tr` sidecar re-renders a segment whose 
 changed), glitch weighted 2:1:1 as the "signature" cut, never the same kind twice. Filters
 run after the overlays so captions/nameplate/badge glitch with the picture. The first
 clip keeps its fade-in, the last keeps the outro handoff fade; replays drop the tail cut.
+
+## 2026-09-30 — Memecoin coordinator removed; missed-night catch-up
+
+The combined "Nightly Video + Memecoin Worker" task (run_combined_nightly.ps1 + WSL
+worker, all gitignored machine-local glue) is gone: the other project is no longer live.
+Its files and .gitignore block are deleted, the NIGHTLY_COORDINATED hook is out of
+run_daily_auto.bat, and "LoL Daily Highlights" is the task again. NB: the old task was
+registered elevated - deleting it needs an admin shell.
+
+Why the pipeline started when the PC was switched on (09-29, 18:55): that task had
+StartWhenAvailable. Owner likes it, with conditions, so it is now the default:
+- setup_schedule.bat sets StartWhenAvailable and passes the slot time to the bat.
+- A start more than LATE_MINUTES (60) late with someone at the PC shows a window
+  (scripts/missed_run_prompt.ps1): "Run now" / "Tonight", no answer = run. Idle or no
+  desktop = run without asking.
+- pipeline/catchup.py: dates after the newest finished one (uploaded, or master+meta
+  when upload is off) through yesterday, oldest first, capped at schedule.catch_up_days
+  (3). A fresh clone does yesterday only. The bat runs each date with its own retry.
+- upload.min_gap_hours (3): an upload less than 3 h after the previous video's publish
+  time goes up private with publishAt (YouTube's scheduled publishing; public target
+  only) and its Shorts get the same publishAt. state.json videos now carry publish_at.
+Quota caveat: videos.insert is 1,600 of 10,000 units/day, so a 3-date catch-up
+(3 videos + ~9 Shorts) can run out. A failed video upload leaves the date unfinished,
+so the next night picks it up again; Shorts that failed stay rendered-only.
+
+Incident while doing this: the 09-30 03:00 combined run started mid-edit and cmd.exe was
+reading run_daily_auto.bat while it was rewritten (cmd re-reads a batch file by offset).
+Killed it about a minute in and restarted on the new task. Never edit a .bat while the
+nightly run is live.

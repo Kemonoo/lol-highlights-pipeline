@@ -29,7 +29,7 @@ echo.
 
 schtasks /create ^
   /tn "LoL Daily Highlights" ^
-  /tr "cmd.exe /c \"\"%~dp0run_daily_auto.bat\"\"" ^
+  /tr "cmd.exe /c \"\"%~dp0run_daily_auto.bat\" %RUNTIME%\"" ^
   /sc daily ^
   /st %RUNTIME% ^
   /ru "%USERNAME%" ^
@@ -42,11 +42,14 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM WakeToRun is what lets the job start on a sleeping PC. schtasks cannot set it,
-REM hence the round-trip through the ScheduledTasks module.
+REM WakeToRun is what lets the job start on a sleeping PC; StartWhenAvailable
+REM starts a missed run (PC was off) as soon as it is back on - the bat then asks
+REM before a late run and catches up the missed dates. schtasks cannot set
+REM either, hence the round-trip through the ScheduledTasks module.
 powershell -NoProfile -Command ^
   "$t = Get-ScheduledTask -TaskName 'LoL Daily Highlights';" ^
-  "$t.Settings.WakeToRun = $true; $t.Settings.Hidden = $true;" ^
+  "$t.Settings.WakeToRun = $true; $t.Settings.StartWhenAvailable = $true;" ^
+  "$t.Settings.Hidden = $true;" ^
   "Set-ScheduledTask -InputObject $t" >NUL 2>&1
 if %ERRORLEVEL% NEQ 0 echo  NOTE: could not set wake-to-run; the PC must be awake at %RUNTIME%.
 
@@ -57,6 +60,9 @@ echo.
 echo    - wake the PC if it is asleep (wake timers must be allowed in the
 echo      active power plan: powercfg /q ^| findstr /i "wake")
 echo    - stay awake for the whole run - a few hours on a cold start
+echo    - if the PC was off at %RUNTIME%: start once it is back on. When you
+echo      are at the PC it asks first ("Run now" / "Tonight"; no answer = run),
+echo      then renders every missed date, uploads spaced a few hours apart
 if defined CONFIG (
     echo    - run the pipeline with:  --config %CONFIG%
 ) else (

@@ -58,6 +58,16 @@ class State:
                 return v["youtube_id"]
         return None
 
+    def uploaded_dates(self) -> set[str]:
+        return {v["date"] for v in self._d.get("videos", [])
+                if v.get("youtube_id") and v.get("date")}
+
+    def publish_times(self) -> dict[str, str]:
+        """{date: ISO time the main video goes / went public} for uploads that
+        recorded one (upload.py writes `publish_at` since 2026-09-30)."""
+        return {v["date"]: v["publish_at"] for v in self._d.get("videos", [])
+                if v.get("youtube_id") and v.get("publish_at")}
+
     def recent_titles(self, n: int = 3) -> list:
         """Titles of the last n uploads, newest first — so a new title can avoid
         opening with the same word as the one before it."""

@@ -444,13 +444,15 @@ def _write_title(cfg: dict, prompt: str) -> str:
 # ── upload ────────────────────────────────────────────────────────────────────
 
 def _upload(mp4: Path, title: str, description: str, tags: list,
-            privacy: str, data: Path) -> str | None:
+            privacy: str, data: Path, publish_at=None) -> str | None:
+    """`publish_at`: the date's main video is scheduled (a catch-up night, see
+    upload.publish_slot) - the Shorts go public with it, not before."""
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
 
         from ..config import ROOT
-        from .upload import _credentials
+        from .upload import _credentials, status_for
         yt   = build("youtube", "v3", credentials=_credentials(ROOT, data))
         body = {
             "snippet": {
@@ -459,7 +461,7 @@ def _upload(mp4: Path, title: str, description: str, tags: list,
                 "tags":        tags[:30],
                 "categoryId":  "20",
             },
-            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+            "status": status_for(privacy, publish_at),
         }
         media = MediaFileUpload(str(mp4), chunksize=8 * 1024 * 1024, resumable=True)
         req   = yt.videos().insert(part="snippet,status", body=body, media_body=media)
@@ -499,6 +501,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     candidates = sorted(clips, key=lambda c: -c.get("api_rank_score", 0))[:count]
 
     privacy      = sh.get("privacy", "public")
+    from .upload import scheduled_time
+    publish_at   = scheduled_time(state, date_label)   # catch-up night: wait for the video
     detect_face  = sh.get("detect_facecam", True)
     target_s     = min(float(sh.get("target_seconds", 32)), MAX_SHORT_S)  # punchy: 20-35 s wins
     pre_roll     = float(sh.get("pre_roll_s", 7))                          # build-up before the heat
@@ -638,7 +642,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             )
             tags = ["league of legends", "lol", "shorts", "twitch clips",
                     "lol highlights", streamer.lower()]
-            vid_id = _upload(v_final, title, description, tags, privacy, data)
+            vid_id = _upload(v_final, title, description, tags, privacy, data, publish_at)
             if vid_id:
                 url = f"https://youtube.com/shorts/{vid_id}"
                 log.info("  uploaded: %s", url)
@@ -652,7 +656,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
     # clip ever published. Its own state file makes it once-per-date.
     if rk.get("enabled", False) and "ranking" not in done:
         from . import ranking_shorts
-        up = ((lambda mp4, title, desc, tags: _upload(mp4, title, desc, tags, privacy, data))
+        up = ((lambda mp4, title, desc, tags: _upload(mp4, title, desc, tags, privacy, data,
+                                                      publish_at))
               if sh.get("upload", True) else None)
         try:
             entry = ranking_shorts.make(cfg, state, date_label, up)

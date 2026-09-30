@@ -202,6 +202,9 @@ can check it against what you actually wanted.
 | Which config the run uses | **plain `config.yaml`** — renders, uploads nothing | `CONFIG` in `auto_run.local.cmd` |
 | Sleep the PC when finished | **no** | `SLEEP_AFTER` in `auto_run.local.cmd` |
 | Retry a failed run | once, after 10 min | `RETRY_SECONDS` |
+| PC was off at run time | runs once it is back on; if you are at the PC it asks first ("Run now" / "Tonight", no answer = run) | `LATE_MINUTES`, `LATE_PROMPT_SECONDS` |
+| Missed nights | rendered on the next run, oldest first, at most 3 dates | `schedule.catch_up_days` in the config |
+| Spacing between uploads | at least 3 h — later catch-up videos (and their Shorts) get a scheduled publish time | `upload.min_gap_hours` |
 
 Settings live in **`auto_run.local.cmd`**, not in the `.bat` itself. That file is
 gitignored, so your machine's choices survive a `git pull` instead of turning into a

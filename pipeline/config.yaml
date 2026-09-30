@@ -425,6 +425,11 @@ video:
     sfx_gain_db: -12          # how loud the SFX sits under the clip audio
     sfx_delay_ms: 120         # SFX onset after the clip starts
 
+schedule:                     # the unattended run (run_daily_auto.bat / run_daily.sh)
+  catch_up_days: 3            # a missed night (PC off) is rendered on the next run: every
+                              # date after the newest finished one, up to yesterday, at most
+                              # this many. A fresh clone just does yesterday. 1 = never catch up.
+
 upload:
   riot_fan_notice: true       # append Riot's required fan-content notice to every video
                               # description. Their "Legal Jibber Jabber" policy permits
@@ -440,6 +445,10 @@ upload:
   allow_reupload: false       # idempotency: skip if this date already uploaded (the bat retries
                               # on crash; without this a retry made a DUPLICATE video). true = force.
   privacy: private            # exactly one of: private | unlisted | public
+  min_gap_hours: 3            # never publish two daily videos closer than this. A catch-up
+                              # night (schedule.catch_up_days) uploads several dates; later
+                              # ones go up private with a scheduled publish time (only when
+                              # privacy is public) and their Shorts wait for them. 0 = off.
   category_id: "20"           # Gaming
   # clickbait/curiosity titles; an episode series-marker is appended → "HOOK | 12"
   # (like daily-clip channels that number their uploads). Placeholders: {hook} {emoji}
