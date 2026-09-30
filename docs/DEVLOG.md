@@ -1335,3 +1335,28 @@ Incident while doing this: the 09-30 03:00 combined run started mid-edit and cmd
 reading run_daily_auto.bat while it was rewritten (cmd re-reads a batch file by offset).
 Killed it about a minute in and restarted on the new task. Never edit a .bat while the
 nightly run is live.
+
+## 2026-09-30 — Whisper GPU crash: contained in a child process
+
+The 09-01 "specific-clip cuDNN fault" hit again on 09-29 (and 09-20, 09-24, 09-28): 1 in
+4 recent runs lost 10 minutes to the bat retry and then did the whole stage on CPU.
+Windows' crash log named it this time: ctranslate2.dll, 0xC0000094 (integer divide by
+zero); standalone repro exits 127 like August.
+
+Root cause on the 09-29 clip (ColdAdorableDragon, 60 s, no speech): deterministic on
+cuda int8_float16 AND float16. Survives with word_timestamps off - the model then
+hallucinates "Thank you for watching!" - so the crash is aligning word timestamps of a
+hallucinated phrase. beam_size=1 and vad_filter=True also survive. VAD was measured on
+the day's other 21 clips and REJECTED: it drops the reactions the captions are for
+("NOOOOO, NOO, NOOOOO" 11 words -> 0, "Ah Ha ha ha" 7 -> 1, an es clip 30 -> 10).
+beam_size=1 lowers quality on every clip to dodge ~2% of them. Not taken either.
+
+Fix = containment (the "per-clip subprocess isolation" 09-01 left unbuilt):
+`transcribe.Transcriber` runs the CUDA model in a child (`python -m
+pipeline.enrichment.transcribe --worker`, JSON lines on stdin/stdout). Child dies ->
+that one clip redone on cpu/int8 in-process -> fresh child for the rest; after
+`max_gpu_crashes` (3) the run stays on CPU. Shorts' own whisper call goes through it
+too (it was in-process on the GPU with the same exposure). The breadcrumb
+`cpu_fallback_after_crash` is gone - the parent no longer dies, so there is nothing to
+remember. Measured on the real clip: crash + CPU redo ~75 s vs. a 10-min retry plus a
+CPU-only stage. transcripts.done.json now records gpu_crashes.

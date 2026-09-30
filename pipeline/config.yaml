@@ -198,14 +198,13 @@ transcribe:                   # streamer speech -> English captions (faster-whis
                               # missing cuDNN 9, fixed with `pip install nvidia-cudnn-cu12`.
                               # `python -m pipeline.doctor` checks for it.
   compute_type: auto          # auto | int8 (cpu) | int8_float16 (cuda)
-  cpu_fallback_after_crash: true  # The cuDNN/ctranslate2 probe behind `auto` is a
-                              # load-time check; the GPU can still die mid-inference,
-                              # and it does (7 of 32 August runs, killed with no Python
-                              # exception — nothing in-process can catch that). When on,
-                              # the stage drops a breadcrumb before touching the GPU and
-                              # clears it on success, so if a run finds one it knows the
-                              # last attempt was killed there and uses cpu/int8 instead.
-                              # Costs a slower stage on the retry; buys a finished video.
+  gpu_isolation: true         # run whisper on CUDA in a child process. ~2% of clips crash
+                              # ctranslate2 natively (a process kill, no Python exception;
+                              # a silent clip whose hallucinated words fail alignment). The
+                              # child dies instead of the run; that clip is redone on
+                              # cpu/int8 and a fresh child takes the rest. false = in-process
+                              # (one such clip then kills the run -> bat retry).
+  max_gpu_crashes: 3          # after this many crashes in one run, the rest goes to CPU
 
 feedback:                     # stage 0: read comments on recent uploads each run
   enabled: true

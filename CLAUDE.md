@@ -82,6 +82,8 @@ relative to `pipeline/`).
    {clip_id: {lang, text, words}}. `transcribe.skip_languages` is now `[]` — EVERY clip is
    transcribed and captioned (the list filters on Twitch's declared CHANNEL language, which
    is often wrong, so `[en]` silently dropped captions from bilingual streamers).
+   On CUDA whisper runs in a child process (`Transcriber`, `transcribe.gpu_isolation`):
+   ~2% of clips crash ctranslate2 natively; that clip is redone on CPU, not the run.
    Cached per clip; feeds assemble (burns English captions on every clip), commentary
    (reliable context, produced mode) + shorts (English captions). `enrichment/match_linker.py`,
    `enrichment/hud_ocr.py` — Phase-2 stubs (Riot API match data; HUD OCR). Docstrings

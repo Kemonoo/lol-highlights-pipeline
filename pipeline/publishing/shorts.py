@@ -577,10 +577,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
         short_s = min(duration, target_s)
         speech_words, speech_text = [], ""
         try:
-            from ..enrichment.transcribe import transcribe as _transcribe
-            tc = cfg.get("transcribe", {})
-            tr = _transcribe(clip_src, tc.get("model", "small"), short_s,
-                             tc.get("device", "cpu"), tc.get("compute_type", "int8"))
+            from ..enrichment.transcribe import Transcriber
+            with Transcriber(cfg) as _transcribe:     # GPU crash = this clip on CPU
+                tr = _transcribe(clip_src, short_s)
             speech_words, speech_text = tr["words"], tr["text"]
             if speech_text:
                 log.info("  speech [%s]: %s", tr["lang"], speech_text[:80])

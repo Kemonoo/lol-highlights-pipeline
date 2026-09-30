@@ -18,10 +18,23 @@ are left uncached for retry. Never blocks the pipeline.
 Done-marker: data/work/<date>/transcripts.done.json, written only once every clip has
 been attempted. The cache above is flushed per clip and so cannot double as one.
 
+GPU isolation (`Transcriber`, 2026-09-30): on CUDA, whisper runs in a CHILD process.
+Some clips crash ctranslate2 natively (exit 127 / 0xC0000094) - deterministic per clip,
+~2% of clips, a process kill with no Python exception. Root-caused on 09-29's
+ColdAdorableDragon: a clip with no speech, where beam search hallucinates a phrase
+("Thank you for watching!") and aligning its word timestamps dies on every CUDA
+compute type; CPU is fine. vad_filter / beam_size=1 avoid it but VAD drops the
+screams and laughs the captions exist for (NOOOOO 11 words -> 0), so the fix is
+containment: the child dies, the pipeline doesn't, that one clip is redone on CPU and
+a fresh GPU child takes the rest. Before this every crash killed the run: 10-min bat
+retry, then the whole stage on CPU.
+
 Requires: pip install faster-whisper
 """
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 log = logging.getLogger("pipeline.transcribe")
@@ -80,6 +93,105 @@ def transcribe(audio: Path, model_name: str = "small", max_s: float | None = Non
             "text": " ".join(text_parts).strip(), "words": words}
 
 
+class Transcriber:
+    """transcribe() with the GPU contained in a child process (see module docstring).
+
+    `with Transcriber(cfg) as t: t(audio, max_s)` - same result dicts as transcribe().
+    CPU (resolved device, or `transcribe.gpu_isolation: false`) runs in-process as
+    before. A dead child = that clip redone on cpu/int8 via `fallback`, then a fresh
+    child; after `max_gpu_crashes` crashes the rest of the run stays on CPU.
+    `worker_cmd` / `fallback` are injectable for tests."""
+
+    def __init__(self, cfg: dict, worker_cmd: list | None = None, fallback=None):
+        tc = cfg.get("transcribe", {})
+        from ..hardware import whisper_device
+        self.model = tc.get("model", "small")
+        self.device, self.compute = whisper_device(cfg)
+        self.isolate = self.device != "cpu" and tc.get("gpu_isolation", True)
+        self.max_crashes = int(tc.get("max_gpu_crashes", 3))
+        self.crashes = 0
+        self.worker_cmd = worker_cmd or [sys.executable, "-m",
+                                         "pipeline.enrichment.transcribe", "--worker",
+                                         self.model, self.device, self.compute]
+        self.fallback = fallback or (lambda audio, max_s: transcribe(
+            Path(audio), self.model, max_s, "cpu", "int8"))
+        self._proc = None
+
+    @property
+    def used(self) -> str:
+        return "cpu" if not self.isolate else self.device
+
+    def _start(self):
+        from ..config import ROOT
+        self._proc = subprocess.Popen(self.worker_cmd, cwd=str(ROOT), text=True,
+                                      encoding="utf-8", stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE)
+
+    def _ask(self, audio, max_s):
+        """-> ("ok", result) | ("error", msg) | ("crash", exit code)."""
+        if self._proc is None or self._proc.poll() is not None:
+            self._start()
+        try:
+            self._proc.stdin.write(json.dumps({"audio": str(audio), "max_s": max_s}) + "\n")
+            self._proc.stdin.flush()
+            for line in self._proc.stdout:          # skip anything a library printed
+                if line.startswith("RESULT "):
+                    return "ok", json.loads(line[7:])
+                if line.startswith("ERROR "):
+                    return "error", line[6:].strip()
+        except (BrokenPipeError, OSError):
+            pass
+        code = self._proc.wait()
+        self._proc = None
+        return "crash", code
+
+    def __call__(self, audio, max_s=None) -> dict:
+        if not self.isolate:
+            return transcribe(Path(audio), self.model, max_s, self.device, self.compute)
+        kind, val = self._ask(audio, max_s)
+        if kind == "ok":
+            return val
+        if kind == "error":
+            raise RuntimeError(val)
+        self.crashes += 1
+        log.warning("transcribe: GPU worker crashed on %s (exit %s) - redoing that clip "
+                    "on cpu/int8%s", Path(audio).name, val,
+                    "; rest of the run stays on CPU" if self.crashes >= self.max_crashes
+                    else "")
+        if self.crashes >= self.max_crashes:
+            self.isolate, self.device, self.compute = False, "cpu", "int8"
+        return self.fallback(audio, max_s)
+
+    def close(self):
+        if self._proc is not None and self._proc.poll() is None:
+            try:
+                self._proc.stdin.close()
+                self._proc.wait(timeout=30)
+            except Exception:
+                self._proc.kill()
+        self._proc = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def _worker(model_name: str, device: str, compute: str) -> int:
+    """Child side: one JSON request per stdin line, one RESULT/ERROR line back."""
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        req = json.loads(line)
+        try:
+            r = transcribe(Path(req["audio"]), model_name, req.get("max_s"), device, compute)
+            print("RESULT " + json.dumps(r, ensure_ascii=False), flush=True)
+        except Exception as e:                      # a Python error, not a crash
+            print(f"ERROR {type(e).__name__}: {e}", flush=True)
+    return 0
+
+
 def _resolve_mp4(clip: dict, raw_dir: Path) -> Path | None:
     p = raw_dir / f"{clip.get('id', '')}.mp4"
     if p.exists():
@@ -116,27 +228,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     out = work / "transcripts.json"
     cache = load(work)
-    model_name = tc.get("model", "small")
     max_s = tc.get("max_seconds")
-    # `auto` verifies ctranslate2 + cuDNN 9 are INSTALLED, which is a load-time check —
-    # it cannot prevent the GPU dying mid-inference. Measured: 7 of 32 August runs were
-    # killed inside model.transcribe() on cuda/int8_float16 (4GB card), always right
-    # after language detection, with no Python exception to catch — the interpreter is
-    # gone, so no try/except here can help. What we CAN do is not repeat it: leave a
-    # breadcrumb before touching the GPU, and if it is still there next run, the last
-    # attempt died on the GPU, so use the CPU path that has never crashed.
-    from ..hardware import whisper_device
-    device, compute = whisper_device(cfg)
-    guard = work / ".transcribe_gpu_crash"
-    if device != "cpu" and tc.get("cpu_fallback_after_crash", True):
-        if guard.exists():
-            log.warning("transcribe: previous attempt was killed on %s - "
-                        "using cpu/int8 this run (slower, but it finishes)", device)
-            device, compute = "cpu", "int8"
-        else:
-            guard.write_text(device, encoding="utf-8")
     skip = {l.lower() for l in tc.get("skip_languages", [])}
 
+    t = Transcriber(cfg)
     try:
         for c in clips:
             cid = c["id"]
@@ -148,7 +243,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if not mp4:
                 continue
             try:
-                r = transcribe(mp4, model_name, max_s, device, compute)
+                r = t(mp4, max_s)
             except KeyboardInterrupt:
                 raise
             except Exception as e:                 # one clip's failure isn't fatal
@@ -161,12 +256,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
                      r["lang_prob"], len(r["words"]), r["text"][:60] or "(no speech)")
     except KeyboardInterrupt:
         log.warning("transcribe interrupted - %d clip(s) cached", len(cache))
-        guard.unlink(missing_ok=True)   # a deliberate stop is not a GPU crash
         raise
+    finally:
+        t.close()
 
     if not out.exists():                            # ensure the cache file exists
         out.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
-    guard.unlink(missing_ok=True)
     # Done-marker, written only after every clip has been attempted. transcripts.json
     # itself cannot serve as one: it is flushed per clip so a crash loses no work, so it
     # exists even when the stage died a third of the way in — and run_daily's "output
@@ -175,5 +270,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
     # clean days were complete. In lean mode the captions are what carries the video.
     # Same split shorts.py already uses (renders vs. its own done.json).
     (work / "transcripts.done.json").write_text(
-        json.dumps({"clips": len(cache), "device": device}), encoding="utf-8")
+        json.dumps({"clips": len(cache), "device": t.used, "gpu_crashes": t.crashes}),
+        encoding="utf-8")
     return work
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--worker"]:
+    sys.exit(_worker(*sys.argv[2:5]))
