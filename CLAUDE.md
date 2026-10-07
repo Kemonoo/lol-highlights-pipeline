@@ -129,6 +129,9 @@ relative to `pipeline/`).
     streamer's webcam (streamer_cam.find, snapped box) as a white-framed picture-in-
     picture with the ORIGINAL webcam blurred out, 1-3 words from title_hook.json in Arial
     Black yellow (size capped), torero-red border; `clip_*` keys; falls back to local.
+    `clip_rotation` (owner overlay on): date-seeded layout pip/bigface (`compose_bigface`:
+    gameplay left, face-zoomed webcam right) x 5 palettes; pick saved to
+    `work/<date>/thumbnail_style.json` for CTR comparison via tools/yt_analytics.
     `gemini` builds a viral reaction thumbnail via the `thumbnail_image` role
     ("Nano Banana", paid ~$0.04/img): picks the highest-ranked clip WITH a detectable
     facecam, has the model enhance that facecam into an over-the-top excited/shocked

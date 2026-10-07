@@ -1212,6 +1212,117 @@ def compose_clip(frame: "Image.Image", box: tuple | None, text: str, opts: dict)
     return img
 
 
+def rotation_pick(date_label: str, n_layouts: int, n_palettes: int) -> tuple[int, int]:
+    """(layout index, palette index) for a date. Pure (tested).
+
+    Layout = day % layouts, palette = day % palettes: consecutive days differ in both,
+    the same date always gets the same pick (crash-retry, --force), and with coprime
+    counts (2 layouts x 5 palettes) every combination comes round once in 10 days."""
+    from datetime import date
+    day = date.fromisoformat(date_label).toordinal()
+    return day % max(n_layouts, 1), day % max(n_palettes, 1)
+
+
+def face_centre(cam: "Image.Image") -> tuple[float, float, float] | None:
+    """Relative centre + height of the largest face in a webcam crop (Haar), or None."""
+    try:
+        import cv2
+        import numpy as np
+        g = cv2.cvtColor(np.asarray(cam.convert("RGB")), cv2.COLOR_RGB2GRAY)
+        det = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        faces = det.detectMultiScale(g, 1.1, 5, minSize=(max(24, g.shape[1] // 12),) * 2)
+        if len(faces) == 0:
+            return None
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        return (x + w / 2) / g.shape[1], (y + h / 2) / g.shape[0], h / g.shape[0]
+    except Exception:
+        return None
+
+
+def cover_crop(w: int, h: int, tw: int, th: int, cx: float, cy: float) -> tuple:
+    """Scale (w, h) to cover (tw, th); -> (scale, left, top) keeping point (cx, cy)
+    (relative) as close to the centre as the edges allow. Pure (tested)."""
+    k = max(tw / w, th / h)
+    sw, sh = w * k, h * k
+    left = min(max(cx * sw - tw / 2, 0), sw - tw)
+    top = min(max(cy * sh - th / 2, 0), sh - th)
+    return k, int(left), int(top)
+
+
+def compose_bigface(frame: "Image.Image", box: tuple, text: str, opts: dict) -> "Image.Image":
+    """Layout B: gameplay on the left 58%, the webcam filling the right 42% (cropped
+    around the face), a divider, the words centred along the bottom, the border."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    o = {**_CLIP_DEFAULTS, **(opts or {})}
+    W, H = THUMB_W, THUMB_H
+    sw, sh = frame.size
+    img = Image.new("RGB", (W, H))
+    gw = int(W * 0.58)
+
+    small = np.array(frame.resize((192, 108)).convert("HSV"))
+    x, y, bw, bh = box
+    fx, fy = 192 / sw, 108 / sh
+    small[int(y * fy):int((y + bh) * fy) + 1, int(x * fx):int((x + bw) * fx) + 1] = 0
+    cx, cy = action_centre(small)
+    x0, y0, cw, ch = zoom_window(0.5 + (cx - .5) * .6, 0.5 + (cy - .5) * .6, 1.6, sw, sh)
+    g = frame.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
+    k, left, top = cover_crop(g.width, g.height, gw, H, 0.5, 0.5)
+    g = g.resize((int(g.width * k) + 1, int(g.height * k) + 1), Image.LANCZOS)
+    img.paste(_pop(g.crop((left, top, left + gw, top + H))), (0, 0))
+
+    cam = frame.crop((int(x), int(y), int(x + bw), int(y + bh)))
+    fc = face_centre(cam) or (0.5, 0.45, 0.0)
+    cwid = W - gw
+    if fc[2] and fc[2] < 0.5:                 # small face in a wide webcam: zoom in so
+        z = fc[2] / 0.5                       # it fills about half the panel height
+        zh = cam.height * z
+        zw = min(cam.width, zh * cwid / H)
+        zx = min(max(fc[0] * cam.width - zw / 2, 0), cam.width - zw)
+        zy = min(max(fc[1] * cam.height - zh * 0.45, 0), cam.height - zh)
+        cam = cam.crop((int(zx), int(zy), int(zx + zw), int(zy + zh)))
+        fc = (0.5, 0.45, 0.5)
+    k, left, top = cover_crop(cam.width, cam.height, cwid, H, fc[0], fc[1])
+    cam = cam.resize((int(cam.width * k) + 1, int(cam.height * k) + 1), Image.LANCZOS)
+    img.paste(_pop(cam.crop((left, top, left + cwid, top + H))), (gw, 0))
+
+    d = ImageDraw.Draw(img)
+    d.rectangle((gw - 5, 0, gw + 5, H), fill=_rgb(o["clip_cam_color"]))
+    if text:
+        size = 140
+        while size > 40 and _font(size).getlength(text) > 1100:
+            size -= 4
+        d.text((W // 2, H - 44), text, font=_font(size), fill=_rgb(o["clip_text_color"]),
+               anchor="ms", stroke_width=max(6, size // 14), stroke_fill=(0, 0, 0))
+    bpx = int(o["clip_border_px"])
+    if bpx > 0:
+        d.rectangle((0, 0, W - 1, H - 1), outline=_rgb(o["clip_border_color"]), width=bpx)
+    return img
+
+
+def rotated_opts(th: dict, date_label: str, has_cam: bool) -> tuple[str, dict, dict]:
+    """-> (layout, compose opts, record for thumbnail_style.json). Pure (tested).
+    Without rotation, or without a webcam for the big-face layout, it is plain style A."""
+    rot = th.get("clip_rotation") or {}
+    if not rot.get("enabled", False):
+        return "pip", th, {"layout": "pip", "palette": None}
+    layouts = [x for x in (rot.get("layouts") or ["pip"]) if x in ("pip", "bigface")] or ["pip"]
+    pals = rot.get("palettes") or []
+    li, pi = rotation_pick(date_label, len(layouts), len(pals))
+    layout = layouts[li]
+    if layout == "bigface" and not has_cam:
+        layout = "pip"
+    opts = dict(th)
+    name = None
+    if pals:
+        p = pals[pi]
+        name = p.get("name")
+        opts.update({k: p[v] for k, v in (("clip_border_color", "border"),
+                                          ("clip_text_color", "text"),
+                                          ("clip_cam_color", "frame")) if v in p})
+    return layout, opts, {"layout": layout, "palette": name}
+
+
 def thumb_text(work: Path, clips: list, date_label: str) -> str:
     """The 1-3 words: the day's title_hook.json 'thumb' (LLM), else the keyword hook."""
     from .credits import HOOK_CACHE, _hook
@@ -1254,11 +1365,17 @@ def generate_clip(cfg: dict, date_label: str) -> Path | None:
     except Exception as e:
         log.info("  thumbnail: no webcam box (%s)", e)
     text = thumb_text(work, clips, date_label)
-    img = compose_clip(frame, box, text, cfg.get("thumbnail", {}))
+    layout, opts, style = rotated_opts(cfg.get("thumbnail", {}), date_label, bool(box))
+    img = (compose_bigface(frame, box, text, opts) if layout == "bigface"
+           else compose_clip(frame, box, text, opts))
     out = work / "thumbnail.jpg"
     img.save(str(out), "JPEG", quality=92)
-    log.info("thumbnail (clip) -> %s  text=%r  webcam=%s", out.name, text,
-             "yes" if box else "no")
+    # which variant this date got, for comparing CTR per style later (tools/yt_analytics)
+    (work / "thumbnail_style.json").write_text(
+        json.dumps({**style, "text": text, "streamer": top.get("broadcaster_name")}),
+        encoding="utf-8")
+    log.info("thumbnail (clip) -> %s  text=%r  webcam=%s  layout=%s  palette=%s",
+             out.name, text, "yes" if box else "no", layout, style["palette"])
     return out
 
 

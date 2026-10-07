@@ -85,6 +85,8 @@ thumbnail:
                                    # webcam picture-in-picture + 1-3 words, red border). Free.
                                    # gemini would need a BILLED key (free image quota is 0,
                                    # verified 2026-08-23); local = the old splash+avatar design.
+  clip_rotation:
+    enabled: true                  # owner 2026-10-07: alternate pip / big face, cycle 5 palettes
 
 cleanup:
   keep_output_days: 7             # this channel uploads publicly, so YouTube holds the

@@ -490,6 +490,17 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
   clip_cam_color: "#FFFFFF"   # frame round the webcam panel (owner: white; turquoise tried)
   clip_cam_width: 420         # webcam panel width (grows up to 560 to cover the original)
   clip_cam_inset: 40          # px between the webcam panel and the border
+  clip_rotation:              # vary style A day by day (owner 2026-10-07): layout = day %
+    enabled: false            # len(layouts), palette = day % len(palettes), seeded by the
+    layouts: [pip, bigface]   # date. pip = style A; bigface = gameplay left, webcam fills
+                              # the right 42% (needs a webcam, else pip). The pick is saved
+                              # to work/<date>/thumbnail_style.json for CTR comparisons.
+    palettes:                 # border / text / webcam frame (+ bigface divider)
+      - {name: red-yellow, border: "#E10600", text: "#FFE600", frame: "#FFFFFF"}
+      - {name: cyan-white, border: "#00E5FF", text: "#FFFFFF", frame: "#00E5FF"}
+      - {name: purple-white, border: "#9146FF", text: "#FFFFFF", frame: "#9146FF"}
+      - {name: orange-white, border: "#FF7A00", text: "#FFFFFF", frame: "#FF7A00"}
+      - {name: lime-white, border: "#7CFF00", text: "#FFFFFF", frame: "#7CFF00"}
   face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")
   variants: 3                 # local-provider CTR variants (thumbnail.jpg = primary; rest for A/B)
   background_blur: 2          # px blur on the gameplay-frame background. A raw frame carries

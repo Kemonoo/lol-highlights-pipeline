@@ -1360,3 +1360,17 @@ too (it was in-process on the GPU with the same exposure). The breadcrumb
 `cpu_fallback_after_crash` is gone - the parent no longer dies, so there is nothing to
 remember. Measured on the real clip: crash + CPU redo ~75 s vs. a 10-min retry plus a
 CPU-only stage. transcripts.done.json now records gpu_crashes.
+
+## 2026-10-07 — Thumbnail rotation (layout x palette per day)
+
+Video #32 (09-26) got 2,911 views against 0-140 for every other upload, but #33-#36 with
+the same style A + hook titles got 0-7 — so the style switch alone didn't do it (and with
+1 subscriber there are no returning viewers to "notice a change"). Traffic sources will
+tell once `tools/yt_analytics.py` has its consent (owner: enable "YouTube Analytics API"
+in the Cloud project first). Owner still wants variety + data: `thumbnail.clip_rotation`
+alternates style A (pip) and a big-face layout (gameplay left 58%, webcam right, Haar
+face-centred and zoomed to ~half the panel height) and cycles 5 border/text palettes;
+both by date ordinal (2 x 5 coprime = all 10 combos in 10 days, same date = same pick).
+Rejected in drafts: red circle + arrow (colour-based action centre lands on empty
+ground; would need the VLM to locate the champion), white border + red text (lost on
+red gameplay). Polls: no API to create community posts — manual only.
