@@ -616,6 +616,17 @@ review:                       # python -m pipeline.tools.review_queue (review.ba
   days: 7                     # recent finished nights to offer (older ones play via Twitch)
   port: 8766
 
+stream:                       # long livestream of the finished videos (tools/stream.py,
+                              # stream.bat) - run by hand, never part of the nightly run
+  hours: 11.8                 # YouTube keeps streams up to 12 h as a VOD
+  order: newest               # newest | shuffle (seeded by the date); repeats to fill
+  bitrate_kbps: 6000          # constant bitrate; YouTube suggests 4.5-9 Mbps for 1080p30
+  fps: 30
+  encoder: auto               # NVENC when present (the CPU stays free)
+  rtmp_url: rtmp://a.rtmp.youtube.com/live2
+  key_env: YT_STREAM_KEY      # name of the .env variable holding the stream key
+  max_restarts: 20            # reconnect after a dropped connection, from the same video
+
 clip_log:
   enabled: true               # data/clip_log.jsonl: one line per clip in every published video
                               # (Twitch link, filter scores, judge description, transcript,

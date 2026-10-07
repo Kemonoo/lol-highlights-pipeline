@@ -186,6 +186,9 @@ feature weights + threshold suggestions; the pipeline never loads its model.json
 `tools/yt_analytics.py` (impressions/CTR/retention/traffic sources per upload; own read-only
 token `data/yt_analytics_token.json` so the upload token never needs re-consent),
 `tools/gen_sfx.py` (numpy-synthesized nameplate notification SFX → assets/sfx/nameplate.wav).
+`tools/stream.py` + `stream.bat` (manual, never nightly): 11.8 h YouTube livestream of the
+masters in data/output/ back to back, CBR NVENC with 2 s keyframes, reconnects mid-video via
+ffconcat `inpoint`; key in `.env` YT_STREAM_KEY (never logged); `stream:` config block.
 `production/nameplate.py` renders the per-clip animated streamer card with PIL (write-on
 letters + cyan/orange glow, framed Twitch avatar reusing `thumbnail._twitch_pfp`), packs
 it to a transparent qtrle .mov (cached in data/cache/nameplates/ keyed by name+avatar+

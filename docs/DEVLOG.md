@@ -1374,3 +1374,12 @@ both by date ordinal (2 x 5 coprime = all 10 combos in 10 days, same date = same
 Rejected in drafts: red circle + arrow (colour-based action centre lands on empty
 ground; would need the VLM to locate the champion), white border + red text (lost on
 red gameplay). Polls: no API to create community posts — manual only.
+
+## 2026-10-07 — Livestream tool (tools/stream.py)
+
+Owner: long streams pull views; replay the finished countdowns as one. ffmpeg concat ->
+YouTube RTMP, re-encoded (masters' GOP is too long for live ingest; CBR + 2 s keyframes,
+NVENC). 11.8 h default because YouTube only archives streams up to 12 h. Playlist repeats
+what's on disk (keep_output_days 7 = 8 videos = each ~8x in 12 h). Reconnect resumes the
+current video via an ffconcat `inpoint` - `-ss` on the concat input warned "could not
+seek" across files. Manual only (stream.bat); must not overlap the 03:00 run.
