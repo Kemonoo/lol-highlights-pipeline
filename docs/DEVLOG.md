@@ -1417,7 +1417,9 @@ Changes (config keys default to the old behaviour; config.kemono.yaml enables th
   drops with `api_judge.hard_facts`), play_by (recorded, NOT a drop: the owner rated
   Jankos reacting to an enemy's escape good), action_start_s/end_s (for trimming later);
   rubric: plain death + rage = entertainment <= 4.
-- select(): `video.max_per_streamer` (2), fillers need ent>=5, play>=4, gameplay, and no
+- select(): `video.max_per_streamer` (the overlay first used 2; owner reverted to 0 the
+  same day: Baus has many good clips, and the 10-07 problem was the SAME moment
+  several times, which dedupe_moments handles), fillers need ent>=5, play>=4, gameplay, and no
   failed fact; overlay switched to the duration rule (~8 min, max 11) - fewer clips
   rather than padding.
 - Captions: `transcribe.drop_hallucinations` patterns (applied on read for old caches),
