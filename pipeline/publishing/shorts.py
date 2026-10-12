@@ -277,7 +277,8 @@ def caption_groups(words: list[dict], v: dict | None = None) -> list[dict]:
                            max_words=int(v.get("caption_max_words", 3)),
                            max_gap=float(v.get("caption_group_gap", 0.65)),
                            max_seconds=float(v.get("caption_max_seconds", 1.9)),
-                           min_seconds=float(v.get("caption_min_seconds", 0.62)))
+                           min_seconds=float(v.get("caption_min_seconds", 0.62)),
+                           mask=v.get("caption_mask_words") or ())
 
 
 def caption_style(who: str | None, n_panels: int, cap_mv: int, fontsize: int) -> tuple:

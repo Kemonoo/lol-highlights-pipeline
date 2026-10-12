@@ -88,9 +88,55 @@ def transcribe(audio: Path, model_name: str = "small", max_s: float | None = Non
             if token:
                 words.append({"word": token, "start": float(w.start),
                               "end": float(w.end)})
-    return {"lang": info.language,
-            "lang_prob": round(float(info.language_probability), 2),
-            "text": " ".join(text_parts).strip(), "words": words}
+    return clean_result({"lang": info.language,
+                         "lang_prob": round(float(info.language_probability), 2),
+                         "text": " ".join(text_parts).strip(), "words": words})
+
+
+# Whisper's known hallucinations on silence / music: YouTube sign-offs from its training
+# data. Burned into the video they read as the video ending — 2026-10-06 #14 showed
+# "THANK YOU SO MUCH FOR WATCHING THIS VIDEO, SEE YOU IN THE NEXT ONE, BYE!" over a
+# quadra kill (and #15 "Thank you for watching!"). A streamer genuinely saying this in a
+# 30 s League clip is far rarer than whisper inventing it.
+HALLUCINATIONS = [
+    r"thank(s| you)( (so|very) much)? for watching( this video| the video)?",
+    r"see you (in|on) (the )?next (one|video|time)( ?,? ?bye( bye)?)?",
+    r"(please |don't forget to )?(like,? (and|&) )?subscribe( to (my|the|our) channel)?",
+    r"subtitles by .{0,40}",
+]
+
+
+def drop_hallucinations(words: list[dict]) -> list[dict]:
+    """Remove the words that make up a known hallucinated phrase. Pure (tested): joins
+    the words, finds the phrases case-insensitively, drops every word they touch."""
+    import re
+    if not words:
+        return words or []
+    spans, pos, parts = [], 0, []
+    for w in words:
+        t = (w.get("word") or "").strip()
+        spans.append((pos, pos + len(t)))
+        parts.append(t)
+        pos += len(t) + 1
+    text = " ".join(parts).lower()
+    hit = [False] * len(words)
+    for pat in HALLUCINATIONS:
+        for m in re.finditer(pat, text):
+            for i, (a0, a1) in enumerate(spans):
+                if a0 < m.end() and a1 > m.start():
+                    hit[i] = True
+    return [w for w, h in zip(words, hit) if not h]
+
+
+def clean_result(r: dict) -> dict:
+    """A transcript result with hallucinated phrases removed from words and text."""
+    if not r or not r.get("words"):
+        return r
+    words = drop_hallucinations(r["words"])
+    if len(words) == len(r["words"]):
+        return r
+    return {**r, "words": words, "text": " ".join(w["word"] for w in words),
+            "hallucination_dropped": len(r["words"]) - len(words)}
 
 
 class Transcriber:
@@ -206,9 +252,11 @@ def load(work: Path) -> dict:
     if not f.exists():
         return {}
     try:
-        return json.loads(f.read_text(encoding="utf-8").rstrip("\x00"))
+        data = json.loads(f.read_text(encoding="utf-8").rstrip("\x00"))
     except Exception:
         return {}
+    # cached before the hallucination filter existed: clean on read
+    return {k: clean_result(v) if isinstance(v, dict) else v for k, v in data.items()}
 
 
 def run(cfg: dict, state, date_label: str) -> Path:

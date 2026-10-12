@@ -150,8 +150,8 @@ def plain_reason(r):
 
 
 def load_api(work):
-    """The judge's per-clip verdicts: api_partial_v4 from 2026-09-24, v3 before."""
-    for v in (4, 3):
+    """The judge's per-clip verdicts: api_partial_v5 from 2026-10-12, v4 from 09-24, v3 before."""
+    for v in (5, 4, 3):
         p = work / f"api_partial_v{v}.json"
         if p.exists():
             return load(p)

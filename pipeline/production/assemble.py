@@ -100,9 +100,21 @@ def _ends_sentence(word: str) -> bool:
     return word.rstrip("\"'’)]").endswith(tuple(_SENT_END))
 
 
+def mask_text(text: str, mask: list | tuple = ()) -> str:
+    """Words in `mask` (case-insensitive, whole words, incl. simple plurals) drawn as
+    first letter + asterisks. `video.caption_mask_words`: burned-in slurs put a video
+    at risk of limited ads (10-09 opened on one)."""
+    import re
+    for m in mask or ():
+        text = re.sub(rf"\b({re.escape(m)})(s|es)?\b",
+                      lambda x: x.group(0)[0] + "*" * (len(x.group(0)) - 1),
+                      text, flags=re.I)
+    return text
+
+
 def _caption_groups(words: list | None, max_words: int = 3, max_gap: float = 0.65,
                     max_seconds: float = 1.9, min_seconds: float = 0.62,
-                    pad: float = 0.06) -> list[dict]:
+                    pad: float = 0.06, mask: list | tuple = ()) -> list[dict]:
     """Group per-word timestamps into short readable phrases with DISJOINT windows.
 
     Two defects in the old one-word-at-a-time chain are fixed here, and both were
@@ -160,7 +172,8 @@ def _caption_groups(words: list | None, max_words: int = 3, max_gap: float = 0.6
             t1 = min(t1, groups[i + 1][0]["start"] - pad)
         if t1 - t0 < 0.08:                       # too crushed to be readable, drop it
             continue
-        out.append({"text": " ".join(x["word"] for x in g), "start": t0, "end": t1})
+        out.append({"text": mask_text(" ".join(x["word"] for x in g), mask),
+                    "start": t0, "end": t1})
     return out
 
 
@@ -178,7 +191,8 @@ def _caption_dt(words: list | None, v: dict, fontsize: int = 52) -> str:
         max_words=int(v.get("caption_max_words", 3)),
         max_gap=float(v.get("caption_group_gap", 0.65)),
         max_seconds=float(v.get("caption_max_seconds", 1.9)),
-        min_seconds=float(v.get("caption_min_seconds", 0.62)))
+        min_seconds=float(v.get("caption_min_seconds", 0.62)),
+        mask=v.get("caption_mask_words") or ())
     if not groups:
         return ""
     f = _font("x", v)

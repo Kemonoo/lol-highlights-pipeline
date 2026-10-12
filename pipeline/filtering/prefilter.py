@@ -65,17 +65,33 @@ def score_clip(clip: dict, pf_cfg: dict, lq_dir: Path | None = None) -> dict:
     clip["audio_score"] = round(float(a), 3)
     clip["motion_score"] = round(float(m), 4)
 
-    if kw_match:
-        clip["prefilter_status"] = "KEYWORD_PASS"
-    elif a < pf_cfg["audio_exclude"]:
-        clip["prefilter_status"] = "AUDIO_EXCLUDE"
-    elif m < pf_cfg["motion_exclude"]:
-        clip["prefilter_status"] = "MOTION_EXCLUDE"
-    elif a >= pf_cfg["audio_pass"]:
-        clip["prefilter_status"] = "AUDIO_PASS"
-    else:
-        clip["prefilter_status"] = "BORDERLINE_PASS"
+    restatus(clip, pf_cfg)
     return clip
+
+
+_SCORED = {"KEYWORD_PASS", "AUDIO_EXCLUDE", "MOTION_EXCLUDE", "AUDIO_PASS",
+           "BORDERLINE_PASS"}
+
+
+def restatus(clip: dict, pf_cfg: dict) -> None:
+    """Pass/exclude from the cached scores — pure, so threshold changes apply to cached
+    clips too. `quiet_gate: false` stops excluding quiet clips: the owner rated clips
+    good that it dropped (supertf/tyler1 at audio 0.11, 2026-10-11), and loudness
+    correlated negatively with the judge. They then compete on rank instead."""
+    if clip.get("prefilter_status") not in _SCORED | {None}:   # None = just scored
+        return
+    a, m = clip.get("audio_score", 0.0), clip.get("motion_score", 0.0)
+    if clip.get("keyword"):
+        st = "KEYWORD_PASS"
+    elif a < pf_cfg["audio_exclude"] and pf_cfg.get("quiet_gate", True):
+        st = "AUDIO_EXCLUDE"
+    elif m < pf_cfg["motion_exclude"]:
+        st = "MOTION_EXCLUDE"
+    elif a >= pf_cfg["audio_pass"]:
+        st = "AUDIO_PASS"
+    else:
+        st = "BORDERLINE_PASS"
+    clip["prefilter_status"] = st
 
 
 def run(cfg: dict, state, date_label: str) -> Path:
@@ -111,6 +127,23 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
     work = data / "work" / date_label
     work.mkdir(parents=True, exist_ok=True)
+
+    # One clip per moment, and no moment we already published (filtering/moments.py).
+    # Before any download, so duplicates cost nothing.
+    from .moments import dedupe, published_clips, rank_score, view_percentile
+    if pf.get("dedupe_moments", False):
+        before = len(clips)
+        pub = published_clips(data, date_label, int(pf.get("republish_lookback_days", 14)))
+        everyone = clips
+        clips = dedupe(clips, pub, float(pf.get("moment_window_s", 90)))
+        kept_ids = {c["id"] for c in clips}
+        (work / "moments.json").write_text(json.dumps(   # for the review queue's trace
+            {c["id"]: {"status": c.get("prefilter_status"), "duplicate_of": c.get("duplicate_of")}
+             for c in everyone if c["id"] not in kept_ids}), encoding="utf-8")
+        log.info("Moments: %d clips -> %d (same moment clipped twice, or published in "
+                 "the last %s days)", before, len(clips), pf.get("republish_lookback_days", 14))
+    view_percentile(clips)
+
     partial_path = work / "prefilter_partial.json"
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
@@ -121,6 +154,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
         cached = cache.get(c["id"])
         if cached:
             c.update(cached)
+            restatus(c, pf)
         else:
             score_clip(c, pf, lq_dir)
             if c["prefilter_status"] != "NO_FILE":   # retry missing files next run
@@ -133,12 +167,18 @@ def run(cfg: dict, state, date_label: str) -> Path:
         scored.append(c)
     passed = [c for c in scored if c["prefilter_status"].endswith("PASS")]
 
-    # rank: keyword first, then audio score, then views
-    passed.sort(key=lambda c: (
-        c["prefilter_status"] != "KEYWORD_PASS",
-        -c.get("audio_score", 0),
-        -c.get("view_count", 0),
-    ))
+    for c in passed:
+        c["rank_score"] = rank_score(c)
+    if pf.get("rank", "loudness") == "signals":
+        # moment clusters, self-clips, view rank, title keyword; loudness a small term
+        passed.sort(key=lambda c: -c["rank_score"])
+    else:
+        # rank: keyword first, then audio score, then views
+        passed.sort(key=lambda c: (
+            c["prefilter_status"] != "KEYWORD_PASS",
+            -c.get("audio_score", 0),
+            -c.get("view_count", 0),
+        ))
     kept = passed[: pf["max_keep"]]
     log.info("Prefilter %s: %d scored -> %d passed -> %d kept",
              date_label, len(scored), len(passed), len(kept))

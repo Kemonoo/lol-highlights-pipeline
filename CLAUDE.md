@@ -50,18 +50,24 @@ relative to `pipeline/`).
    survivors only; api_judge shrinks that to 720p (the LQ copy is now portrait-360, unusable)
 2. `filtering/prefilter.py` — free local scoring: title keywords / tournament exclude /
    audio-hype / motion (functions from `filtering/scoring.py`) + broadcaster blacklist
-   → `work/<date>/prefiltered.json`
+   → `work/<date>/prefiltered.json`. `dedupe_moments` (filtering/moments.py): one clip per
+   moment (same VOD within 90 s) + no moment published in the last 14 days; `rank: signals`
+   orders by moment-cluster size, self-clip, view rank, keyword (loudness a small term)
 3. `filtering/vlm_filter.py` + `filtering/kill_detect.py` — local VLM via the `vlm`
    role, STEPWISE
    (one simple question per image — small models fail multi-question prompts): gameplay
    vote (3 frames), pro-play check, kill-feed/banner/event-log crop analysis. Detection
    cached (`vlm_partial_v4.json`); decisions are PURE CODE recomputed from cache every run
    (`decide()`) so rule tuning costs zero GPU time → `vlm_scored.json`,
-   `vlm_filtered.json`, `report.html` (visual audit), `crops/` (region calibration)
+   `vlm_filtered.json`, `report.html` (visual audit), `crops/` (region calibration).
+   `vlm_filter.mode: sanity` (owner overlay): only "is this gameplay" rejects; the rest
+   just orders the judge's queue
 4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
    to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
    provider's Files API), scores focus/play_quality/entertainment against a JSON schema
-   (cache `api_partial_v4.json` — v4 since 2026-09-24: the judge
+   (cache `api_partial_v5.json` — v5 since 2026-10-12 adds facts: is_league_game /
+   pro_broadcast / streamer_playing (hard drops with `api_judge.hard_facts`), play_by,
+   action_start_s/end_s; v4 since 2026-09-24: the judge
    used to watch Twitch's portrait-360 LQ copy; it now only reuses the LQ copy when it is
    landscape and ≥ `shrink_height`, else shrinks the full-quality file). No judge available → `local_judge()`, never a hard fail.
    Spend is capped by `api_judge.daily_budget` (free tier = 20 req/day/model, counted per

@@ -40,6 +40,8 @@ GATES = {
     "blacklist":       ("Before download", "Streamer is on the blacklist"),
     "language":        ("Before download", "Channel language not accepted"),
     "tournament":      ("Before download", "Title looks like a tournament"),
+    "duplicate":       ("Before download", "Same moment as another clip"),
+    "republished":     ("Before download", "Moment already in a recent video"),
     "quiet":           ("Sound and motion", "Too quiet"),
     "static":          ("Sound and motion", "Too still"),
     "rank_cap":        ("Sound and motion", "Passed, but ranked below the cut"),
@@ -47,6 +49,7 @@ GATES = {
     "vlm_pro":         ("Vision model", "Looks like a pro broadcast"),
     "vlm_weak":        ("Vision model", "No confirmed kill, not loud enough"),
     "vlm_cap":         ("Vision model", "Kept, but ranked below the cut"),
+    "judge_fact":      ("Gemini judge", "Not League / pro broadcast / streamer not playing"),
     "judge_drop":      ("Gemini judge", "Gemini scored it too low"),
     "trimmed":         ("Selection", "Good enough, cut to fit the video"),
     "selected":        ("Selection", "In the video"),
@@ -111,6 +114,7 @@ def load_day(data: Path, date: str) -> dict:
     return {
         "raw": _clips(_read(raw / "clips.json")),
         "prefilter": _read(work / "prefilter_partial.json") or {},
+        "moments": _read(work / "moments.json") or {},
         "prefiltered": [c["id"] for c in _clips(_read(work / "prefiltered.json"))],
         "vlm": {c["id"]: c for c in _clips(_read(work / "vlm_scored.json"))},
         "judged": {c["id"]: c for c in _clips(_read(work / "api_scored.json"))},
@@ -170,6 +174,16 @@ def trace(day: dict, cfg: dict, date: str) -> list[dict]:
             step("Title", False, "looks like a tournament")
         else:
             step("Channel language", True, lang or "?")
+            mo = day.get("moments", {}).get(cid)
+            if mo and mo.get("status") == "DUPLICATE_MOMENT":
+                gate = "duplicate"
+                claim = ("Another clip shows the same moment of the same stream "
+                         f"(kept instead: {mo.get('duplicate_of')}).")
+                step("New moment", False, "same moment clipped twice")
+            elif mo and mo.get("status") == "ALREADY_PUBLISHED":
+                gate = "republished"
+                claim = "This moment was already in one of the last few videos."
+                step("New moment", False, "already published")
 
         # 2. sound and motion
         if gate is None:
@@ -242,6 +256,15 @@ def trace(day: dict, cfg: dict, date: str) -> list[dict]:
                 claim = said
                 step("Gemini judge", True, scores)
                 step("In the video", False, "cut to fit")
+            elif reason.endswith(("_NOT_LEAGUE", "_PRO_BROADCAST", "_NOT_PLAYING")):
+                gate = "judge_fact"
+                fact = next(text for suffix, text in (
+                    ("_NOT_LEAGUE", "this isn't League of Legends"),
+                    ("_PRO_BROADCAST", "this is a pro tournament broadcast"),
+                    ("_NOT_PLAYING", "the streamer isn't playing (spectating, a replay "
+                                     "or coaching)")) if reason.endswith(suffix))
+                claim = f"Gemini says {fact}. {said}"
+                step("Gemini judge", False, fact)
             else:
                 gate = "judge_drop"
                 claim = said

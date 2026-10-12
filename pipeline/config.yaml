@@ -116,9 +116,24 @@ prefilter:                    # hand-set thresholds (see filtering/scoring.py do
   # transcribed → English and captioned). ja/zh stay out (JP talk-context, ZH low-signal).
   include_languages: [en, fr, de, es, ru, pt, it, pl, cs, sk, ko]
   exclude_languages: [ja, zh] # used only when include_languages is empty
+  # ── candidate signals (filtering/moments.py, 2026-10-12) ──
+  dedupe_moments: false       # one clip per moment: viewers clip the same play separately
+                              # (same VOD within moment_window_s); keep the most-viewed,
+                              # and skip moments published in the last republish_lookback_days
+  moment_window_s: 90
+  republish_lookback_days: 14
+  rank: loudness              # loudness = keyword, then audio, then views (old order)
+                              # signals  = moment cluster size, self-clip, view rank within
+                              #            the day, title keyword; loudness a small term
+  quiet_gate: true            # false = quiet clips are not excluded, they compete on rank
 
 vlm_filter:                   # model choice lives in llm.roles.vlm
   enabled: true
+  mode: gates                 # gates  = keep only on keyword / multikill / kills+audio /
+                              #          loud audio; reject pro-broadcast frames
+                              # sanity = keep every clip that is League gameplay; kills and
+                              #          prefilter signals only ORDER them for the judge,
+                              #          which answers the taste + pro-broadcast questions
   max_keep: 24                # clips passed to the API judge. THIS is what sets video
                               # length, not the judge: vlm_filter keeps 22-30 clips on a
                               # normal day and this cap threw the rest away before the
@@ -175,6 +190,10 @@ api_judge:                    # full-video quality judge — model in llm.roles.
   min_entertainment_reaction: 7  # reaction-focus clips need a higher bar
   min_play_quality: 7         # or any clip with play this impressive
   filler_min_entertainment: 4 # when the video is short, fill with decent (ent>=4) clips
+  filler_min_play: 0          # ...and at least this play_quality
+  filler_focus: [gameplay, reaction]   # clip_focus values a filler may have
+  hard_facts: false           # drop clips the judge says are not League, a pro broadcast,
+                              # or not the streamer playing (spectating/replay/coaching)
   # when Gemini is unavailable (quota), clips are judged from local signals instead of
   # fail-open kept. A no-kill clip is only rescued if it's loud AND high-motion (chaos,
   # not singing/walking). Raise these to be stricter on quota-dead days.
@@ -382,6 +401,8 @@ video:
                               # trim the weakest); length follows. 0 = use the minutes below.
   target_minutes_ideal: 8     # fill toward this from already-judged clips (no extra fetching)
   target_minutes_max: 10      # trim the weakest clips back down to this
+  max_per_streamer: 0         # at most this many clips of one streamer per video (0 = no cap)
+  caption_mask_words: []      # words drawn as f*** in burned captions (slurs, ...)
   music_enabled: false         # LEAN MODE: no background music (Synapse-style — the clip's own
                                # crowd/streamer audio carries it). true = loop a music_track bed.
   music_path: ""               # overridden by random pick from music_tracks; set directly to

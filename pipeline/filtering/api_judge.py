@@ -46,9 +46,21 @@ SCHEMA = {
         "entertainment": {"type": "integer"},
         "what_happens": {"type": "string"},
         "best_moment_s": {"type": "number"},
+        # v5 (2026-10-12): hard facts the selection drops on. Owner reviews + two
+        # outside reviews found World of Warcraft clips published as fillers,
+        # spectating / replay / coaching clips, and a normal streamer rejected as a
+        # pro broadcast by the single-frame local check.
+        "is_league_game": {"type": "boolean"},
+        "pro_broadcast": {"type": "boolean"},
+        "streamer_playing": {"type": "boolean"},
+        "play_by": {"type": "string",
+                    "enum": ["streamer", "teammate", "enemy", "nobody"]},
+        "action_start_s": {"type": "number"},
+        "action_end_s": {"type": "number"},
     },
     "required": ["clip_focus", "play_quality", "entertainment",
-                 "what_happens", "best_moment_s"],
+                 "what_happens", "best_moment_s", "is_league_game", "pro_broadcast",
+                 "streamer_playing", "play_by", "action_start_s", "action_end_s"],
 }
 
 # Scores the verdict is worthless without. A response missing any of them is not a
@@ -86,13 +98,30 @@ Judge it honestly — most clips are boring and should be dropped. A clip is onl
 
 CRITICAL: if there is NO real combat or meaningful play — the streamer is just walking around the map, sitting in base/fountain, recalling, farming quietly, singing, chatting, or AFK — it is NOT a highlight. Drop it with low play_quality AND low entertainment even when the audio is loud or the title is hype. Loud audio without on-screen action is not entertainment.
 
+SCORING THE COMMON CASES: the streamer simply dies (no outplay, nothing unusual about the death) and then yells or rages = entertainment 4 at most — rage alone is not a highlight. A genuinely surprising, skillful or absurd moment, or a reaction to one, scores high whoever made the play (the streamer reacting in awe to an enemy's outrageous escape can be a great clip).
+
+FACTS (answer literally — these decide whether the clip may be used at all):
+- is_league_game: is this League of Legends being played (Summoner's Rift, ARAM, Arena or a custom game)? false for any other game, a menu, a loading screen, or just a webcam.
+- pro_broadcast: is this an official esports tournament broadcast (spectator UI, casters, team score bar), rather than a streamer's own game?
+- streamer_playing: is the streamer controlling a champion in a live game right now? false when they are spectating, watching a replay or VOD, coaching someone, or watching another stream.
+- play_by: who makes the clip's key play — "streamer", "teammate", "enemy" or "nobody".
+- action_start_s / action_end_s: the stretch a viewer needs (a few seconds of setup before the action until the reaction is over). Leave out dead time such as walking back, the death screen, the shop or a scoreboard.
+
+Describe only what you can see and hear; if unsure of a champion's name, describe it instead of guessing.
+
 Answer ONLY JSON:
 {
  "clip_focus": "gameplay" | "reaction" | "talk" | "other",  // what the clip is actually about
  "play_quality": 0,        // 0-10: how impressive/skillful/unusual the PLAY is
  "entertainment": 0,       // 0-10: fun for a highlights viewer (includes funny fails)
  "what_happens": "",       // 2 factual sentences describing the action
- "best_moment_s": 0        // second offset of the peak moment
+ "best_moment_s": 0,       // second offset of the peak moment
+ "is_league_game": true,
+ "pro_broadcast": false,
+ "streamer_playing": true,
+ "play_by": "streamer" | "teammate" | "enemy" | "nobody",
+ "action_start_s": 0,
+ "action_end_s": 0
 }"""
 
 
@@ -203,7 +232,29 @@ def parse_verdict(r: dict | None) -> dict | None:
         # best_moment_s only positions the replay/Shorts trim; 0 is a fine default and
         # callers already treat it as "no timestamp".
         "api_best_moment_s": int(r.get("best_moment_s") or 0),
+        # v5 facts. Optional on read: an older cached verdict has none, and a missing
+        # fact must never drop a clip (decide_api treats None as "not asked").
+        **{f"api_{k}": r.get(k) for k in ("is_league_game", "pro_broadcast",
+                                           "streamer_playing", "play_by",
+                                           "action_start_s", "action_end_s")
+           if r.get(k) is not None},
     }
+
+
+HARD_FAILS = (("api_is_league_game", False, "NOT_LEAGUE"),
+              ("api_pro_broadcast", True, "PRO_BROADCAST"),
+              ("api_streamer_playing", False, "NOT_PLAYING"))
+
+
+def hard_fail(clip: dict, aj: dict) -> str:
+    """The v5 fact that disqualifies this clip, or "". Never a filler either (select()
+    reads the _NOT_LEAGUE/... suffix). Off unless `api_judge.hard_facts` is on."""
+    if not aj.get("hard_facts", False):
+        return ""
+    for key, bad_value, label in HARD_FAILS:
+        if clip.get(key) is bad_value:
+            return label
+    return ""
 
 
 def decide_api(clip: dict, aj: dict) -> None:
@@ -214,6 +265,11 @@ def decide_api(clip: dict, aj: dict) -> None:
     ent = clip.get("api_entertainment", 0)
     pq = clip.get("api_play_quality", 0)
     clip["api_rank_score"] = round(0.4 * ent + 0.6 * pq, 2)
+    bad = hard_fail(clip, aj)
+    if bad:
+        clip["api_decision"] = "DROP"
+        clip["api_reason"] = f"{focus}_ent{ent}_pq{pq}_{bad}"
+        return
     min_ent = (aj.get("min_entertainment_reaction", 7) if focus == "reaction"
                else aj.get("min_entertainment", 6))
     if focus in ("gameplay", "reaction") and ent >= min_ent or pq >= aj.get("min_play_quality", 7):
@@ -221,6 +277,23 @@ def decide_api(clip: dict, aj: dict) -> None:
     else:
         clip["api_decision"] = "DROP"
     clip["api_reason"] = f"{focus}_ent{ent}_pq{pq}"
+
+
+def streamer_cap(kept: list, cap: int) -> list:
+    """At most `cap` clips per streamer (best first — `kept` is sorted). Thebausffs had 7
+    of 22 slots on 2026-10-07. 0 = no cap."""
+    if not cap:
+        return kept
+    out, n = [], {}
+    for c in kept:
+        who = c.get("broadcaster_name", "")
+        if n.get(who, 0) >= cap:
+            c["api_decision"] = "DROP"
+            c["api_reason"] = c.get("api_reason", "") + "_STREAMER_CAP"
+            continue
+        n[who] = n.get(who, 0) + 1
+        out.append(c)
+    return out
 
 
 def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
@@ -235,22 +308,29 @@ def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
     target = int(v.get("target_clips", 0) or 0)
     ideal_s = v.get("target_minutes_ideal", 8) * 60
     max_s = v.get("target_minutes_max", 10) * 60
-    kept = list(kept)
+    kept = streamer_cap(list(kept), int(v.get("max_per_streamer", 0) or 0))
     total = sum(c.get("duration", 30) for c in kept)
 
     def short() -> bool:
         return len(kept) < target if target else total < ideal_s
 
     if short():
+        fill_focus = tuple(aj.get("filler_focus", ["gameplay", "reaction"]))
         fillers = sorted(
             (c for c in judged
              if c.get("api_decision") == "DROP"
-             and c.get("api_focus") in ("gameplay", "reaction")
-             and c.get("api_entertainment", 0) >= aj.get("filler_min_entertainment", 4)),
+             and c.get("api_focus") in fill_focus
+             and not hard_fail(c, aj)
+             and c.get("api_entertainment", 0) >= aj.get("filler_min_entertainment", 4)
+             and c.get("api_play_quality", 0) >= aj.get("filler_min_play", 0)),
             key=lambda c: -c.get("api_rank_score", 0))
+        cap = int(v.get("max_per_streamer", 0) or 0)
         for c in fillers:
             if not short():
                 break
+            if cap and sum(k.get("broadcaster_name") == c.get("broadcaster_name")
+                           for k in kept) >= cap:
+                continue
             c["api_decision"] = "KEEP"
             c["api_reason"] += "_FILLER"
             kept.append(c)
@@ -292,7 +372,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     tmp = work / "api_tmp"
     tmp.mkdir(exist_ok=True)
 
-    partial_path = work / "api_partial_v4.json"
+    partial_path = work / "api_partial_v5.json"   # v5: hard facts + action window
     cache = (json.loads(partial_path.read_text(encoding="utf-8"))
              if partial_path.exists() else {})
 

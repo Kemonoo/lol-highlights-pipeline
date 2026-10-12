@@ -13,8 +13,10 @@ Usage:
   python -m pipeline.tools.yt_analytics [--days 60]      per-video table, newest first
   python -m pipeline.tools.yt_analytics --video <id>     traffic sources + daily views
 
-Impressions / CTR (videoThumbnailImpressions[ClickRate]) exist in the API since
-2026-01; Studio shows the same numbers with a ~2 day lag.
+Impressions and thumbnail CTR are NOT available here: the API rejects
+videoThumbnailImpressions[ClickRate] ("The query is not supported", checked 2026-10-12).
+Read them in YouTube Studio. What the API does give: views, average % viewed, traffic
+sources, subscribers, and the retention curve (--video), which maps onto chapters.json.
 """
 import argparse
 import json
@@ -58,19 +60,13 @@ def _rows(ya, **q) -> list[dict]:
 
 
 def per_video(days: int) -> list[dict]:
-    """One dict per video published in the window: title, views, impressions, CTR,
-    average % viewed, subscribers gained."""
+    """One dict per video published in the window: title, views, average % viewed,
+    average view duration, subscribers gained."""
     ya, yt = _services()
     start, end = (date.today() - timedelta(days=days)).isoformat(), date.today().isoformat()
     base = dict(startDate=start, endDate=end, dimensions="video", sort="-views", maxResults=200)
     by = {r["video"]: r for r in _rows(ya, metrics="views,averageViewPercentage,"
                                                    "averageViewDuration,subscribersGained", **base)}
-    try:                                 # reach metrics can't always share a query
-        for r in _rows(ya, metrics="videoThumbnailImpressions,"
-                                   "videoThumbnailImpressionsClickRate", **base):
-            by.setdefault(r["video"], {"video": r["video"]}).update(r)
-    except Exception as e:
-        log.warning("impressions/CTR unavailable: %s", e)
     ids = list(by)
     for k in range(0, len(ids), 50):
         for v in yt.videos().list(part="snippet", id=",".join(ids[k:k + 50])).execute()["items"]:
@@ -87,8 +83,10 @@ def one_video(video_id: str, days: int) -> dict:
         "traffic": _rows(ya, startDate=start, endDate=end, filters=f, metrics="views",
                          dimensions="insightTrafficSourceType", sort="-views"),
         "daily": _rows(ya, startDate=start, endDate=end, filters=f,
-                       metrics="views,videoThumbnailImpressions,"
-                               "videoThumbnailImpressionsClickRate", dimensions="day"),
+                       metrics="views", dimensions="day"),
+        "retention": _rows(ya, startDate=start, endDate=end, filters=f,
+                           metrics="audienceWatchRatio,relativeRetentionPerformance",
+                           dimensions="elapsedVideoTimeRatio"),
     }
 
 
@@ -108,20 +106,20 @@ def main():
             print(f"{r['insightTrafficSourceType']:<22} {r['views']:>7}")
         print()
         for r in out["daily"]:
-            if r.get("views") or r.get("videoThumbnailImpressions"):
-                print(r["day"], r.get("views"), r.get("videoThumbnailImpressions"),
-                      f"{r.get('videoThumbnailImpressionsClickRate', 0):.2%}")
+            if r.get("views"):
+                print(r["day"], r["views"])
+        print()
+        print("retention (share of the video watched -> share of viewers still there)")
+        for r in out["retention"][::10]:
+            print(f"  {r['elapsedVideoTimeRatio']:.0%}  {r['audienceWatchRatio']:.2f}")
         return
     rows = per_video(a.days)
     if a.json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return
-    print(f"{'published':<11}{'views':>7}{'impr':>8}{'CTR':>7}{'%view':>7}  title")
+    print(f"{'published':<11}{'video':<13}{'views':>7}{'%view':>7}  title")
     for r in rows:
-        ctr = r.get("videoThumbnailImpressionsClickRate")
-        print(f"{r.get('published', '?'):<11}{r.get('views', 0):>7}"
-              f"{r.get('videoThumbnailImpressions', '-'):>8}"
-              f"{(f'{ctr:.1%}' if ctr is not None else '-'):>7}"
+        print(f"{r.get('published', '?'):<11}{r['video']:<13}{r.get('views', 0):>7}"
               f"{r.get('averageViewPercentage', 0):>6.0f}%  {r.get('title', r['video'])[:60]}")
 
 

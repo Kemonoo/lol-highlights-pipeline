@@ -24,7 +24,13 @@ twitch:
                                  # max_fetch = fetch_count keeps expansion off, as upstream.
 
 video:
-  target_clips: 22               # owner's pick: a top-22 countdown (was 20; 17ish from the 8-min rule)
+  target_clips: 0                # owner 2026-10-12: quality first, aim for ~8 min - the
+  target_minutes_ideal: 8        # duration rule fills toward 8 min with fillers that pass
+  target_minutes_max: 11         # the raised bar, and publishes shorter rather than pad
+                                 # (was a fixed 22: 21% of 10-06..10-11 clips were fillers,
+                                 # incl. two World of Warcraft clips)
+  max_per_streamer: 2            # Thebausffs had 7 of 22 on 10-07
+  caption_mask_words: [nigger, nigga, faggot, fag, retard, retarded, aids, cancer, kys]
   intro_enabled: false           # owner 2026-09-25: no brand sting, open straight on clip #22
   transitions:
     enabled: true                # owner 2026-09-25 picked whip, pixelate, subtle glitch
@@ -94,7 +100,22 @@ cleanup:
                                   # and re-cut it. Masters are ~550-850 MB each, i.e. about
                                   # 200 GB/year of local disk if never pruned.
 
+prefilter:                       # owner 2026-10-12, after two outside reviews + his notes
+  include_languages: []          # language ban lifted: ja was 62% of the pool (videos shrank
+  exclude_languages: []          # to 14 clips) and it cost good clips; the judge decides now,
+                                 # captions translate. The blacklist still applies.
+  dedupe_moments: true
+  rank: signals
+  quiet_gate: false
+
+api_judge:
+  hard_facts: true
+  filler_min_entertainment: 5
+  filler_min_play: 4
+  filler_focus: [gameplay]
+
 vlm_filter:
+  mode: sanity                   # local 4B model: "is this League gameplay" only
   max_keep: 35                   # a 22-clip countdown needs ~33 judged candidates (32 was
                                  # sized for 20); the VLM usually keeps more than 24 anyway
                                  # (the cap cut ~9/day). >20 judge calls walks the model chain.

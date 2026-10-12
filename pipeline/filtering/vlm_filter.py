@@ -160,7 +160,8 @@ def decide(clip: dict, vf: dict, blacklist: frozenset = frozenset()) -> None:
                     reason=f"NO_GAMEPLAY_{clip.get('gameplay_votes', '?')}",
                     keep_score=0.0)
         return
-    if clip.get("vlm_pro_play"):
+    sanity = vf.get("mode", "gates") == "sanity"
+    if clip.get("vlm_pro_play") and not sanity:
         clip.update(decision="REJECT", reason="PRO_PLAY_UI", keep_score=0.0)
         return
 
@@ -190,6 +191,25 @@ def decide(clip: dict, vf: dict, blacklist: frozenset = frozenset()) -> None:
                    + (0.10 if (announcements or eventlog_kill) else 0.0)
                    + (0.20 if keyword else 0.0)), 3)
     clip["keep_score"] = ks
+
+    if sanity:
+        # `mode: sanity` (owner, 2026-10-12): this 4B model on single frames only
+        # answers "is this League gameplay". Its taste gates threw out clips the owner
+        # rated good (Jankos' Kalista: "no kill, not loud"; a normal streamer flagged
+        # as a pro broadcast) and its loud-only path let in most of the "died and
+        # screamed" picks. So every gameplay clip passes; kills, multikills and the
+        # candidate signals (moment clusters, self-clip, view rank) only ORDER them
+        # for the judge, which now answers the pro-broadcast / streamer-playing
+        # questions itself while watching the clip with sound.
+        clip["keep_score"] = round(min(1.0,
+            (0.30 * min(kills_max, 3) / 3) * (1.0 if kills_confirmed else 0.3)
+            + (0.25 if multikill else 0.0)
+            + (0.10 if (announcements or eventlog_kill) else 0.0)
+            + 0.35 * float(clip.get("rank_score", 0))), 3)
+        clip.update(decision="KEEP",
+                    reason=("PRO_UI?_" if clip.get("vlm_pro_play") else "")
+                    + f"GAMEPLAY_k{kills_max}{'m' if multikill else ''}")
+        return
 
     if keyword:
         # viewer wrote "penta"/"1v5"/... in the title — high-precision signal

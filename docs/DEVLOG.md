@@ -1383,3 +1383,48 @@ NVENC). 11.8 h default because YouTube only archives streams up to 12 h. Playlis
 what's on disk (keep_output_days 7 = 8 videos = each ~8x in 12 h). Reconnect resumes the
 current video via an ffconcat `inpoint` - `-ss` on the concat input warned "could not
 seek" across files. Manual only (stream.bat); must not overlap the 03:00 run.
+
+## 2026-10-12 — Selection redesign, step 1 (outside review + owner reviews)
+
+Two sub-agents reviewed the channel with NO access to our docs (one as a viewer: frames of
+10-06..10-11, packaging, competitors; one as an ML engineer: filter code + data), plus 34
+owner reviews (12 new on 10-11). Verified against the data before acting:
+- 10-07: 6 of the top 7 slots were TWO Baus moments (same VOD, offsets 9186/9190/9192 and
+  10987/10989/10998), clipped by different viewers; 10-07 #1 was #1 again on 10-09.
+- ja grew from 9% to 62% of the top-222 pool; with ja/zh excluded, 10-08/10/11 shipped
+  15/14/14 clips instead of 22, padded with fillers (21% of 109 clips), incl. two World
+  of Warcraft clips (10-08 #13/#14, the judge even said "WoW raid").
+- Loudness was the funnel's main currency yet correlated NEGATIVELY with the judge
+  (-0.19); the loud-only VLM path (HYPE_ONLY) averaged ent 4.6 vs 7.5 for title keywords.
+- Owner notes: the local gates also REJECT good clips (Jankos/Kalista "no kill, not loud",
+  AddictedToBacon "pro broadcast", supertf+tyler1 "too quiet", a good ja outplay by
+  language) and pass spectating/replay/coaching clips.
+- Whisper's "Thank you so much for watching, see you in the next one, bye!" burned over a
+  10-06 quadra; a slur in 10-09's first caption.
+- YouTube Analytics (now connected): organic videos get 3-130 views, retention ~55% at
+  10% of the video. The 3.7k/5.2k-view "breakouts" (09-26, 10-08) are 99% "SUBSCRIBER"
+  traffic on a 3-subscriber channel - not organic; owner did not promote them.
+
+Changes (config keys default to the old behaviour; config.kemono.yaml enables them):
+- `filtering/moments.py`: one clip per moment (same VOD, `moment_window_s` 90), skip
+  moments published in the last 14 days (raw/<date>/clips.json keeps the VOD info),
+  `moment_size` / `self_clip` / `view_pct` signals; prefilter `rank: signals`,
+  `quiet_gate: false` (static stays a gate); `moments.json` for the review trace.
+- Language ban lifted in the overlay (judge decides; captions translate).
+- vlm_filter `mode: sanity`: the 4B model only answers "is this League gameplay"; pro
+  frames are flagged, not rejected; kills order the judge's queue.
+- Judge v5 (`api_partial_v5`): is_league_game / pro_broadcast / streamer_playing (hard
+  drops with `api_judge.hard_facts`), play_by (recorded, NOT a drop: the owner rated
+  Jankos reacting to an enemy's escape good), action_start_s/end_s (for trimming later);
+  rubric: plain death + rage = entertainment <= 4.
+- select(): `video.max_per_streamer` (2), fillers need ent>=5, play>=4, gameplay, and no
+  failed fact; overlay switched to the duration rule (~8 min, max 11) - fewer clips
+  rather than padding.
+- Captions: `transcribe.drop_hallucinations` patterns (applied on read for old caches),
+  `video.caption_mask_words`.
+- Review queue: gates duplicate / republished / judge_fact.
+- tools/yt_analytics: impressions/CTR are NOT in the API (rejected "query not
+  supported"); --video now prints the retention curve.
+
+Next (owner decides): format (teaser opener, order, trim to the action window, outro,
+editing layer), a paid/stronger judge watching every candidate, a Claude editor pass.
