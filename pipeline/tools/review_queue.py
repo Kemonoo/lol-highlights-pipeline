@@ -52,9 +52,15 @@ GATES = {
     "selected":        ("Selection", "In the video"),
 }
 
-TAGS = ["kill / outplay", "multikill", "funny", "hype reaction", "talk only",
-        "nothing happens", "not LoL gameplay", "pro broadcast", "caption widget",
-        "great for a Short"]
+# The first 10 get number keys. "streamer not playing" / "someone else's play" / "too
+# small for a slot" came from the owner's free-text notes (2026-09-24): 4 of 22 reviews
+# described spectating, a replay, coaching or a teammate's play, and none of the old tags
+# could say so.
+TAGS = ["kill / outplay", "multikill", "funny", "hype reaction",
+        "streamer not playing", "someone else's play", "too small for a slot",
+        "nothing happens", "not LoL gameplay", "talk only",
+        "pro broadcast", "caption widget", "great for a Short", "clip unavailable"]
+CLAIM_ANSWERS = (True, False, "partly", None)
 
 
 def _read(p: Path):
@@ -305,7 +311,8 @@ def stats(reviews: dict) -> list[dict]:
         q = Counter(r.get("quality") for r in rs)
         rows.append({
             "gate": gate, "where": where, "label": label, "n": len(rs),
-            "claim_true": sum(1 for r in judged if r["claim_ok"]),
+            "claim_true": sum(1 for r in judged if r["claim_ok"] is True),
+            "claim_partly": sum(1 for r in judged if r["claim_ok"] == "partly"),
             "claim_n": len(judged),
             "good": q.get("good", 0), "ok": q.get("ok", 0), "bad": q.get("bad", 0),
         })
@@ -407,7 +414,9 @@ def serve(cfg: dict, days: int, port: int, open_browser: bool = True) -> None:
             rec = {
                 "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "id": q["id"], "date": q["date"], "gate": q["gate"], "claim": q["claim"],
-                "claim_ok": body.get("claim_ok"), "quality": body.get("quality"),
+                "claim_ok": (body.get("claim_ok") if body.get("claim_ok") in CLAIM_ANSWERS
+                             else None),
+                "quality": body.get("quality"),
                 "tags": [t for t in body.get("tags", []) if t in TAGS],
                 "note": (body.get("note") or "").strip(),
                 "clip": {k: q[k] for k in ("url", "who", "title", "lang", "views",

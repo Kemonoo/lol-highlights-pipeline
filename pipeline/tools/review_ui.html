@@ -132,6 +132,7 @@
       <p id="claim"></p>
       <div class="choices" role="group" aria-label="Is the pipeline's reason true?">
         <button class="choice c-yes" type="button" data-claim="true" aria-pressed="false">True <kbd>Y</kbd></button>
+        <button class="choice c-ok" type="button" data-claim="partly" aria-pressed="false">Partly <kbd>P</kbd></button>
         <button class="choice c-no" type="button" data-claim="false" aria-pressed="false">Not true <kbd>N</kbd></button>
       </div>
     </div>
@@ -188,7 +189,7 @@ async function init() {
                              note: prev.note || "", saved: true } : blank();
   }
   $("tags").innerHTML = TAGS.map((t, k) =>
-    `<button class="tag" type="button" data-tag="${k}" aria-pressed="false">${t} <kbd>${(k + 1) % 10}</kbd></button>`).join("");
+    `<button class="tag" type="button" data-tag="${k}" aria-pressed="false">${t}${k < 10 ? ` <kbd>${(k + 1) % 10}</kbd>` : ""}</button>`).join("");
   i = Math.max(0, Q.findIndex((q) => !answers[q.id].saved));
   if (!Q.length || Q.every((q) => answers[q.id].saved)) return showDone();
   $("app").hidden = false;
@@ -226,7 +227,10 @@ function render() {
     `<li class="${s.ok ? "" : "no"}"><div>${esc(s.step)}${s.detail ? `<small>${esc(s.detail)}</small>` : ""}</div></li>`).join("");
 
   $("claim-box").hidden = !q.claim;
-  $("claim").textContent = q.claim ? `The pipeline says: ${q.claim}` : "";
+  // judged clips: the claim is Gemini's DESCRIPTION; the scores are rated by "How good"
+  $("claim").textContent = !q.claim ? "" : q.claim.startsWith("Gemini")
+    ? `Is Gemini's description of what happens right? ${q.claim}`
+    : `The pipeline says: ${q.claim}`;
   $("note").value = a.note;
   paint();
 }
@@ -278,7 +282,7 @@ async function showDone(fromButton) {
   $("stats").innerHTML = rows.length ? `<table>
     <tr><th>Gate</th><th class="n">Reviewed</th><th class="n">Reason true</th><th class="n">Good</th><th class="n">OK</th><th class="n">Bad</th></tr>
     ${rows.map((r) => `<tr><td>${esc(r.label)}<br><small>${esc(r.where)}</small></td><td class="n">${r.n}</td>
-      <td class="n">${r.claim_n ? `${r.claim_true} of ${r.claim_n}` : "–"}</td>
+      <td class="n">${r.claim_n ? `${r.claim_true} of ${r.claim_n}${r.claim_partly ? ` (+${r.claim_partly} partly)` : ""}` : "–"}</td>
       <td class="n">${r.good}</td><td class="n">${r.ok}</td><td class="n">${r.bad}</td></tr>`).join("")}
   </table>` : "<p>No reviews yet.</p>";
 }
@@ -287,7 +291,10 @@ async function showDone(fromButton) {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const a = Q[i] && answers[Q[i].id];
-  if (b.dataset.claim) { a.claim_ok = a.claim_ok === (b.dataset.claim === "true") ? null : b.dataset.claim === "true"; paint(); }
+  if (b.dataset.claim) {
+    const v = { true: true, false: false, partly: "partly" }[b.dataset.claim];
+    a.claim_ok = a.claim_ok === v ? null : v; paint();
+  }
   else if (b.dataset.quality) { a.quality = a.quality === b.dataset.quality ? null : b.dataset.quality; paint(); }
   else if (b.dataset.tag) { toggleTag(+b.dataset.tag); }
   else if (b.id === "save") save();
@@ -314,6 +321,7 @@ document.addEventListener("keydown", (e) => {
   const set = (f, val) => { a[f] = a[f] === val ? null : val; paint(); };
   if (k === "y" && Q[i].claim) set("claim_ok", true);
   else if (k === "n" && Q[i].claim) set("claim_ok", false);
+  else if (k === "p" && Q[i].claim) set("claim_ok", "partly");
   else if (k === "g") set("quality", "good");
   else if (k === "o") set("quality", "ok");
   else if (k === "b") set("quality", "bad");
