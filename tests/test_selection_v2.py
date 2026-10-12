@@ -136,3 +136,14 @@ def test_a_freshly_scored_clip_gets_a_status():
     c = {"audio_score": 0.6, "motion_score": 0.05}
     restatus(c, PF)
     assert c["prefilter_status"] == "AUDIO_PASS"
+
+
+def test_asian_language_clip_needs_a_real_outplay():
+    aj = {**AJ, "outplay_only_languages": ["ja", "zh"], "outplay_min_play": 7}
+    death = J("d", 8, 4, language="ja")
+    outplay = J("o", 8, 8, language="ja")
+    english = J("e", 8, 4, language="en")
+    for c in (death, outplay, english):
+        decide_api(c, aj)
+    assert death["api_decision"] == "DROP" and death["api_reason"].endswith("LANG_NEEDS_OUTPLAY")
+    assert outplay["api_decision"] == "KEEP" and english["api_decision"] == "KEEP"

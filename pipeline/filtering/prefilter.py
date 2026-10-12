@@ -167,8 +167,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
         scored.append(c)
     passed = [c for c in scored if c["prefilter_status"].endswith("PASS")]
 
+    # streamers whose clips are reliably good get a head start into the judge's queue
+    boost = {k.lower(): float(v) for k, v in (pf.get("boost_streamers") or {}).items()}
     for c in passed:
-        c["rank_score"] = rank_score(c, float(pf.get("audio_weight", 0.10)))
+        c["rank_score"] = round(rank_score(c, float(pf.get("audio_weight", 0.10)))
+                                + boost.get(c.get("broadcaster_name", "").lower(), 0.0), 3)
     if pf.get("rank", "loudness") == "signals":
         # moment clusters, self-clips, view rank, title keyword; loudness a small term
         passed.sort(key=lambda c: -c["rank_score"])

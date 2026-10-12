@@ -29,6 +29,7 @@ video:
   target_minutes_max: 11         # the raised bar, and publishes shorter rather than pad
                                  # (was a fixed 22: 21% of 10-06..10-11 clips were fillers,
                                  # incl. two World of Warcraft clips)
+  clip_loudnorm: true            # owner 10-09: loudness jumps between streamers
   max_per_streamer: 0            # owner 2026-10-12: no cap - Baus has many good clips. The
                                  # 10-07 problem was the SAME moment several times, which
                                  # prefilter.dedupe_moments now prevents.
@@ -113,12 +114,15 @@ prefilter:                       # owner 2026-10-12, after two outside reviews +
   quiet_gate: false
   audio_weight: 0                # owner: loudness says nothing (a silent KatEvolved outplay
                                  # on 10-10 was "perfect")
+  boost_streamers:               # owner 2026-10-12: "most of his clips are very good" -
+    thebausffs: 0.3              # his 'Supp vs Top' (10-06) was the day's best and ranked out
 
 api_judge:
   hard_facts: true
   filler_min_entertainment: 5
   filler_min_play: 4
   filler_focus: [gameplay]
+  outplay_only_languages: [ja, zh]   # owner: Asian-language clips only with a real outplay
 
 vlm_filter:
   mode: sanity                   # local 4B model: "is this League gameplay" only

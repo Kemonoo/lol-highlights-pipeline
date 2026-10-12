@@ -436,7 +436,12 @@ def _main_part(clip: dict, mp4: Path, vo: Path | None, out: Path, v: dict,
         a_in = "[asum]"
     else:
         a_in = "[am]"
-    fc.append(f"{a_in}{afade}[a]")
+    # Per-clip loudness levelling: streamers' mic levels differ wildly (owner, 10-09:
+    # nuclol's scream vs quiet streamers next to him); the master's single loudnorm
+    # only sets the WHOLE video's level, so each clip is levelled first.
+    level = ("loudnorm=I=-16:LRA=11:TP=-1.5,aresample=44100,"
+             if v.get("clip_loudnorm", False) else "")
+    fc.append(f"{a_in}{level}{afade}[a]")
 
     args += ["-filter_complex", ";".join(fc), "-map", "[v]", "-map", "[a]"]
     args += [*enc(v), str(out)]

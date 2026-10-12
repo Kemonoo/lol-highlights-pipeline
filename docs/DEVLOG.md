@@ -1457,3 +1457,21 @@ cheap checks, 60 get judged, and the pre-ranking (view rank, clusters, keywords)
 cannot tell a good mid-view clip from a dull one - views rank them 80+. Open: a free
 pre-screen of ALL candidates (owner's idea: Claude via `claude -p` on the subscription,
 frames + transcript), so the judge's 60 are chosen on content.
+
+### Same day: owner's 93 reviews (10-05..10-11) - what each gate is worth
+
+Reason-true rate per gate: static 8/8, not-gameplay 8/8 (+1 partly), blacklist 11/11,
+tournament 1/1 - KEEP these. Quiet: 6 true / 5 false / 3 partly, and it threw out 5 good
++ 3 ok clips (a silent KatEvolved base-fight outplay, Dantes screaming while coaching
+supertf measured "quiet") - the loudness measure is wrong both ways, so it decides
+nothing now (quiet_gate off, audio_weight 0; only local_judge's no-Gemini fallback still
+reads it). Pro-broadcast: 7 of 8 FALSE, 4 of them good clips (incl. an Allyooops
+pentakill) - no longer a gate (sanity mode; the judge answers it). vlm_weak lost 3 good
+clips (a "top-3 of the day" Yasuo-Yone 1v1). rank_cap lost 2 good (Baus "Supp vs Top" =
+day's best) -> `prefilter.boost_streamers` (thebausffs 0.3). Judge descriptions: 8 of 20
+"partly", wrong places/champions; one 7/10 pick was a Nexus end with nothing happening.
+Owner rules added: ja/zh clips only with play_quality >= 7
+(`api_judge.outplay_only_languages`); per-clip loudness levelling (`video.clip_loudnorm`).
+Ideas parked: a funny custom-game moment as outro/teaser (Jayden HEARTSTEEL vs KDA),
+streamers reacting to clips as Shorts material, finding the ORIGINAL clip when a streamer
+re-watches someone else's play.

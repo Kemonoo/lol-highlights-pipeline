@@ -249,6 +249,13 @@ HARD_FAILS = (("api_is_league_game", False, "NOT_LEAGUE"),
 def hard_fail(clip: dict, aj: dict) -> str:
     """The v5 fact that disqualifies this clip, or "". Never a filler either (select()
     reads the _NOT_LEAGUE/... suffix). Off unless `api_judge.hard_facts` is on."""
+    langs = {x.lower() for x in aj.get("outplay_only_languages", [])}
+    if langs and (clip.get("language") or "").lower() in langs \
+            and clip.get("api_play_quality", 0) < aj.get("outplay_min_play", 7):
+        # owner 2026-10-12: an English-speaking audience follows a ja/zh clip only
+        # through the play itself - a death + reaction in a language they can't
+        # understand is not a highlight (丁義 Irelia, 10-11).
+        return "LANG_NEEDS_OUTPLAY"
     if not aj.get("hard_facts", False):
         return ""
     for key, bad_value, label in HARD_FAILS:
