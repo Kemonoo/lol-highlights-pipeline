@@ -101,8 +101,13 @@ def fetch_metadata(cfg: dict, date_label: str, token: str) -> list[dict]:
         # Ask for a few more than fetch_count: Helix pagination repeats clips across
         # pages, and run() drops already-processed ones, so asking for exactly 222 came
         # back as 219. run() trims to exactly fetch_count afterwards.
+        limit = tw["fetch_count"] + int(tw.get("fetch_slack", 0))
+        if tw.get("eligible_only", False):
+            # page deeper: fetch_count then counts clips that pass the language and
+            # blacklist rules (on 10-08..10-11 ja/zh were ~60% of the top 222)
+            limit = max(limit, int(tw.get("max_raw", 1000)))
         clips = _fetch_page_loop(dict(base, game_id=tw["game_id"]), token, client_id,
-                                 tw["fetch_count"] + int(tw.get("fetch_slack", 0)))
+                                 limit)
     return dedup_by_views(clips)
 
 
@@ -153,6 +158,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if cfg["permissions"]["require_permission"]:
         clips = [c for c in clips
                  if state.permission_status(c.get("broadcaster_name", "")) == "approved"]
+    if cfg["twitch"].get("eligible_only", False):
+        from ..filtering.prefilter import eligible
+        bl = {b.lower() for b in cfg.get("blacklist", {}).get("broadcasters", [])}
+        before = len(clips)
+        clips = [c for c in clips if eligible(c, cfg.get("prefilter", {}), bl)]
+        log.info("Eligible (language / blacklist): %d of %d fetched", len(clips), before)
     if cfg["twitch"].get("mode") != "broadcasters":
         clips = clips[:cfg["twitch"]["fetch_count"]]     # the slack is only a buffer
 

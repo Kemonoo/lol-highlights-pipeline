@@ -19,6 +19,7 @@
 # If you cloned this repo: copy this file, don't use it — it is somebody else's channel.
 
 twitch:
+  eligible_only: true            # 222 = eligible clips (see prefilter), paging up to 1000 raw
   fetch_count: 222               # owner's pick: "222 clips in, 22 out". Twitch can return a
   max_fetch: 222                 # clip or two fewer than asked (219 of 220 on 2026-09-21);
                                  # max_fetch = fetch_count keeps expansion off, as upstream.
@@ -104,9 +105,13 @@ cleanup:
                                   # 200 GB/year of local disk if never pruned.
 
 prefilter:                       # owner 2026-10-12, after two outside reviews + his notes
-  include_languages: []          # language ban lifted: ja was 62% of the pool (videos shrank
-  exclude_languages: []          # to 14 clips) and it cost good clips; the judge decides now,
-                                 # captions translate. The blacklist still applies.
+  # ja/zh excluded again (owner, same day, after 93 reviews: 3 of 26 ja/zh clips good or
+  # ok vs 39 of 97 others; in the no-ban replay they took 41 of 60 judge slots for 2 real
+  # outplays). The pool no longer shrinks: twitch.eligible_only fetches until 222 of the
+  # clips are eligible. Proven ja/zh streamers go on the allow-list.
+  include_languages: []
+  exclude_languages: [ja, zh]
+  language_allow_streamers: [神楽めあ]   # owner rated her Annie outplay good (10-11)
   dedupe_moments: true
   max_keep: 80                   # gameplay check is cheap now (kill_scan off); ~75% pass,
                                  # which fills the judge's 60
@@ -127,7 +132,8 @@ api_judge:
 vlm_filter:
   mode: sanity                   # local 4B model: "is this League gameplay" only
   kill_scan: false               # ...and nothing else, so 80 candidates fit the night
-  max_keep: 60                   # clips the judge watches. 2026-10-12: with mode: sanity the
+  max_keep: 50                   # clips the judge watches. 50, not 60: 10 calls of headroom
+                                 # for failed requests and crash-retries (owner). 2026-10-12: with mode: sanity the
                                  # cheap stages no longer filter, so whatever ranks into this
                                  # cap IS the choice (10-11's replay lost Burrito ent 8 and
                                  # slimeIRL ent 7 below a cap of 35). 60 = 3 full Flash models'

@@ -98,7 +98,10 @@ twitch:
   fetch_count: 220            # clips to consider per day (start point) — now exact
   fetch_slack: 20             # extra clips requested and then trimmed away: Helix repeats
                               # clips across pages, so asking for exactly N gave N-3
-  expand_step: 150            # extra clips fetched per round when the video is short
+  eligible_only: false        # true = fetch_count counts clips that pass the language +
+                              # blacklist rules; pages up to max_raw raw clips to find them
+  max_raw: 1000
+  expand_step: 150           # extra clips fetched per round when the video is short
   max_fetch: 220              # = fetch_count -> expansion disabled (no stretching by
                               # digging deeper; ~20 clips from the normal pool is plenty)
   expand_keep_step: 25        # prefilter keep-cap raise per expansion round
@@ -135,6 +138,7 @@ prefilter:                    # hand-set thresholds (see filtering/scoring.py do
   quiet_gate: true            # false = quiet clips are not excluded, they compete on rank
   audio_weight: 0.10          # loudness share of the `signals` rank (0 = ignore loudness)
   boost_streamers: {}         # {name: bonus} added to the signals rank (0.0-1.0 scale)
+  language_allow_streamers: []  # streamers that pass the language rule whatever their tag
 
 vlm_filter:                   # model choice lives in llm.roles.vlm
   enabled: true

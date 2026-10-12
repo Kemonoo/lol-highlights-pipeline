@@ -94,6 +94,23 @@ def restatus(clip: dict, pf_cfg: dict) -> None:
     clip["prefilter_status"] = st
 
 
+def eligible(clip: dict, pf: dict, blacklist: set) -> bool:
+    """Language + blacklist gate, shared with fetch (`twitch.eligible_only`). Pure.
+    `language_allow_streamers` pass whatever their channel language: owner reviews
+    (2026-10-12) rated 3 of 26 ja/zh clips good or ok vs 39 of 97 others, and in a
+    no-ban replay ja/zh took 41 of 60 judge slots for 2 real outplays - but 36 recurring
+    streamers make 86% of those clips, so the few good ones are easy to list."""
+    who = (clip.get("broadcaster_name", "") or "").lower()
+    if who in blacklist:
+        return False
+    if who in {x.lower() for x in pf.get("language_allow_streamers", []) or []}:
+        return True
+    lang = (clip.get("language", "") or "").lower()
+    include = {l.lower() for l in pf.get("include_languages", [])}
+    exclude = {l.lower() for l in pf.get("exclude_languages", [])}
+    return lang in include if include else lang not in exclude
+
+
 def run(cfg: dict, state, date_label: str) -> Path:
     data = Path(cfg["paths"]["data_abs"])
     raw = json.loads((data / "raw" / date_label / "clips.json").read_text(encoding="utf-8"))
@@ -115,11 +132,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if include_langs or exclude_langs:
         before = len(clips)
 
-        def _keep(c: dict) -> bool:
-            lang = (c.get("language", "") or "").lower()
-            return lang in include_langs if include_langs else lang not in exclude_langs
-
-        clips = [c for c in clips if _keep(c)]
+        clips = [c for c in clips if eligible(c, pf, set())]
         if len(clips) < before:
             rule = (f"only {','.join(sorted(include_langs))}" if include_langs
                     else f"exclude {','.join(sorted(exclude_langs))}")

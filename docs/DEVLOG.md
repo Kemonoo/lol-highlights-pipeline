@@ -1475,3 +1475,15 @@ Owner rules added: ja/zh clips only with play_quality >= 7
 Ideas parked: a funny custom-game moment as outro/teaser (Jayden HEARTSTEEL vs KDA),
 streamers reacting to clips as Shorts material, finding the ORIGINAL clip when a streamer
 re-watches someone else's play.
+
+### Same day: ja/zh excluded again, fetch counts ELIGIBLE clips, judge 50
+
+Owner reconsidered after his 93 reviews: ja/zh 3 of 26 good/ok vs 39 of 97 others; the
+no-ban replay spent 41 of 60 judge calls on ja/zh for 2 real outplays. Excluded again,
+with `prefilter.language_allow_streamers` (神楽めあ) - 36 recurring streamers make 86%
+of ja/zh clips, so the good few are easy to list. The old starvation is fixed at the
+source instead: `twitch.eligible_only` pages up to `max_raw` (1000) raw clips until
+fetch_count (222) pass the language + blacklist rules (`prefilter.eligible`, shared).
+11 Oct: 966 raw -> 723 eligible; the 222nd eligible clip has 22 views.
+Judge max_keep 60 -> 50: 10 calls of headroom under the 3 x 20 free Flash allowance for
+failed requests and crash-retries (cached verdicts are never re-requested).

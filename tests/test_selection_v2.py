@@ -147,3 +147,13 @@ def test_asian_language_clip_needs_a_real_outplay():
         decide_api(c, aj)
     assert death["api_decision"] == "DROP" and death["api_reason"].endswith("LANG_NEEDS_OUTPLAY")
     assert outplay["api_decision"] == "KEEP" and english["api_decision"] == "KEEP"
+
+
+def test_language_rule_with_allow_list_and_blacklist():
+    from pipeline.filtering.prefilter import eligible
+    pf = {"include_languages": [], "exclude_languages": ["ja", "zh"],
+          "language_allow_streamers": ["Kagura"]}
+    assert eligible({"broadcaster_name": "kagura", "language": "ja"}, pf, set())
+    assert not eligible({"broadcaster_name": "other", "language": "ja"}, pf, set())
+    assert eligible({"broadcaster_name": "x", "language": "en"}, pf, set())
+    assert not eligible({"broadcaster_name": "x", "language": "en"}, pf, {"x"})
