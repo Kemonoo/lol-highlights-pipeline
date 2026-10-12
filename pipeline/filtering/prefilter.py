@@ -168,7 +168,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     passed = [c for c in scored if c["prefilter_status"].endswith("PASS")]
 
     for c in passed:
-        c["rank_score"] = rank_score(c)
+        c["rank_score"] = rank_score(c, float(pf.get("audio_weight", 0.10)))
     if pf.get("rank", "loudness") == "signals":
         # moment clusters, self-clips, view rank, title keyword; loudness a small term
         passed.sort(key=lambda c: -c["rank_score"])

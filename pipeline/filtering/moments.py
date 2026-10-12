@@ -115,12 +115,14 @@ def view_percentile(clips: list[dict]) -> None:
         c["view_pct"] = round(i / n, 3)
 
 
-def rank_score(c: dict) -> float:
+def rank_score(c: dict, audio_weight: float = 0.10) -> float:
     """Candidate order before any model has seen the clip (prefilter `rank: signals`).
-    Loudness is only a small term: among judged clips it correlated NEGATIVELY with the
-    judge (-0.19, 10-06..10-11) and the quiet gate dropped clips the owner rated good."""
+    Loudness is at most a small term (`prefilter.audio_weight`; the owner overlay sets
+    0): among judged clips it correlated NEGATIVELY with the judge (-0.19, 10-06..10-11),
+    the quiet gate dropped clips the owner rated good, and a "perfect" KatEvolved
+    base-teamfight outplay (10-10) has the streamer silent the whole time."""
     return round(0.30 * bool(c.get("keyword"))
                  + 0.25 * min(int(c.get("moment_size", 1)) - 1, 3) / 3
                  + 0.15 * bool(c.get("self_clip"))
                  + 0.20 * float(c.get("view_pct", 0))
-                 + 0.10 * min(float(c.get("audio_score", 0)), 1.0), 3)
+                 + audio_weight * min(float(c.get("audio_score", 0)), 1.0), 3)

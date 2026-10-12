@@ -109,6 +109,8 @@ prefilter:                       # owner 2026-10-12, after two outside reviews +
   dedupe_moments: true
   rank: signals
   quiet_gate: false
+  audio_weight: 0                # owner: loudness says nothing (a silent KatEvolved outplay
+                                 # on 10-10 was "perfect")
 
 api_judge:
   hard_facts: true

@@ -126,6 +126,7 @@ prefilter:                    # hand-set thresholds (see filtering/scoring.py do
                               # signals  = moment cluster size, self-clip, view rank within
                               #            the day, title keyword; loudness a small term
   quiet_gate: true            # false = quiet clips are not excluded, they compete on rank
+  audio_weight: 0.10          # loudness share of the `signals` rank (0 = ignore loudness)
 
 vlm_filter:                   # model choice lives in llm.roles.vlm
   enabled: true
