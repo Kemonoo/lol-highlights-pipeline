@@ -122,6 +122,13 @@ def detect(clip: dict, mp4: Path, ask, vf: dict, crops_dir: Path | None) -> None
         clip["vlm_summary"] = "not in-game gameplay"
         return
 
+    if not vf.get("kill_scan", True):
+        # Gameplay vote only (sanity mode): the judge answers pro-broadcast and sees the
+        # kills itself. The kill-feed scan was most of this stage's ~2 min/clip.
+        clip["kill_scan"] = False
+        clip["vlm_summary"] = "In-game LoL gameplay (no kill scan)"
+        return
+
     r = ask([frames[len(frames) // 2]], PRO_PLAY_PROMPT)
     clip["vlm_pro_play"] = bool(r.get("esports_broadcast", False)) if r else False
     if clip["vlm_pro_play"]:
@@ -141,7 +148,7 @@ def detect(clip: dict, mp4: Path, ask, vf: dict, crops_dir: Path | None) -> None
     )
 
 
-CACHE_KEYS = ("vlm_gameplay", "gameplay_votes", "vlm_pro_play", "kills_max",
+CACHE_KEYS = ("kill_scan", "vlm_gameplay", "gameplay_votes", "vlm_pro_play", "kills_max",
               "kill_frames", "multikill", "announcements", "eventlog",
               "eventlog_kill", "vlm_summary")
 
@@ -295,6 +302,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 thumb.write_bytes(f1[0])
 
         cached = cache.get(c["id"])
+        if cached and cached.get("kill_scan") is False and vf.get("kill_scan", True):
+            cached = None          # scanned without kills; kills wanted now - redo it
         if cached:
             c.update(cached)
             decide(c, vf, blacklist)   # rules re-applied fresh — tuning is free

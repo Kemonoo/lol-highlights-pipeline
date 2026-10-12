@@ -519,6 +519,14 @@ def run(cfg: dict, state, date_label: str) -> Path:
                                   "pass is OFF for this run; remaining clips scored "
                                   "locally", e)
                     consecutive_fails = max(consecutive_fails, 2)   # stop calling
+                elif getattr(e, "status", None) == 503 and advance():
+                    # "This model is currently experiencing high demand": a busy model,
+                    # not a dead API. Another id serves this clip; the busy one may be
+                    # fine again tomorrow. (Probed 2026-10-12: 3.5-flash-lite 503'd
+                    # while every other model answered.)
+                    log.warning("judge: model busy (503) - moving on to %s",
+                                provider.rc.model)
+                    continue
                 else:
                     consecutive_fails += 1
                     if consecutive_fails >= 2:

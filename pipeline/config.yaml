@@ -50,7 +50,14 @@ llm:
       # Verified 2026-09-02: with gemini-3.6-flash 429ing on quota, all three of these
       # still answered video on the same key. Keep them genuinely different models —
       # an alias that resolves to the primary is not a separate allowance.
+      # 2026-10-12: probed every candidate with a real clip on the free tier. Full Flash
+      # models first (3.8 is the newest; 3-flash-preview is a separate id), then the Lite
+      # ones. 404 "no longer available to new users": the whole 2.5 family. Gemma 4
+      # rejects audio and took ~4 min per clip video-only - not usable here.
       overflow_models:
+        - gemini-3.8-flash
+        - gemini-3-flash-preview
+        - gemini-3.5-flash-lite
         - gemini-3.1-flash-lite
         - gemini-flash-latest
         - gemini-flash-lite-latest
@@ -147,6 +154,8 @@ vlm_filter:                   # model choice lives in llm.roles.vlm
                               # being scarce once the role gained overflow_models.
                               # Quality is unaffected: the judge still applies the same
                               # bar, it just gets more to choose from.
+  kill_scan: true             # false = gameplay vote only, no kill-feed / banner / pro-UI scan
+                              # (sanity mode: the judge sees kills itself). ~10x faster.
   # ── stepwise judgment (see vlm_filter.py docstring) ──
   gameplay_frames: 3          # frames for the binary gameplay majority vote
   killfeed_every_s: 5         # seconds between kill-feed crop checks

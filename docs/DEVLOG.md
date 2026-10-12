@@ -1430,3 +1430,30 @@ Changes (config keys default to the old behaviour; config.kemono.yaml enables th
 
 Next (owner decides): format (teaser opener, order, trim to the action window, outro,
 editing layer), a paid/stronger judge watching every candidate, a Claude editor pass.
+
+### Same day: free judge capacity, kill scan off, what the replays showed
+
+Owner: no billing. Probed every Gemini model on the free key with a real clip (one call
+each; NB providers are cached per role - the first probe silently reused one model for
+all ids, so reset_cache() per id): gemini-3.8-flash, gemini-3-flash-preview and
+gemini-3.5-flash-lite answer video+audio for free; the whole 2.5 family is "no longer
+available to new users"; gemma-4-31b-it rejects audio and took ~4 min per clip
+video-only. Judge chain is now 3.6 -> 3.8 -> 3-preview -> 3.5-lite -> 3.1-lite ->
+aliases; a 503 "high demand" moves the clip to the next model instead of counting
+toward "API dead". vlm `kill_scan: false` (gameplay vote only; most of the stage's
+~2 min/clip was the kill-feed scan), prefilter max_keep 80, judge max_keep 60.
+
+Paid cost, for the record (pricing page 2026-10-12): gemini-3.8-flash $0.75/M input
+(all modalities) / $3.75/M output through 2026, double from 2027-01-01. A 30 s clip is
+~100 tok/s at low media resolution (66/frame + 32 audio) or ~290 tok/s at high, plus
+~900 prompt and ~350 output -> $0.004-0.0085 per clip -> $0.63-1.28/day for 150 clips
+($19-38/month in 2026, $38-77 from 2027). gemini-3.5-flash-lite $0.30/M in, $2.50/M
+out -> ~$0.002/clip, ~$9/month.
+
+Replay 10-11 #2 (60 judged, all by Gemini): 20 clips / 10.8 min, 0 fillers, 4 fact drops
+(pro broadcast, 2 not-playing, 1 not League). KatEvolved 9 of 20. But the old picks
+Burrito (ent 8), slimeIRL (7), Drututt never reached the judge: 171 clips pass the
+cheap checks, 60 get judged, and the pre-ranking (view rank, clusters, keywords)
+cannot tell a good mid-view clip from a dull one - views rank them 80+. Open: a free
+pre-screen of ALL candidates (owner's idea: Claude via `claude -p` on the subscription,
+frames + transcript), so the judge's 60 are chosen on content.
