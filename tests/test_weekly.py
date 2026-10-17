@@ -2,11 +2,14 @@
 import pytest
 
 from pipeline.publishing.weekly import (
+    all_themes,
     description_head,
     is_last_day,
     label_for,
+    pick_theme,
     select,
     theme_filter,
+    thumb_text,
     title_for,
     to_clips,
     week_dates,
@@ -79,15 +82,41 @@ def test_fills_to_target_and_never_past_max():
 def test_theme_categories_streamers_and_champions():
     cats = [{"key": "pentakills", "label": "Pentakills", "pattern": "penta"}]
     assert theme_filter("best", cats) is None
-    label, pred = theme_filter("pentakills", cats)
-    assert label == "Pentakills"
-    assert pred(row("a", "x", 9, text="PENTAKILL")) and not pred(row("b", "x", 9))
-    label, pred = theme_filter("streamer:TheBausffs", cats)
-    assert pred(row("a", "thebausffs", 9)) and not pred(row("b", "x", 9))
-    label, pred = theme_filter("champion:yasuo", cats)
-    assert label == "Yasuo Plays" and pred(row("a", "x", 9, text="insane Yasuo 1v3"))
+    t = theme_filter("pentakills", cats)
+    assert t["label"] == "Pentakills"
+    assert t["pred"](row("a", "x", 9, text="PENTAKILL")) and not t["pred"](row("b", "x", 9))
+    t = theme_filter("streamer:TheBausffs", cats)
+    assert t["streamer"] and t["pred"](row("a", "thebausffs", 9))
+    t = theme_filter("champion:kai'sa", cats)
+    assert t["label"] == "Kai'sa Plays" and t["pred"](row("a", "x", 9, text="Kai'Sa 1v3"))
     with pytest.raises(ValueError):
         theme_filter("nope", cats)
+
+
+def test_rotation_takes_the_theme_used_longest_ago_that_qualifies():
+    cats = [{"key": "pentakills", "label": "Pentakills", "pattern": "penta"},
+            {"key": "outplays", "label": "Outplays", "pattern": "outplay"}]
+    themes = all_themes(cats, ["yasuo"], ["Baus"])
+    assert [t["key"] for t in themes] == ["pentakills", "outplays", "champion:yasuo",
+                                          "streamer:baus"]
+    rows = [row(str(i), f"s{i}", 8, text="penta outplay") for i in range(10)]
+    enough = lambda t: [r for r in rows if t["pred"](r)][:8]       # noqa: E731
+    assert pick_theme(themes, [], enough)["key"] == "pentakills"
+    hist = [{"theme_key": "pentakills"}]
+    assert pick_theme(themes, hist, enough)["key"] == "outplays"
+    assert pick_theme(themes, hist, lambda t: []) is None               # -> best-of
+
+
+def test_themed_selection_lifts_the_streamer_cap():
+    rows = [row(c, "baus", 9.0 - i * 0.1) for i, c in enumerate("abcd")]
+    got = select(rows, WEEK, set(), length=LEN, max_per_streamer=0, target_s=1000,
+                 max_s=2000)
+    assert len(got) == 4
+
+
+def test_thumb_text_names_theme_and_count():
+    assert thumb_text({}, 10, "Pentakills") == "10 PENTAKILLS"
+    assert thumb_text({}, 19, "") == "WEEK'S BEST"
 
 
 def test_to_clips_ranks_n_to_1_and_drops_machine_paths():
@@ -103,7 +132,7 @@ def test_title_label_and_description():
     assert label_for("2026-10-17") == "weekly_2026-10-17"
     assert title_for("Best League Plays of the Week #{episode}", 3, 12) == \
         "Best League Plays of the Week #3"
-    assert title_for("Best {Label} of the Week #{episode}", 1, 8, "pentakills") == \
-        "Best Pentakills of the Week #1"
+    assert title_for("Top {n} {Label} of the Week", 1, 10, "Pentakills") == \
+        "Top 10 Pentakills of the Week"
     head = description_head(12, "", ["abc"])
     assert "Top 12" in head[0] and "https://youtu.be/abc" in head

@@ -1542,3 +1542,21 @@ once a week built from the clips already published. `publishing/weekly.py`, stag
   rotation) now accept or skip `weekly_*` folders.
 - Owner overlay: enabled, `upload: false` until the owner has watched the first render
   (data/output/weekly_2026-10-17.mp4, week 10-11..10-17).
+
+### Same day: themed weeklies, scoreboard-free thumbnails
+
+Owner on the first render: "Best plays of the week" is what the daily already is - not
+clickable; and the thumbnail showed someone holding TAB. `weekly.theme: rotate` (default):
+the theme used longest ago with >= 8 clips at judge score >= 7 that week (ranking_shorts
+categories, then one per Data Dragon champion, then one per streamer, no per-streamer cap
+on a streamer theme); best-of only when none qualifies. "Top {n} {Label} of the Week",
+thumbnail "10 PENTAKILLS". Ledger history records `theme_key` for the rotation. Last
+three weeks all qualify for pentakills (14-18 clips >= 7; the judge text really says
+pentakill in ~13 of 14); the next pick would be outplays.
+Thumbnail (daily too - the 10-12 daily had the same TAB frame of the same clip, 10-13 an
+empty map): `thumbnail.clip_frame_check` (owner overlay on) - 8 frames across the judge's
+action window, the `vlm` role asked one question per frame (scoreboard open? then live
+fighting?), scoreboard/no-action frames never used, the 3 best clips tried before the old
+colour pick. Re-render: the #1 clip's best moment (47 s) WAS the scoreboard - caught;
+29 s used. NB the "action" question answered yes on all 7 other frames; the scoreboard
+question is the one doing the work.

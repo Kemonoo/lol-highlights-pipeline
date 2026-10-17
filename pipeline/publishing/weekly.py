@@ -67,27 +67,59 @@ def score(row: dict) -> tuple:
             float(f.get("api_entertainment") or 0) + float(f.get("api_play_quality") or 0))
 
 
-def theme_filter(theme: str, categories: list[dict]):
-    """-> (label, predicate) for `weekly.theme`, or None for "best" (every clip).
-    "<category key>" (ranking_shorts.categories), "streamer:<login>", "champion:<name>"."""
+def _category(c: dict) -> dict:
     from .ranking_shorts import clip_text
+    pat = re.compile(c["pattern"], re.I)
+    return {"key": c["key"], "label": c["label"],
+            "pred": lambda r: bool(pat.search(clip_text(r)))}
+
+
+def _champion(name: str) -> dict:
+    from .ranking_shorts import clip_text
+    pat = re.compile(r"\b" + re.escape(name) + r"\b", re.I)
+    label = " ".join(w[:1].upper() + w[1:] for w in name.split())
+    return {"key": f"champion:{name.lower()}", "label": f"{label} Plays",
+            "pred": lambda r: bool(pat.search(clip_text(r)))}
+
+
+def _streamer(who: str) -> dict:
+    return {"key": f"streamer:{who.lower()}", "label": f"{who} Plays", "streamer": True,
+            "pred": lambda r: (r.get("broadcaster") or "").lower() == who.lower()}
+
+
+def theme_filter(theme: str, categories: list[dict]) -> dict | None:
+    """One fixed `weekly.theme` -> {key, label, pred[, streamer]}, or None for "best".
+    "<category key>" (ranking_shorts.categories), "streamer:<login>", "champion:<name>"."""
     theme = (theme or "best").strip()
     if theme.lower() == "best":
         return None
     if theme.lower().startswith("streamer:"):
-        who = theme.split(":", 1)[1].strip().lower()
-        return (f"{theme.split(':', 1)[1].strip()} Plays",
-                lambda r: (r.get("broadcaster") or "").lower() == who)
+        return _streamer(theme.split(":", 1)[1].strip())
     if theme.lower().startswith("champion:"):
-        name = theme.split(":", 1)[1].strip()
-        pat = re.compile(r"\b" + re.escape(name) + r"\b", re.I)
-        return f"{name.title()} Plays", lambda r: bool(pat.search(clip_text(r)))
+        return _champion(theme.split(":", 1)[1].strip())
     for c in categories or []:
         if c.get("key") == theme:
-            pat = re.compile(c["pattern"], re.I)
-            return c["label"], lambda r: bool(pat.search(clip_text(r)))
-    raise ValueError(f"weekly.theme {theme!r}: not 'best', a ranking_shorts category key, "
-                     f"'streamer:<login>' or 'champion:<name>'")
+            return _category(c)
+    raise ValueError(f"weekly.theme {theme!r}: not 'best', 'rotate', a ranking_shorts "
+                     f"category key, 'streamer:<login>' or 'champion:<name>'")
+
+
+def all_themes(categories: list[dict], champions: list[str], streamers: list[str]) -> list:
+    """Every theme `rotate` may pick, in preference order: the regex categories, then
+    one per champion name, then one per streamer."""
+    return ([_category(c) for c in categories or []] + [_champion(c) for c in champions]
+            + [_streamer(s) for s in streamers])
+
+
+def pick_theme(themes: list[dict], history: list[dict], qualifies) -> dict | None:
+    """The theme used longest ago (never = first, then list order) for which
+    `qualifies(theme)` returns a selection; -> {**theme, "picks": selection} or None."""
+    last = {h.get("theme_key"): i for i, h in enumerate(history or [])}
+    for t in sorted(themes, key=lambda t: last.get(t["key"], -1)):
+        picks = qualifies(t)
+        if picks:
+            return {**t, "picks": picks}
+    return None
 
 
 def select(rows: list[dict], dates: list[str], used: set, *, length, min_score: float = 6.0,
@@ -152,9 +184,17 @@ def to_clips(picks: list[dict]) -> list[dict]:
 
 
 def title_for(template: str, episode: int, n: int, label: str = "") -> str:
-    return re.sub(r"\s{2,}", " ", template.format(episode=episode, n=n, label=label,
-                                                  Label=label.title(),
+    return re.sub(r"\s{2,}", " ", template.format(episode=episode, n=n, label=label.lower(),
+                                                  Label=label,
                                                   LABEL=label.upper())).strip()[:100]
+
+
+def thumb_text(wc: dict, n: int, label: str = "") -> str:
+    """'10 PENTAKILLS' for a theme, 'WEEK'S BEST' for the plain best-of. Pure."""
+    if label:
+        return str(wc.get("theme_thumb_text", "{n} {LABEL}")).format(
+            n=n, LABEL=label.upper(), Label=label)
+    return str(wc.get("thumb_text", "WEEK'S BEST")).format(n=n)
 
 
 def description_head(n: int, label: str, sources: list[str]) -> list[str]:
@@ -238,12 +278,19 @@ def _length_fn(cfg: dict):
     return lambda r: length(r.get("filter") or {}, v)
 
 
-def plan(cfg: dict, week_ending: str) -> tuple[list[dict], str]:
-    """(countdown-ordered vlm_filtered rows, theme label) for the week."""
+def _champions(data: Path) -> list[str]:
+    """Champion names (lower case) from the thumbnail stage's Data Dragon cache."""
+    names = _read(data / "cache" / "ddragon_champions.json", {}) or {}
+    return sorted(n for n in names if len(n) > 2)
+
+
+def plan(cfg: dict, week_ending: str, history: list | None = None) -> tuple[list[dict], dict]:
+    """(countdown-ordered vlm_filtered rows, theme {key, label} - empty for best-of)."""
     wc = cfg.get("weekly", {})
     data = Path(cfg["paths"]["data_abs"])
     rows = _rows(data)
-    used = set(_load_state(data)["used"])
+    st = _load_state(data)
+    used = set(st["used"])
     dates = week_dates(week_ending, int(wc.get("days", 7)))
     kw = dict(length=_length_fn(cfg), min_score=float(wc.get("min_score", 6.0)),
               max_per_streamer=int(wc.get("max_per_streamer", 3)),
@@ -251,20 +298,35 @@ def plan(cfg: dict, week_ending: str) -> tuple[list[dict], str]:
               max_s=float(wc.get("max_minutes", 10.5)) * 60,
               max_clips=int(wc.get("max_clips", 20)),
               moment_window_s=float(cfg.get("prefilter", {}).get("moment_window_s", 90)))
-    label = ""
-    th = theme_filter(wc.get("theme", "best"),
-                      cfg.get("ranking_shorts", {}).get("categories", []))
-    picks = []
-    if th:
-        label, pred = th
-        picks = select(rows, dates, used, predicate=pred, **kw)
-        if len(picks) < int(wc.get("min_clips", 6)):
-            log.info("weekly: theme %r has only %d clips - best of the week instead",
-                     wc.get("theme"), len(picks))
-            label, picks = "", []
-    if not picks:
-        picks = select(rows, dates, used, **kw)
-    return to_clips(picks), label
+    tkw = {**kw, "min_score": float(wc.get("theme_min_score", 7.0)),
+           "max_clips": int(wc.get("theme_max_clips", 10)), "target_s": kw["max_s"]}
+    need = int(wc.get("theme_min_clips", 8))
+
+    def qualifies(t: dict) -> list:
+        k = {**tkw, "max_per_streamer": 0} if t.get("streamer") else tkw
+        got = select(rows, dates, used, predicate=t["pred"], **k)
+        return got if len(got) >= need else []
+
+    cats = wc.get("categories") or cfg.get("ranking_shorts", {}).get("categories", [])
+    mode = str(wc.get("theme", "rotate")).strip()
+    theme = None
+    if mode.lower() == "rotate":
+        week = {r.get("broadcaster") for r in rows if r.get("date") in set(dates)}
+        themes = all_themes(cats, _champions(data) if wc.get("champion_themes", True) else [],
+                            sorted(w for w in week if w) if wc.get("streamer_themes", True)
+                            else [])
+        theme = pick_theme(themes, st["history"] if history is None else history,
+                           qualifies)
+    else:
+        t = theme_filter(mode, cats)
+        if t:
+            picks = qualifies(t)
+            theme = {**t, "picks": picks} if picks else None
+    if theme:
+        return to_clips(theme["picks"]), {"key": theme["key"], "label": theme["label"]}
+    log.info("weekly: no theme has %d clips >= %.1f this week - best of the week", need,
+             tkw["min_score"])
+    return to_clips(select(rows, dates, used, **kw)), {}
 
 
 # ── entry ─────────────────────────────────────────────────────────────────────
@@ -304,9 +366,10 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
         sel = {"clips": clips, "theme": theme, "week_ending": week_ending}
         sel_f.write_text(json.dumps(sel, indent=1, ensure_ascii=False), encoding="utf-8")
         log.info("weekly %s: %d clips%s, %.1f min before trim", label, n,
-                 f" ({theme})" if theme else "",
+                 f" ({theme['label']})" if theme else "",
                  sum(float(c.get("duration", 30)) for c in clips) / 60)
-    clips, theme = sel["clips"], sel.get("theme", "")
+    clips, theme = sel["clips"], sel.get("theme") or {}
+    tl = theme.get("label", "")
     _download(cfg, label, clips)                       # a retry after raw cleanup
 
     _seed_caches(data, work, clips)
@@ -319,14 +382,14 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
         chapters = json.loads((work / "chapters.json").read_text(encoding="utf-8")
                               .rstrip("\x00"))
         episode = len(st["history"]) + 1
-        tmpl = wc.get("theme_title" if theme else "title",
-                      "Best League Plays of the Week #{episode}")
+        tmpl = (wc.get("theme_title", "Top {n} {Label} of the Week") if tl
+                else wc.get("title", "Best League Plays of the Week #{episode}"))
         meta = credits.build_metadata(cfg, label, chapters, clips, episode)
-        meta["title"] = title_for(tmpl, episode, len(chapters), theme)
+        meta["title"] = title_for(tmpl, episode, len(chapters), tl)
         sources = list(dict.fromkeys(c["weekly_source_video"] for c in clips
                                      if c.get("weekly_source_video")))
         body = meta["description"].split("\n", 1)[1]
-        meta["description"] = "\n".join(description_head(len(chapters), theme, sources)) \
+        meta["description"] = "\n".join(description_head(len(chapters), tl, sources)) \
             + "\n" + body
         meta["tags"] = (["lol best plays of the week", "league of legends weekly"]
                         + meta["tags"])[:30]
@@ -337,8 +400,7 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
     # thumbnail text: the clip provider reads title_hook.json's `thumb`
     hook_f = work / credits.HOOK_CACHE
     if not hook_f.exists():
-        thumb = str(wc.get("thumb_text", "WEEK'S BEST")).format(
-            n=len(clips), label=theme.upper() if theme else "")
+        thumb = thumb_text(wc, len(clips), tl)
         hook_f.write_text(json.dumps({"hook": meta.get("title", ""), "thumb": thumb}),
                           encoding="utf-8")
     if not (work / "thumbnail.jpg").exists():
@@ -353,7 +415,8 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
         st["used"] = sorted(set(st["used"]) | {c["id"] for c in clips})
         if not any(h.get("week_ending") == week_ending for h in st["history"]):
             st["history"].append({"week_ending": week_ending, "label": label,
-                                  "theme": theme, "clips": [c["id"] for c in clips],
+                                  "theme_key": theme.get("key"), "theme": tl,
+                                  "clips": [c["id"] for c in clips],
                                   "episode": (meta.get("weekly") or {}).get("episode"),
                                   "youtube_id": vid})
         _save_state(data, st)

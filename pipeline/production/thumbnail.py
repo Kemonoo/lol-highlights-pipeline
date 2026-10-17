@@ -1134,20 +1134,117 @@ def _frame_at(mp4: Path, t: float) -> "Image.Image | None":
         return Image.open(p).convert("RGB")
 
 
+def _colour(im: "Image.Image") -> float:
+    """Saturation x brightness of the frame's centre: fights are colourful, death screens
+    grey, menus flat."""
+    import numpy as np
+    a = np.asarray(im.resize((192, 108)).convert("HSV"), dtype=float)
+    return float(((a[..., 1] / 255) * (a[..., 2] / 255))[10:86, 15:153].mean())
+
+
 def _busiest_frame(mp4: Path, best_s: float, duration: float) -> "Image.Image | None":
     """Of 5 frames around the peak, the one with the most colour in the centre."""
-    import numpy as np
     best = None
     for dt in (-1.5, -0.75, 0.0, 0.75, 1.5):
         t = min(max(best_s + dt, 0.2), max(duration - 0.3, 0.2))
         im = _frame_at(mp4, t)
         if im is None:
             continue
-        a = np.asarray(im.resize((192, 108)).convert("HSV"), dtype=float)
-        score = ((a[..., 1] / 255) * (a[..., 2] / 255))[10:86, 15:153].mean()
+        score = _colour(im)
         if best is None or score > best[0]:
             best = (score, im)
     return best[1] if best else None
+
+
+# Owner 2026-10-18: a thumbnail showed someone holding TAB (the scoreboard) instead of
+# the fight - the colour metric loves the scoreboard's icons. Candidate frames now come
+# from the judge's action window and the local `vlm` role vets each one, ONE simple
+# question per call (the 4B model fails multi-question prompts).
+SCOREBOARD_PROMPT = (
+    "Look at this League of Legends screenshot. Is the scoreboard open: a large table "
+    "across the middle of the screen with rows of champion portraits, kill/death/assist "
+    'numbers and item icons? Answer JSON {"scoreboard": true} or {"scoreboard": false}.')
+ACTION_PROMPT = (
+    "Does this screenshot show live League of Legends gameplay with champions fighting "
+    "(spell effects, attacks) on the map? Answer false for a grey death screen, the item "
+    'shop, a menu, a loading screen or a stats table. Answer JSON {"action": true} or '
+    '{"action": false}.')
+
+
+def frame_times(clip: dict, duration: float, n: int = 8) -> list[float]:
+    """Candidate thumbnail times: n points across the judge's action window (else +-4 s
+    around the best moment, else the middle 40% of the clip), best moment first. Pure."""
+    dur = max(float(duration or 0), 1.0)
+    best = float(clip.get("api_best_moment_s") or 0)
+    a, b = clip.get("api_action_start_s"), clip.get("api_action_end_s")
+    if a is not None and b is not None and float(b) > float(a) and float(b) > 0:
+        a, b = float(a), float(b)
+    elif 0 < best < dur:
+        a, b = best - 4, best + 4
+    else:
+        a, b = dur * 0.3, dur * 0.7
+    a, b = max(a, 0.2), min(b, dur - 0.3)
+    if b <= a:
+        a, b = 0.2, max(dur - 0.3, 0.3)
+    pts = [a + (b - a) * i / max(n - 1, 1) for i in range(n)]
+    if a <= best <= b:
+        pts = [best] + pts
+    out: list = []
+    for t in pts:
+        if all(abs(t - u) >= 0.4 for u in out):
+            out.append(round(t, 2))
+    return out[:n]
+
+
+def pick_frame(cands: list[dict]) -> int | None:
+    """Index of the frame to use: never a scoreboard or a frame the model called "no
+    action"; model-confirmed action beats unasked; then the most colourful. Pure."""
+    ok = [(i, c) for i, c in enumerate(cands)
+          if not c.get("scoreboard") and c.get("action") is not False]
+    if not ok:
+        return None
+    return max(ok, key=lambda ic: (ic[1].get("action") is True, ic[1].get("colour", 0)))[0]
+
+
+def _vlm_yes(provider, im: "Image.Image", prompt: str, key: str) -> bool | None:
+    import io
+    buf = io.BytesIO()
+    im.convert("RGB").resize((960, int(960 * im.height / im.width))).save(
+        buf, "JPEG", quality=88)
+    try:
+        r = provider.complete_json(prompt, images=[buf.getvalue()], schema={
+            "type": "object", "properties": {key: {"type": "boolean"}}})
+    except Exception as e:
+        log.info("  thumbnail frame check: vlm failed (%s)", e)
+        return None
+    return bool(r[key]) if isinstance(r, dict) and key in r else None
+
+
+def action_frame(cfg: dict, clip: dict, mp4: Path, duration: float,
+                 provider=None) -> "Image.Image | None":
+    """The clip's best real-action frame, or None when every candidate is a scoreboard /
+    death screen / menu. Without a vlm provider: the most colourful candidate."""
+    th = cfg.get("thumbnail", {})
+    cands, ims = [], []
+    for t in frame_times(clip, duration, int(th.get("clip_frame_candidates", 8))):
+        im = _frame_at(mp4, t)
+        if im is None:
+            continue
+        c = {"t": t, "colour": _colour(im)}
+        if provider is not None:
+            c["scoreboard"] = _vlm_yes(provider, im, SCOREBOARD_PROMPT, "scoreboard")
+            if not c["scoreboard"]:
+                c["action"] = _vlm_yes(provider, im, ACTION_PROMPT, "action")
+        cands.append(c)
+        ims.append(im)
+    i = pick_frame(cands)
+    marks = " ".join(f"{c['t']:.0f}s" + ("S" if c.get("scoreboard") else
+                                          "+" if c.get("action") else
+                                          "-" if c.get("action") is False else "")
+                     for c in cands)
+    log.info("  thumbnail frames %s: %s -> %s", str(clip.get("id", ""))[:24], marks,
+             f"{cands[i]['t']:.1f}s" if i is not None else "none")
+    return ims[i] if i is not None else None
 
 
 def _pop(img: "Image.Image") -> "Image.Image":
@@ -1345,12 +1442,30 @@ def generate_clip(cfg: dict, date_label: str) -> Path | None:
     clips = json.loads(src.read_text(encoding="utf-8").rstrip("\x00"))["clips"]
     if not clips:
         return None
-    top = max(clips, key=lambda c: c.get("api_rank_score", 0))
+    ranked = sorted(clips, key=lambda c: c.get("api_rank_score", 0), reverse=True)
+    top, frame = ranked[0], None
     mp4 = _resolve_mp4(top, data / "raw" / date_label)
+    th = cfg.get("thumbnail", {})
+    if th.get("clip_frame_check", False):
+        provider = None
+        try:
+            from ..providers import get_provider
+            provider = get_provider(cfg, "vlm", vision=True)
+        except Exception as e:
+            log.info("  thumbnail: no vlm for the frame check (%s) - colour only", e)
+        for c in ranked[:max(int(th.get("clip_frame_clips", 3)), 1)]:
+            m = _resolve_mp4(c, data / "raw" / date_label)
+            if not m:
+                continue
+            f = action_frame(cfg, c, m, float(c.get("duration", 30) or 30), provider)
+            if f is not None:               # the best clip with a real-action frame
+                top, mp4, frame = c, m, f
+                break
     if not mp4:
         return None
     dur = float(top.get("duration", 30) or 30)
-    frame = _busiest_frame(mp4, float(top.get("api_best_moment_s", 0) or 0), dur)
+    if frame is None:
+        frame = _busiest_frame(mp4, float(top.get("api_best_moment_s", 0) or 0), dur)
     if frame is None:
         return None
     box = None

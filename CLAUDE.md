@@ -143,6 +143,8 @@ relative to `pipeline/`).
     `clip_rotation` (owner overlay on): date-seeded layout pip/bigface (`compose_bigface`:
     gameplay left, face-zoomed webcam right) x 5 palettes; pick saved to
     `work/<date>/thumbnail_style.json` for CTR comparison via tools/yt_analytics.
+    `clip_frame_check`: the frame comes from the judge's action window, vetted by the `vlm`
+    role (no TAB scoreboard / death screen / menu; next-best clip if none qualifies).
     `gemini` builds a viral reaction thumbnail via the `thumbnail_image` role
     ("Nano Banana", paid ~$0.04/img): picks the highest-ranked clip WITH a detectable
     facecam, has the model enhance that facecam into an over-the-top excited/shocked
@@ -175,8 +177,10 @@ relative to `pipeline/`).
     compilation Shorts ("top 5 pentakills of the week", per-streamer best-ofs).
     `--backfill` logs every saved date
 14. `publishing/weekly.py` — once a week (no-op unless the date is the day before
-    `weekly.weekday`) "Best League Plays of the Week #N": the week's best clip_log rows
-    (judge score, one per moment, ~9 min, countdown; optional `weekly.theme`) re-downloaded
+    `weekly.weekday`) a THEMED compilation ("Top 10 Pentakills of the Week": `weekly.theme:
+    rotate` = theme used longest ago with >= 8 strong clips - ranking_shorts categories,
+    champions, streamers; plain best-of only as fallback) from clip_log rows (judge score,
+    one per moment, countdown) re-downloaded
     and rendered by transcribe/assemble/thumbnail/upload under the label `weekly_<date>`
     (work/, raw/, output/weekly_<date>.mp4; date-dir scanners skip `weekly_*`). Ledger
     `data/weekly.json` (used ids, #N) written on upload; `weekly.upload` gates publishing.
