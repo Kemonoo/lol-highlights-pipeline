@@ -51,7 +51,8 @@ relative to `pipeline/`).
 2. `filtering/prefilter.py` — free local scoring: title keywords / tournament exclude /
    audio-hype / motion (functions from `filtering/scoring.py`) + broadcaster blacklist
    → `work/<date>/prefiltered.json`. `dedupe_moments` (filtering/moments.py): one clip per
-   moment (same VOD within 90 s) + no moment published in the last 14 days; `rank: signals`
+   moment (same VOD within 90 s; `moment_prefer: short` = shorter of comparable clips)
+   + no moment published in the last 14 days; `rank: signals`
    orders by moment-cluster size, self-clip, view rank, keyword (loudness a small term)
 3. `filtering/vlm_filter.py` + `filtering/kill_detect.py` — local VLM via the `vlm`
    role, STEPWISE
@@ -65,7 +66,10 @@ relative to `pipeline/`).
 4. `filtering/api_judge.py` — the `judge` role watches survivors as full video (shrunk
    to `shrink_height`, default 720p; inline ≤`max_mb`, default 90MB — larger goes via the
    provider's Files API), scores focus/play_quality/entertainment against a JSON schema
-   (cache `api_partial_v5.json` — v5 since 2026-10-12 adds facts: is_league_game /
+   (before the queue cut, `filtering/prescreen.py` lets the `prescreen` role - Claude via
+   `claude -p` on the owner's subscription, `providers/claude_code.py`, API key stripped -
+   score an 8-frame contact sheet of every gameplay candidate and order the queue;
+   `prescreen.enabled`, never drops a clip) (cache `api_partial_v5.json` — v5 since 2026-10-12 adds facts: is_league_game /
    pro_broadcast / streamer_playing (hard drops with `api_judge.hard_facts`), play_by,
    action_start_s/end_s; v4 since 2026-09-24: the judge
    used to watch Twitch's portrait-360 LQ copy; it now only reuses the LQ copy when it is
@@ -120,7 +124,8 @@ relative to `pipeline/`).
    ducking, 0.3s fades (or `video.transitions`: seeded glitch/whip/pixelate cuts split
    across each boundary, `production/transitions.py`; owner overlay also drops the intro),
    0.5x REPLAY part for clips with api_rank_score ≥ replay_min_score
-   using api_best_moment_s) → outro (when `video.outro_music`: KEMONO logo over the
+   using api_best_moment_s; `video.trim` cuts each clip to the judge's action window,
+   `production/trim.py`) → outro (when `video.outro_music`: KEMONO logo over the
    energy-detected drop of an NCS track, `_find_drop`; else text card) → concat
    demuxer → master (looped music bed, sidechain-ducked under clip audio so music rises
    in quiet gaps + single-pass loudnorm, video stream copied)

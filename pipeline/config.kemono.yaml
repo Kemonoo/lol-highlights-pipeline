@@ -30,6 +30,8 @@ video:
   target_minutes_max: 11         # the raised bar, and publishes shorter rather than pad
                                  # (was a fixed 22: 21% of 10-06..10-11 clips were fillers,
                                  # incl. two World of Warcraft clips)
+  trim:
+    enabled: true                # owner 2026-10-18: cut to the judge's action window
   clip_loudnorm: true            # owner 10-09: loudness jumps between streamers
   max_per_streamer: 0            # owner 2026-10-12: no cap - Baus has many good clips. The
                                  # 10-07 problem was the SAME moment several times, which
@@ -113,14 +115,20 @@ prefilter:                       # owner 2026-10-12, after two outside reviews +
   exclude_languages: [ja, zh]
   language_allow_streamers: [神楽めあ]   # owner rated her Annie outplay good (10-11)
   dedupe_moments: true
-  max_keep: 80                   # gameplay check is cheap now (kill_scan off); ~75% pass,
-                                 # which fills the judge's 60
+  moment_prefer: short           # owner 2026-10-18: of comparable clips, the shorter one
+  max_keep: 120                  # 2026-10-18: wider pool for the Claude pre-screen to choose
+                                 # the judge's 50 from (was 80 -> ~60 gameplay; the VLM check
+                                 # is ~16 s/clip, so +11 min a night)
   rank: signals
   quiet_gate: false
   audio_weight: 0                # owner: loudness says nothing (a silent KatEvolved outplay
                                  # on 10-10 was "perfect")
   boost_streamers:               # owner 2026-10-12: "most of his clips are very good" -
     thebausffs: 0.3              # his 'Supp vs Top' (10-06) was the day's best and ranked out
+
+prescreen:
+  enabled: true                  # owner 2026-10-18: Claude (subscription, `claude -p`)
+                                 # orders the judge's queue by content, not views
 
 api_judge:
   hard_facts: true

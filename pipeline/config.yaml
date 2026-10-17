@@ -6,7 +6,7 @@
 llm:
   # ── Which model does which job ─────────────────────────────────────────────
   # Every role below takes the same shape:
-  #   provider:  gemini | ollama | openai | anthropic | none
+  #   provider:  gemini | ollama | openai | anthropic | claude_code | none
   #   model:     provider-specific model id ("auto" = best installed, ollama only)
   #   api_key:   ${ENV_VAR} — omit for local providers
   #   base_url:  override the endpoint. This is what makes any OpenAI-compatible
@@ -91,6 +91,11 @@ llm:
       model: gemini-3.1-flash-image
       api_key: ${GEMINI_API_KEY}
 
+    prescreen:                # api_judge queue order (filtering/prescreen.py; prescreen.enabled)
+      provider: claude_code   # `claude -p` on the Claude Code login = subscription usage,
+      model: sonnet           # never API credits (the provider strips ANTHROPIC_API_KEY)
+      timeout_s: 300
+
 twitch:
   game_id: "21779"            # League of Legends
   mode: top_clips             # top_clips | broadcasters
@@ -131,6 +136,13 @@ prefilter:                    # hand-set thresholds (see filtering/scoring.py do
                               # (same VOD within moment_window_s); keep the most-viewed,
                               # and skip moments published in the last republish_lookback_days
   moment_window_s: 90
+  moment_prefer: views        # which clip stands for a moment: views = most viewed, then
+                              # longest. short = the shortest (>= moment_min_s) of those
+                              # with >= moment_view_share of the top views: viewers clip
+                              # the same play at different lengths and the long ones
+                              # carry dead time (owner, 2026-10-18)
+  moment_view_share: 0.5
+  moment_min_s: 12
   republish_lookback_days: 14
   rank: loudness              # loudness = keyword, then audio, then views (old order)
                               # signals  = moment cluster size, self-clip, view rank within
@@ -175,6 +187,14 @@ vlm_filter:                   # model choice lives in llm.roles.vlm
     banner: [0.35, 0.0, 0.65, 0.17]     # center multikill announcement. Was 0.05-0.22,
                                         # which cut the crest above PENTAKILL!/ACE!
     eventlog: [0.0, 0.75, 0.30, 1.0]    # bottom-left "has slain ..." text
+
+prescreen:                    # Claude orders the judge's queue by content (filtering/prescreen.py)
+  enabled: false              # needs the `claude` CLI logged in; off = signals order
+  batch: 5                    # clips (contact sheets) per call
+  weight: 0.3                 # queue = weight * claude/10 + (1 - weight) * keep_score. keep_score
+                              # spans ~0.06-0.22, so 0.3 already lets Claude lead; on 10-16 it
+                              # kept the signals order's hit rate inside the judged 50
+  max_failures: 2             # consecutive failed calls before giving up for the night
 
 api_judge:                    # full-video quality judge — model in llm.roles.judge
   enabled: true               # falls back to local_judge() when no API key is set
@@ -297,6 +317,13 @@ video:
                               # hardware. Pin a value if autodetect picks badly.
   font: null                  # null = auto (Arial Bold on Windows, CJK fallback for JP/KR/CN names)
   intro_enabled: true
+  trim:                       # cut each clip to the judge's action window (action_start_s /
+    enabled: false            # action_end_s) when that saves real dead time: a 54 s Baus
+    pad_before_s: 3.0         # clip on 10-12 had its play at 8-18 s (owner, 2026-10-18)
+    pad_after_s: 3.0          # keeps the reaction after the play
+    min_cut_s: 6              # only cut the tail when it loses at least this much
+    min_head_cut_s: 10        # the start only when this much (setup gives context)
+    min_len_s: 10             # never shorter than this
   intro_title: DAILY LEAGUE HIGHLIGHTS   # used only when brand.enabled is false
   brand:                        # ── YOUR channel identity — change these ──────────
     enabled: true               # animated logo sting as the intro (replaces the text card)

@@ -598,6 +598,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     # clip-to-clip transitions: one kind per boundary, seeded by the date so a re-run
     # plans the same ones; a segment re-renders when its planned edges change (.tr)
     from . import transitions as _tr
+    from . import trim as _trim
     trc = v.get("transitions", {}) or {}
     kinds = (_tr.plan(len(clips), date_label, trc.get("weights"))
              if trc.get("enabled", False) else [])
@@ -637,6 +638,9 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 continue
         seg = seg_dir / f"{c['id']}.mp4"
         svo = vo_dir / f"{c['id']}.mp3"
+        win = _trim.window(c, v)                  # judge's action window (video.trim)
+        if win:
+            tr_key += f"|{win[0]}-{win[1]}"       # a new window re-renders the segment
         if not seg.exists() or stale(seg, svo) or tr_stale(seg, tr_key):
             np_path = None
             if np_cfg.get("enabled", False):
@@ -650,7 +654,19 @@ def run(cfg: dict, state, date_label: str) -> Path:
                 from . import countdown as _cd
                 badge = _cd.build(cfg, c.get("countdown_rank"))
                 is_last = c is clips[-1]
-                render_segment(c, mp4, svo, seg, v, nameplate=np_path,
+                src, rc = mp4, c
+                if win:
+                    src = work / "trimmed" / f"{c['id']}.mp4"
+                    src.parent.mkdir(exist_ok=True)
+                    _ff(["-ss", f"{win[0]:.2f}", "-i", str(mp4),
+                         "-t", f"{win[1] - win[0]:.2f}", *enc(v), str(src)])
+                    caps = _trim.shift_words(caps, *win)
+                    bm = c.get("api_best_moment_s") or 0
+                    rc = {**c, "api_best_moment_s":
+                          (bm - win[0]) if win[0] < bm < win[1] else 0}
+                    log.info("trim %s: %.0f-%.0fs of %.0fs", c["id"][:30], win[0], win[1],
+                             float(c.get("duration", 0)))
+                render_segment(rc, src, svo, seg, v, nameplate=np_path,
                                sfx=sfx_path if np_path else None, captions=caps,
                                tail_fade=(float(v.get("outro_handoff_fade", 1.2))
                                           if is_last and v.get("outro_enabled", True)

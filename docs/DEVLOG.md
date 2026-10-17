@@ -1487,3 +1487,30 @@ fetch_count (222) pass the language + blacklist rules (`prefilter.eligible`, sha
 11 Oct: 966 raw -> 723 eligible; the 222nd eligible clip has 22 views.
 Judge max_keep 60 -> 50: 10 calls of headroom under the 3 x 20 free Flash allowance for
 failed requests and crash-retries (cached verdicts are never re-requested).
+
+## 2026-10-18 — Claude pre-screen (subscription), trim to the action, shorter duplicate
+
+Owner: Anthropic API credits ran out; use Claude through Claude Code instead. New
+provider `claude_code` (`claude -p`, stream-json input with base64 images, `--tools ""`,
+run from a temp dir) and role `llm.roles.prescreen`. It STRIPS ANTHROPIC_API_KEY /
+AUTH_TOKEN / BASE_URL from the child env - with a key set Claude Code bills the API, which
+is the thing to avoid. Verified: `apiKeySource: none`, ~4 s per clip in batches of 5.
+`filtering/prescreen.py`, called inside api_judge before the queue cut: an 8-frame contact
+sheet of every gameplay candidate + title -> 0-10; queue = 0.3 x claude/10 + 0.7 x
+keep_score (keep_score spans only ~0.06-0.22, so Claude leads). Cached `prescreen_v1.json`;
+2 failed calls in a row (usage limit, logged out) = signals order for the rest of the night.
+Measured on 10-16's 50 judged clips: Claude >= 6 -> 56% judge KEEP, < 6 -> 28%; inside
+those 50 it ranks no better than the signals order (16 vs 14-16 keeps in the top half) -
+its value is the clips BELOW the cut that Gemini never sees, so the owner overlay widens
+the pool (prefilter.max_keep 80 -> 120, ~+11 min VLM + ~8 min prescreen a night).
+`video.trim` (production/trim.py): the judge's v5 action window was recorded but unused;
+the 10-12 Baus clip the owner flagged (53.6 s, play at 8-18 s) now ends at 21 s. Tail cut
+when >= 6 s dead, head only when >= 10 s (setup is context), 3 s pads, min 10 s; captions
+and the replay timestamp shift with it; selection counts trimmed length. On 10-12..10-16
+it would cut 5-9 clips a video, 1-2 min each video.
+`prefilter.moment_prefer: short`: of clips of the same moment with >= half the top views,
+the shortest >= 12 s (was: most views, then LONGEST). NB the flagged Baus clip had no
+duplicate - trimming is what fixes that case.
+Analytics (lag ~2 days): 10-08's 5.2k views were 5141 "SUBSCRIBER" traffic on a ~3-sub
+channel that stopped dead on 10-12 (12 views) - not organic; since then 1-10 views per
+video. Retention of what is watched is fine (44-64%); the problem is distribution.

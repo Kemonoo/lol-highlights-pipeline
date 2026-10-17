@@ -79,9 +79,12 @@ def build(rc: RoleConfig, *, vision: bool = False) -> Provider:
     if rc.provider == "anthropic":
         from .anthropic_api import AnthropicProvider
         return AnthropicProvider(rc)
+    if rc.provider == "claude_code":
+        from .claude_code import ClaudeCodeProvider
+        return ClaudeCodeProvider(rc)
     raise ProviderUnavailable(
         f"role '{rc.role}': unknown provider '{rc.provider}'. "
-        f"Valid: gemini | ollama | openai | anthropic | auto | none")
+        f"Valid: gemini | ollama | openai | anthropic | claude_code | auto | none")
 
 
 def get_provider(cfg: dict, role: str, *, vision: bool = False) -> Provider:

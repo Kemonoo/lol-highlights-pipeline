@@ -173,7 +173,7 @@ llm:
       api_key: ${OPENROUTER_API_KEY}
 ```
 
-Supported providers: **`gemini`**, **`ollama`**, **`anthropic`**, and **`openai`** —
+Supported providers: **`gemini`**, **`ollama`**, **`anthropic`**, **`claude_code`** (the `claude` CLI on a Claude subscription), and **`openai`** —
 where `openai` means any OpenAI-compatible endpoint, which covers OpenRouter, Groq,
 Together, DeepSeek, Fireworks, LM Studio, vLLM, llama.cpp's server, and Ollama's own
 `/v1`. Point `base_url` at a box on your LAN and the pipeline runs against your own

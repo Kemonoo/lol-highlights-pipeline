@@ -49,9 +49,19 @@ def cluster(clips: list[dict], window_s: float = 90) -> list[list[dict]]:
     return groups
 
 
-def representative(group: list[dict]) -> dict:
-    """The clip that stands for a moment: most views, then longest (more setup)."""
-    return max(group, key=lambda c: (c.get("view_count", 0), c.get("duration", 0)))
+def representative(group: list[dict], prefer: str = "views", view_share: float = 0.5,
+                   min_s: float = 12) -> dict:
+    """The clip that stands for a moment. `views`: most views, then longest (more setup).
+    `short` (owner, 2026-10-18): the shortest clip at least `min_s` long among those with
+    `view_share` of the top views - people clip one play at different lengths, and the
+    long ones carry the dead time after it."""
+    top = max(group, key=lambda c: (c.get("view_count", 0), c.get("duration", 0)))
+    if prefer != "short":
+        return top
+    floor = view_share * top.get("view_count", 0)
+    ok = [c for c in group if c.get("view_count", 0) >= floor
+          and float(c.get("duration", 0)) >= min_s]
+    return min(ok, key=lambda c: (float(c.get("duration", 0)), -c.get("view_count", 0)))         if ok else top
 
 
 def same_moment(a: dict, b: dict, window_s: float = 90) -> bool:
@@ -59,7 +69,8 @@ def same_moment(a: dict, b: dict, window_s: float = 90) -> bool:
     return bool(ka and kb and ka[0] == kb[0] and abs(ka[1] - kb[1]) <= window_s)
 
 
-def dedupe(clips: list[dict], published: list[dict], window_s: float = 90) -> list[dict]:
+def dedupe(clips: list[dict], published: list[dict], window_s: float = 90,
+           **rep_kw) -> list[dict]:
     """Annotate every clip with `moment_size`, `self_clip`; mark duplicates.
 
     Returns the clips to keep: one representative per moment, minus moments already
@@ -67,7 +78,7 @@ def dedupe(clips: list[dict], published: list[dict], window_s: float = 90) -> li
     Dropped clips get `prefilter_status` DUPLICATE_MOMENT / ALREADY_PUBLISHED."""
     keep = []
     for g in cluster(clips, window_s):
-        rep = representative(g)
+        rep = representative(g, **rep_kw)
         for c in g:
             c["moment_size"] = len(g)
             c["self_clip"] = bool(c.get("creator_id") and

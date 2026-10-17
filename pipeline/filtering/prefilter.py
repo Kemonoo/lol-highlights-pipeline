@@ -148,7 +148,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
         before = len(clips)
         pub = published_clips(data, date_label, int(pf.get("republish_lookback_days", 14)))
         everyone = clips
-        clips = dedupe(clips, pub, float(pf.get("moment_window_s", 90)))
+        clips = dedupe(clips, pub, float(pf.get("moment_window_s", 90)),
+                       prefer=pf.get("moment_prefer", "views"),
+                       view_share=float(pf.get("moment_view_share", 0.5)),
+                       min_s=float(pf.get("moment_min_s", 12)))
         kept_ids = {c["id"] for c in clips}
         (work / "moments.json").write_text(json.dumps(   # for the review queue's trace
             {c["id"]: {"status": c.get("prefilter_status"), "duplicate_of": c.get("duplicate_of")}

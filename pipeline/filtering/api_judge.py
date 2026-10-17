@@ -312,11 +312,12 @@ def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
     target_minutes_ideal, trim at target_minutes_max. Either way the fill comes from
     judge-DROPPED fillers (gameplay/reaction, entertainment >= filler_min_entertainment).
     """
+    from ..production.trim import length as _length   # trimmed length (video.trim)
     target = int(v.get("target_clips", 0) or 0)
     ideal_s = v.get("target_minutes_ideal", 8) * 60
     max_s = v.get("target_minutes_max", 10) * 60
     kept = streamer_cap(list(kept), int(v.get("max_per_streamer", 0) or 0))
-    total = sum(c.get("duration", 30) for c in kept)
+    total = sum(_length(c, v) for c in kept)
 
     def short() -> bool:
         return len(kept) < target if target else total < ideal_s
@@ -341,7 +342,7 @@ def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
             c["api_decision"] = "KEEP"
             c["api_reason"] += "_FILLER"
             kept.append(c)
-            total += c.get("duration", 30)
+            total += _length(c, v)
         if short():
             log.info("Only %d clips / %.1f min of keepable content so far", len(kept),
                      total / 60)
@@ -353,7 +354,7 @@ def select(judged: list, kept: list, v: dict, aj: dict) -> tuple[list, float]:
         cdrop = kept.pop()
         cdrop["api_decision"] = "DROP"
         cdrop["api_reason"] += "_OVER_COUNT" if target else "_OVER_LENGTH"
-        total -= cdrop.get("duration", 30)
+        total -= _length(cdrop, v)
     return kept, total
 
 
@@ -373,9 +374,13 @@ def run(cfg: dict, state, date_label: str) -> Path:
                             .read_text(encoding="utf-8").rstrip("\x00"))["clips"]
     max_keep = cfg.get("vlm_filter", {}).get("max_keep", 12)
     clips = sorted((c for c in scored_all if c.get("decision") == "KEEP"),
-                   key=lambda c: -c.get("keep_score", 0))[:max_keep]
+                   key=lambda c: -c.get("keep_score", 0))
     src = work / "vlm_filtered.json"
     raw_dir = data / "raw" / date_label
+    # Claude looks at every gameplay candidate and orders the queue by content before
+    # the cut (filtering/prescreen.py; off unless prescreen.enabled)
+    from .prescreen import order as _prescreen
+    clips = _prescreen(cfg, work, raw_dir, clips)[:max_keep]
     tmp = work / "api_tmp"
     tmp.mkdir(exist_ok=True)
 
