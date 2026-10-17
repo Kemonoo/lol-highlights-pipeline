@@ -1219,7 +1219,7 @@ def rotation_pick(date_label: str, n_layouts: int, n_palettes: int) -> tuple[int
     the same date always gets the same pick (crash-retry, --force), and with coprime
     counts (2 layouts x 5 palettes) every combination comes round once in 10 days."""
     from datetime import date
-    day = date.fromisoformat(date_label).toordinal()
+    day = date.fromisoformat(date_label[-10:]).toordinal()   # "weekly_<date>" too
     return day % max(n_layouts, 1), day % max(n_palettes, 1)
 
 

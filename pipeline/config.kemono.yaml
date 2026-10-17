@@ -92,6 +92,10 @@ ranking_shorts:
   enabled: true                  # owner 2026-09-25: one of the 3 daily Shorts becomes a
                                  # TOP 5 ranking (pentakills, outplays, champion plays...)
 
+weekly:
+  enabled: true                  # 2026-10-18: Sunday "Best League Plays of the Week #N"
+  upload: false                  # render only until the owner has watched the first one
+
 thumbnail:
   provider: clip                  # owner pick 2026-09-25: style A (best-moment gameplay +
                                    # webcam picture-in-picture + 1-3 words, red border). Free.

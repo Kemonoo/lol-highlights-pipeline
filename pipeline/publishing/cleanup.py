@@ -13,7 +13,8 @@ Deletes (for days older than keep_output_days, when set):
   - data/output/<date>.mp4         (the published master, ~550MB-850MB each)
 
 Deletes (for days older than keep_raw_days):
-  - data/raw/<date>/*.mp4  + lq/   (raw clips, large)
+  - data/raw/<date>/*.mp4  + lq/   (raw clips, large; also raw/weekly_<date>/, the
+                                    weekly compilation's re-downloads)
   - data/work/<date>/api_tmp/       (re-encoded judge clips, large)
   - data/work/<date>/segments/      (assembled segment renders, large)
   - data/work/<date>/shorts/        (short renders, large — already uploaded)
@@ -26,6 +27,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("pipeline.cleanup")
+
+
+def _dir_date(name: str) -> datetime:
+    """A daily folder's date, or a weekly compilation's (`weekly_<date>`); ValueError
+    for anything else."""
+    return datetime.strptime(name.removeprefix("weekly_"), "%Y-%m-%d")
 
 
 def run(cfg: dict, state, date_label: str) -> None:
@@ -57,7 +64,7 @@ def _prune_outputs(data: Path, cl: dict, current: datetime, state) -> int:
     freed = 0
     for mp4 in sorted((data / "output").glob("*.mp4")):
         try:
-            dir_date = datetime.strptime(mp4.stem, "%Y-%m-%d")
+            dir_date = _dir_date(mp4.stem)
         except ValueError:
             continue
         if dir_date >= cutoff:
@@ -88,7 +95,7 @@ def _run(cfg: dict, cl: dict, date_label: str, state=None) -> None:
         if not date_dir.is_dir():
             continue
         try:
-            dir_date = datetime.strptime(date_dir.name, "%Y-%m-%d")
+            dir_date = _dir_date(date_dir.name)
         except ValueError:
             continue
         if dir_date >= cutoff:
@@ -108,7 +115,7 @@ def _run(cfg: dict, cl: dict, date_label: str, state=None) -> None:
         if not date_dir.is_dir():
             continue
         try:
-            dir_date = datetime.strptime(date_dir.name, "%Y-%m-%d")
+            dir_date = _dir_date(date_dir.name)
         except ValueError:
             continue
         if dir_date >= current:

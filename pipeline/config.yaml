@@ -646,6 +646,29 @@ ranking_shorts:               # publishing/ranking_shorts: "TOP 5 PENTAKILLS"-st
     - {key: master_yi, label: Master Yi Plays, pattern: 'master yi'}
     - {key: lee_sin, label: Lee Sin Plays, pattern: 'lee sin'}
 
+weekly:                       # publishing/weekly: "Best League Plays of the Week #N" — a second
+                              # long video once a week from clips already published that week
+                              # (data/clip_log.jsonl, re-downloaded from Twitch). Runs as the
+                              # `weekly` stage, which no-ops except on the week's last day.
+  enabled: false
+  weekday: sunday             # the day it goes out: built by the night run that renders the
+                              # day before (the week = the 7 dates ending that day)
+  days: 7                     # dates covered, ending the week's last day
+  upload: false               # also needs upload.enabled; spaced >= upload.min_gap_hours after
+                              # the daily. false = render to data/output/weekly_<date>.mp4 only
+  theme: best                 # best | <ranking_shorts category key> (pentakills, outplays...)
+                              # | streamer:<login> | champion:<name>. A theme with fewer than
+                              # min_clips clips that week falls back to best.
+  min_score: 6.0              # judge api_rank_score a clip needs (tie-break: ent + play)
+  max_per_streamer: 3         # variety cap; 0 = none. One clip per moment always (moments.py)
+  target_minutes: 9           # fill best-first toward this (trimmed lengths, video.trim)...
+  max_minutes: 10.5           # ...never past this
+  max_clips: 20
+  min_clips: 6                # fewer (after Twitch drops) = no compilation that week
+  title: "Best League Plays of the Week #{episode}"     # {episode} {n}
+  theme_title: "Best {Label} of the Week #{episode}"    # + {label} {Label} {LABEL}
+  thumb_text: "WEEK'S BEST"   # 1-3 words on the clip thumbnail ({n}, {label})
+
 cleanup:
   enabled: true
   keep_raw_days: 1            # keep raw MP4s for this many days back (for feedback reprocessing)

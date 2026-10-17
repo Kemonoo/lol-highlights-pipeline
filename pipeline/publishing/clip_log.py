@@ -23,6 +23,7 @@ import argparse
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 log = logging.getLogger("pipeline.clip_log")
@@ -155,7 +156,8 @@ def backfill(cfg: dict, state) -> int:
     data = Path(cfg["paths"]["data_abs"])
     path = data / LOG_NAME
     total = 0
-    for d in sorted(p.name for p in (data / "work").iterdir() if p.is_dir()):
+    for d in sorted(p.name for p in (data / "work").iterdir()     # dailies, not weekly_*
+                    if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name)):
         ents = entries_for_date(cfg, state, d)
         if ents:
             total += upsert(path, d, ents)

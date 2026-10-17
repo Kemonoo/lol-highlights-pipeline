@@ -14,6 +14,7 @@ continues where it left off. Unimplemented stages are skipped with a warning.
 """
 import argparse
 import logging
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,10 +26,11 @@ from .feedback import feedback
 from .filtering import api_judge, prefilter, vlm_filter
 from .ingestion import fetch
 from .production import assemble, commentary, credits, thumbnail, tts
-from .publishing import cleanup, clip_log, shorts, upload
+from .publishing import cleanup, clip_log, shorts, upload, weekly
 from .state import State
 
 log = logging.getLogger("pipeline")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 STAGES = [
     ("feedback", feedback.run),   # reads comments on past uploads; never blocks
@@ -47,6 +49,7 @@ STAGES = [
     ("upload", upload.run),
     ("shorts", shorts.run),    # vertical clips for YouTube Shorts (runs after main upload)
     ("clip_log", clip_log.run),  # data/clip_log.jsonl: every published clip, forever
+    ("weekly", weekly.run),    # "Best plays of the week" compilation; no-op except weekly
     ("cleanup", cleanup.run),  # delete old raw MP4s to free disk space
 ]
 
@@ -199,7 +202,8 @@ def main() -> int:
         # iterating on an existing run: target the most recent work dir, not the
         # calendar (avoids the midnight rollover trap)
         work_root = Path(cfg["paths"]["data_abs"]) / "work"
-        dates = sorted(p.name for p in work_root.iterdir() if p.is_dir()) \
+        dates = sorted(p.name for p in work_root.iterdir()   # daily dates, not weekly_*
+                       if p.is_dir() and _DATE.fullmatch(p.name)) \
             if work_root.exists() else []
         if dates:
             date_label = dates[-1]

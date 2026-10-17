@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -212,7 +213,8 @@ def render(rows: list[dict], date_label: str, started: float, last: float,
 
 def _latest_date(cfg: dict) -> str:
     work_root = Path(cfg["paths"]["data_abs"]) / "work"
-    dates = sorted(p.name for p in work_root.iterdir() if p.is_dir()) \
+    dates = sorted(p.name for p in work_root.iterdir()       # daily dates, not weekly_*
+                   if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name)) \
         if work_root.exists() else []
     if dates:
         return dates[-1]

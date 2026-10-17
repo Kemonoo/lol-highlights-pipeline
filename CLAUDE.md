@@ -174,7 +174,14 @@ relative to `pipeline/`).
     keeps ids a rebuild can no longer see), text only, never pruned — the index for
     compilation Shorts ("top 5 pentakills of the week", per-streamer best-ofs).
     `--backfill` logs every saved date
-14. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, and
+14. `publishing/weekly.py` — once a week (no-op unless the date is the day before
+    `weekly.weekday`) "Best League Plays of the Week #N": the week's best clip_log rows
+    (judge score, one per moment, ~9 min, countdown; optional `weekly.theme`) re-downloaded
+    and rendered by transcribe/assemble/thumbnail/upload under the label `weekly_<date>`
+    (work/, raw/, output/weekly_<date>.mp4; date-dir scanners skip `weekly_*`). Ledger
+    `data/weekly.json` (used ids, #N) written on upload; `weekly.upload` gates publishing.
+    CLI: `python -m pipeline.publishing.weekly --week-ending <date> [--no-upload]`
+15. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, and
     published masters older than `cleanup.keep_output_days` (0 = keep forever, the
     default; a master is only ever deleted when state.json holds a confirmed YouTube
     id for that date, so an un-uploaded video is never touched. meta.json always stays)

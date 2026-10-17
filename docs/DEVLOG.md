@@ -1514,3 +1514,31 @@ duplicate - trimming is what fixes that case.
 Analytics (lag ~2 days): 10-08's 5.2k views were 5141 "SUBSCRIBER" traffic on a ~3-sub
 channel that stopped dead on 10-12 (12 views) - not organic; since then 1-10 views per
 video. Retention of what is watched is fine (44-64%); the problem is distribution.
+
+## 2026-10-18 — Weekly compilation: "Best League Plays of the Week #N"
+
+Owner: views collapsed to 1-10 per daily since the 10-08 spike; add a second long video
+once a week built from the clips already published. `publishing/weekly.py`, stage
+`weekly` after clip_log: a no-op unless the rendered date is the day before
+`weekly.weekday` (sunday), so the nightly run builds it with NO .bat change. By hand:
+`python -m pipeline.publishing.weekly --week-ending <date> [--no-upload]`.
+- Source: data/clip_log.jsonl rows of the 7 dates; the row's `filter` dict IS the daily's
+  vlm_filtered row, so it is written as work/weekly_<date>/vlm_filtered.json and the
+  regular transcribe -> assemble -> credits.build_metadata -> thumbnail -> upload run on
+  the label `weekly_<date>` (transitions, nameplates, badges, trim, per-streamer credits).
+  Clips re-downloaded into raw/weekly_<date>/ (cleanup prunes it like a daily);
+  transcripts + burned-caption verdicts copied from the source days, so whisper only
+  runs where a day's cache is gone.
+- Selection (pure, tests/test_weekly.py): api_rank_score >= 6, tie-break ent + play,
+  one clip per moment (moments.same_moment) and per id, max 3 per streamer, best-first
+  to ~9 min (trimmed lengths), never past 10.5; countdown order. `weekly.theme`: best |
+  ranking_shorts category | streamer:<login> | champion:<name>, falling back to best
+  under min_clips (6).
+- Idempotent: selection frozen in vlm_filtered.json, each step skips when its output
+  exists, upload.run refuses a label already in state.json; data/weekly.json ledger
+  (used clip ids, history -> #N) is written on upload only. Upload needs `weekly.upload`
+  AND upload.enabled; publish_slot spaces it min_gap_hours after the daily.
+- Date-dir scanners (run_daily/progress "latest", clip_log backfill, cleanup, thumbnail
+  rotation) now accept or skip `weekly_*` folders.
+- Owner overlay: enabled, `upload: false` until the owner has watched the first render
+  (data/output/weekly_2026-10-17.mp4, week 10-11..10-17).

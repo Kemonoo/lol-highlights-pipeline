@@ -23,6 +23,9 @@ with the owner overlay's 222/22 settings and the v4 crop regions.
   The funnel/stage texts and the "222 in, 22 out" headline need updating.
 - 2026-10-18 — Claude (subscription) pre-screens every gameplay candidate to pick the
   judge's 50; clips are trimmed to the judge's action window; ja/zh excluded again.
+- 2026-10-18 — Weekly compilation stage ("Best League Plays of the Week #N", Sundays,
+  from the week's published clips). Affects the stage list / output rows if the site
+  lists the videos the pipeline makes.
 (none — cleared by the 09-25 export)
 
 ## Ledger — every fact the site states, and where it comes from
