@@ -95,6 +95,11 @@ ranking_shorts:
 weekly:
   enabled: true                  # 2026-10-18: Sunday "Best League Plays of the Week #N"
   upload: false                  # render only until the owner has watched the first one
+  theme_max_clips: 18            # owner 2026-10-18: themed weeklies ~8 min too - qualify on
+  theme_fill_score: 6.0          # 8 clips >= 7, then fill with clips >= 6
+  theme_target_minutes: 8
+  target_minutes: 8
+  max_minutes: 9.5
 
 thumbnail:
   clip_frame_check: true          # owner 2026-10-18: never a TAB scoreboard / death screen

@@ -670,6 +670,8 @@ weekly:                       # publishing/weekly: "Best League Plays of the Wee
   theme_min_score: 7.0
   theme_min_clips: 8
   theme_max_clips: 10
+  theme_fill_score: 7.0       # a qualifying theme fills with clips >= this (default = strict)
+  theme_target_minutes: 0     # fill the theme toward this length (0 = up to max_minutes)
   champion_themes: true       # one theme per champion name (Data Dragon list in data/cache)
   streamer_themes: true       # one theme per streamer of the week
   min_score: 6.0              # best-of: judge api_rank_score a clip needs (tie-break ent+play)

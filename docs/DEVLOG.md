@@ -1571,3 +1571,11 @@ as work/<label>/thumbnail_alt.jpg for a manual YouTube Studio "Test & Compare" -
 API has no thumbnail A/B. Themed titles rotate by episode (`weekly.theme_titles`, e.g.
 "10 Pentakills in ONE Week... #1 Is Unreal"). NB the frame check called all 8 frames of a
 pro-broadcast clip "scoreboard" (the spectator stats bar) - harmless, it was skipped.
+
+### Same day: weekly merged; themed weeklies fill toward 8 min
+
+Owner: keep weeklies ~8 min. A theme still QUALIFIES on 8 clips >= 7, then fills with
+clips >= `weekly.theme_fill_score` (6) toward `theme_target_minutes` (8), up to 18 clips.
+Week ending 10-17: Pentakills, 10 clips / 5.6 min -> 15 clips / 8.5 min.
+Night of 10-18 (first run with prescreen + trim): clean, 89/89 clips pre-screened by Claude
+in 6.5 min on the subscription, 5 clips trimmed, 22 clips / 10.9 min uploaded.

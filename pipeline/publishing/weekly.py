@@ -309,11 +309,19 @@ def plan(cfg: dict, week_ending: str, history: list | None = None) -> tuple[list
     tkw = {**kw, "min_score": float(wc.get("theme_min_score", 7.0)),
            "max_clips": int(wc.get("theme_max_clips", 10)), "target_s": kw["max_s"]}
     need = int(wc.get("theme_min_clips", 8))
+    # A theme QUALIFIES on its strong clips (>= theme_min_score); the video then fills
+    # toward theme_target_minutes with clips >= theme_fill_score (owner 2026-10-18: ~8 min,
+    # the strict 10-clip pentakill week was 5.6). Defaults keep the strict-only behaviour.
+    fill = {**tkw, "min_score": float(wc.get("theme_fill_score", tkw["min_score"]))}
+    if wc.get("theme_target_minutes"):
+        fill["target_s"] = float(wc["theme_target_minutes"]) * 60
 
     def qualifies(t: dict) -> list:
         k = {**tkw, "max_per_streamer": 0} if t.get("streamer") else tkw
-        got = select(rows, dates, used, predicate=t["pred"], **k)
-        return got if len(got) >= need else []
+        if len(select(rows, dates, used, predicate=t["pred"], **k)) < need:
+            return []
+        f = {**fill, "max_per_streamer": 0} if t.get("streamer") else fill
+        return select(rows, dates, used, predicate=t["pred"], **f)
 
     cats = wc.get("categories") or cfg.get("ranking_shorts", {}).get("categories", [])
     mode = str(wc.get("theme", "rotate")).strip()
