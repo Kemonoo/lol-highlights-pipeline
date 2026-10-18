@@ -1560,3 +1560,14 @@ fighting?), scoreboard/no-action frames never used, the 3 best clips tried befor
 colour pick. Re-render: the #1 clip's best moment (47 s) WAS the scoreboard - caught;
 29 s used. NB the "action" question answered yes on all 7 other frames; the scoreboard
 question is the one doing the work.
+
+### Same day: weekly thumbnail D (grid) + hook titles
+
+Owner: the clip-style thumbnail is too weak for the weekly ("I wouldn't click it"); the
+title must sell the click. Four mockups (data/thumbnail_review/weekly/): owner liked B
+(word spammed behind one huge gold copy) and D (4 best fights 2x2, gold word, red x10) -
+D ships (`thumbnail.generate_weekly`, frames vetted by the clip_frame_check), B is saved
+as work/<label>/thumbnail_alt.jpg for a manual YouTube Studio "Test & Compare" - the Data
+API has no thumbnail A/B. Themed titles rotate by episode (`weekly.theme_titles`, e.g.
+"10 Pentakills in ONE Week... #1 Is Unreal"). NB the frame check called all 8 frames of a
+pro-broadcast clip "scoreboard" (the spectator stats bar) - harmless, it was skipped.

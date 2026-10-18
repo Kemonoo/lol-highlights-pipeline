@@ -7,6 +7,7 @@ from pipeline.publishing.weekly import (
     is_last_day,
     label_for,
     pick_theme,
+    pick_title,
     select,
     theme_filter,
     thumb_text,
@@ -115,8 +116,17 @@ def test_themed_selection_lifts_the_streamer_cap():
 
 
 def test_thumb_text_names_theme_and_count():
-    assert thumb_text({}, 10, "Pentakills") == "10 PENTAKILLS"
-    assert thumb_text({}, 19, "") == "WEEK'S BEST"
+    assert thumb_text({}, 10, "Pentakills") == ("PENTAKILL", "x10")
+    assert thumb_text({}, 8, "Yasuo Plays") == ("YASUO", "x8")
+    assert thumb_text({}, 10, "Objective Steals") == ("OBJECTIVE STEAL", "x10")
+    assert thumb_text({}, 19, "") == ("BEST PLAYS", "TOP 19")
+
+
+def test_hook_titles_rotate_by_episode():
+    ts = ["a {n}", "b {n}", "c {n}"]
+    assert [pick_title(ts, e) for e in (1, 2, 3, 4)] == ["a {n}", "b {n}", "c {n}", "a {n}"]
+    assert title_for("{n} {Label} in ONE Week... #1 Is Unreal", 1, 10, "Pentakills") == \
+        "10 Pentakills in ONE Week... #1 Is Unreal"
 
 
 def test_to_clips_ranks_n_to_1_and_drops_machine_paths():

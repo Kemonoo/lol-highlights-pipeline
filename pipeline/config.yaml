@@ -679,9 +679,17 @@ weekly:                       # publishing/weekly: "Best League Plays of the Wee
   max_clips: 20
   min_clips: 6                # fewer (after Twitch drops) = no compilation that week
   title: "Best League Plays of the Week #{episode}"     # best-of; {episode} {n}
-  theme_title: "Top {n} {Label} of the Week"            # + {label} {Label} {LABEL}
-  thumb_text: "WEEK'S BEST"   # words on the clip thumbnail (best-of)
-  theme_thumb_text: "{n} {LABEL}"   # themed: "10 PENTAKILLS"
+  theme_titles:               # themed: rotate by episode ({n} {label} {Label} {LABEL}
+    - "{n} {Label} in ONE Week... #1 Is Unreal"           #  {episode}). Owner 2026-10-18:
+    - "These {Label} Should Be Impossible (Top {n})"      #  the title sells the click
+    - "Every {Label} This Week, Ranked... Wait for #1"
+    - "Top {n} {Label} of the Week (#1 Is Insane)"
+  # Thumbnail (owner pick 2026-10-18, design D): the 4 best clips' action frames 2x2, one
+  # shouted word (theme label singular: PENTAKILL / OUTPLAY / YASUO; BEST PLAYS for the
+  # best-of) and a tag below. Design B ("spam") is saved as work/<label>/thumbnail_alt.jpg
+  # for a manual YouTube Studio Test & Compare (not in the Data API).
+  theme_thumb_tag: "x{n}"
+  thumb_tag: "TOP {n}"
 
 cleanup:
   enabled: true

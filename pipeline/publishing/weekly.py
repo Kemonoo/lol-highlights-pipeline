@@ -189,12 +189,20 @@ def title_for(template: str, episode: int, n: int, label: str = "") -> str:
                                                   LABEL=label.upper())).strip()[:100]
 
 
-def thumb_text(wc: dict, n: int, label: str = "") -> str:
-    """'10 PENTAKILLS' for a theme, 'WEEK'S BEST' for the plain best-of. Pure."""
-    if label:
-        return str(wc.get("theme_thumb_text", "{n} {LABEL}")).format(
-            n=n, LABEL=label.upper(), Label=label)
-    return str(wc.get("thumb_text", "WEEK'S BEST")).format(n=n)
+DEFAULT_THEME_TITLE = "Top {n} {Label} of the Week"
+
+
+def pick_title(templates: list, episode: int) -> str:
+    """Hook templates rotate by episode, so consecutive weeks never share one. Pure."""
+    return templates[(int(episode) - 1) % len(templates)]
+
+
+def thumb_text(wc: dict, n: int, label: str = "") -> tuple[str, str]:
+    """(shouted word, tag) for the grid thumbnail: ("PENTAKILL", "x10") for a theme,
+    ("BEST PLAYS", "TOP 19") for the plain best-of. Pure."""
+    from ..production.thumbnail import thumb_word
+    tag = wc.get("theme_thumb_tag", "x{n}") if label else wc.get("thumb_tag", "TOP {n}")
+    return thumb_word(label), str(tag).format(n=n)
 
 
 def description_head(n: int, label: str, sources: list[str]) -> list[str]:
@@ -382,8 +390,8 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
         chapters = json.loads((work / "chapters.json").read_text(encoding="utf-8")
                               .rstrip("\x00"))
         episode = len(st["history"]) + 1
-        tmpl = (wc.get("theme_title", "Top {n} {Label} of the Week") if tl
-                else wc.get("title", "Best League Plays of the Week #{episode}"))
+        tmpl = pick_title(wc.get("theme_titles") or [DEFAULT_THEME_TITLE], episode) if tl \
+            else wc.get("title", "Best League Plays of the Week #{episode}")
         meta = credits.build_metadata(cfg, label, chapters, clips, episode)
         meta["title"] = title_for(tmpl, episode, len(chapters), tl)
         sources = list(dict.fromkeys(c["weekly_source_video"] for c in clips
@@ -397,14 +405,10 @@ def build(cfg: dict, state, week_ending: str, upload: bool = True) -> Path | Non
         meta_f.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
         log.info("weekly metadata: %s", meta["title"])
     meta = _read(meta_f) or {}
-    # thumbnail text: the clip provider reads title_hook.json's `thumb`
-    hook_f = work / credits.HOOK_CACHE
-    if not hook_f.exists():
-        thumb = thumb_text(wc, len(clips), tl)
-        hook_f.write_text(json.dumps({"hook": meta.get("title", ""), "thumb": thumb}),
-                          encoding="utf-8")
     if not (work / "thumbnail.jpg").exists():
-        thumbnail.run(cfg, state, label)
+        word, tag = thumb_text(wc, len(clips), tl)
+        if not thumbnail.generate_weekly(cfg, label, word, tag):
+            thumbnail.run(cfg, state, label)        # no frame at all: the daily style
 
     if not (upload and wc.get("upload", False)):
         log.info("weekly: upload off (weekly.upload) - %s left in data/output/", out.name)

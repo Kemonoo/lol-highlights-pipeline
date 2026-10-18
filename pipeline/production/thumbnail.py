@@ -1494,6 +1494,106 @@ def generate_clip(cfg: dict, date_label: str) -> Path | None:
     return out
 
 
+# ── weekly compilation thumbnails (owner pick 2026-10-18: D "grid", B "spam" as the
+#    alternative for a manual YouTube Studio Test & Compare) ──────────────────────
+
+def thumb_word(label: str) -> str:
+    """The one shouted word for a theme label: "Pentakills" -> "PENTAKILL",
+    "Yasuo Plays" -> "YASUO", "" -> "BEST PLAYS". Pure."""
+    label = (label or "").strip()
+    if not label:
+        return "BEST PLAYS"
+    if label.lower().endswith(" plays"):
+        return label[:-6].strip().upper()
+    words = label.split()
+    if words[-1].lower().endswith("s") and len(words[-1]) > 3:
+        words[-1] = words[-1][:-1]
+    return " ".join(words).upper()
+
+
+def _headline(text: str, pal, max_w: int, max_h: int, start: int = 230):
+    return _title_block([text], _fit_title([text], max_w, max_h, start), pal)
+
+
+def _put(canvas, layer, cx: float, cy: float) -> None:
+    canvas.alpha_composite(layer, (int(cx - layer.width / 2), int(cy - layer.height / 2)))
+
+
+def _vivid(img: "Image.Image") -> "Image.Image":
+    from PIL import ImageEnhance
+    return ImageEnhance.Contrast(ImageEnhance.Color(img).enhance(1.35)).enhance(1.12)
+
+
+def compose_grid(frames: list, word: str, tag: str) -> "Image.Image":
+    """D: the four best fights 2x2, the word across the middle, the tag (x10) below."""
+    from PIL import Image, ImageDraw, ImageFilter
+    W, H, g = THUMB_W, THUMB_H, 6
+    cv = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+    cw, ch = (W - g) // 2, (H - g) // 2
+    frames = (list(frames) * 4)[:4] if frames else []
+    for i, f in enumerate(frames):
+        cv.paste(_vivid(_fit_1280(f)).resize((cw, ch), Image.LANCZOS),
+                 ((i % 2) * (cw + g), (i // 2) * (ch + g)))
+    shade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(shade).rectangle([0, H * 0.30, W, H * 0.70], fill=(0, 0, 0, 120))
+    cv.alpha_composite(shade.filter(ImageFilter.GaussianBlur(30)))
+    _put(cv, _headline(word, _ANN_GOLD, 1100, 210), W / 2, H * 0.46)
+    if tag:
+        _put(cv, _headline(tag, _ANN_RED, 300, 150, 150), W / 2, H * 0.74)
+    _red_border(cv)
+    return cv
+
+
+def compose_spam(frame: "Image.Image", word: str, tag: str) -> "Image.Image":
+    """B: the word repeated faintly behind one huge gold copy, tag bottom-right."""
+    W, H = THUMB_W, THUMB_H
+    cv = _gameplay_bg(_vivid(frame), blur=6, darken=0.45)
+    back = _headline(word, _ANN_RED, 560, 110)
+    back.putalpha(back.split()[3].point(lambda v: int(v * 0.5)))
+    for yf in (0.12, 0.30, 0.70, 0.88):
+        off = 0.0 if yf in (0.12, 0.70) else 0.22
+        for xf in (off, 0.5 + off, 1.0 + off):
+            _put(cv, back, W * xf, H * yf)
+    _put(cv, _headline(word, _ANN_GOLD, 1150, 220), W / 2, H * 0.50)
+    if tag:
+        _put(cv, _headline(tag, _ANN_RED, 300, 150, 150), W * 0.84, H * 0.80)
+    _red_border(cv)
+    return cv
+
+
+def generate_weekly(cfg: dict, label: str, word: str, tag: str) -> Path | None:
+    """work/<label>/thumbnail.jpg (grid) + thumbnail_alt.jpg (spam) from real-action
+    frames of the compilation's best clips (#1 first)."""
+    data = Path(cfg["paths"]["data_abs"])
+    work, raw = data / "work" / label, data / "raw" / label
+    clips = json.loads((work / "vlm_filtered.json").read_text(encoding="utf-8")
+                       .rstrip("\x00"))["clips"]
+    ranked = sorted(clips, key=lambda c: c.get("countdown_rank") or 99)
+    provider = None
+    try:
+        from ..providers import get_provider
+        provider = get_provider(cfg, "vlm", vision=True)
+    except Exception as e:
+        log.info("  weekly thumbnail: no vlm for the frame check (%s) - colour only", e)
+    frames = []
+    for c in ranked:
+        m = _resolve_mp4(c, raw)
+        f = action_frame(cfg, c, m, float(c.get("duration", 30) or 30), provider) if m else None
+        if f is not None:
+            frames.append(f)
+        if len(frames) == 4:
+            break
+    if not frames:
+        return None
+    out = work / "thumbnail.jpg"
+    compose_grid(frames, word, tag).convert("RGB").save(out, "JPEG", quality=92)
+    compose_spam(frames[0], word, tag).convert("RGB").save(
+        work / "thumbnail_alt.jpg", "JPEG", quality=92)
+    log.info("weekly thumbnail -> %s (+ thumbnail_alt.jpg)  %r %r  %d frames", out.name,
+             word, tag, len(frames))
+    return out
+
+
 def generate(cfg: dict, date_label: str) -> Path | None:
     th = cfg.get("thumbnail", {})
     if not th.get("enabled", True):
