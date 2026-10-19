@@ -39,6 +39,12 @@ with pip:
 
 Verify with `ffmpeg -version` and `ffprobe -version`.
 
+**Claude pre-screen (optional, `prescreen.enabled`):** install
+[Claude Code](https://claude.com/claude-code) and log in once by running `claude`. The
+`claude_code` provider calls `claude -p` on that login, so it uses your Claude
+subscription, never API credits: it removes `ANTHROPIC_API_KEY` from the call. Without
+the CLI the judge's queue keeps its free signals order.
+
 ---
 
 ## 2. Twitch API keys (required)

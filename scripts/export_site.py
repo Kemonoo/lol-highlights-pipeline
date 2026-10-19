@@ -7,7 +7,9 @@ The site narrates one real night. Everything night-specific is exported from tha
 night's own files, so nothing is typed in by hand:
 
   * numbers and times  <- the run log (data/logs/auto_*.log containing "Prefilter <date>")
-  * funnel tiles/data  <- work/<date>/vlm_scored.json, api_partial_v4.json (v3 before 09-24), chapters.json
+  * funnel tiles/data  <- work/<date>/vlm_scored.json, prescreen_v1.json, api_partial_v5.json,
+                          chapters.json (the 2026-10-12+ funnel: eligible -> one per moment ->
+                          not static -> ranked -> gameplay -> Claude's pick -> Gemini)
   * stills and loop    <- output/<date>.mp4 at chapter times, raw/<date>/<id>.mp4,
                           work/<date>/crops, thumbnail*.jpg, shorts/
   * text               <- elements marked data-n="key" in site/index.html are rewritten
@@ -22,8 +24,7 @@ Choices a person used to make by eye are now rules, overridable by flags:
   loop           = 9 s from 1.0 s into that clip (the name card has finished animating)
   caption still  = first English clip, without a source caption, that has a 3+ word phrase
   translation    = first non-English clip whose source carries its own burned caption
-  VLM crops      = banner: first crop at/after the judge's best moment; kill feed: the
-                   crop with the most detail (--crop-time to force one)
+  contact sheet  = the hero clip's 8-frame sheet that Claude scored (work/<date>/prescreen_sheets)
 
 Afterwards: look at the page (docs/SITE.md, "Working on the site"), then update the
 ledger and changelog in docs/SITE.md.
@@ -44,7 +45,7 @@ DATA = ROOT / "data"
 SITE = ROOT / "site"
 ASSETS = SITE / "assets"
 STAGES = ["fetch", "prefilter", "vlm_filter", "api_judge", "transcribe", "assemble",
-          "credits", "upload", "shorts", "cleanup"]
+          "credits", "upload", "shorts", "clip_log", "cleanup"]
 LANGS = {"pl": "Polish", "de": "German", "fr": "French", "es": "Spanish", "pt": "Portuguese",
          "it": "Italian", "ru": "Russian", "cs": "Czech", "sk": "Slovak", "ko": "Korean",
          "ja": "Japanese", "tr": "Turkish", "nl": "Dutch", "sv": "Swedish", "uk": "Ukrainian"}
@@ -92,6 +93,14 @@ def parse_log(text):
         sys.exit("log is missing a stage summary line (prefilter/filter/judge/assemble)")
     n["scored"], n["passed"], n["kept"] = pf
     n["vlm_kept"] = vf[1]
+    n["judged"] = aj[0]
+    el = num(r"Eligible \(language / blacklist\): (\d+) of (\d+) fetched", 1, 2)
+    n["listed"] = el[1] if el else None
+    mo = num(r"Moments: (\d+) clips -> (\d+)", 1, 2)
+    n["moments"] = mo[1] if mo else None
+    ps0 = re.search(r"(\d\d:\d\d:\d\d) pipeline\.providers\s+INFO\s+role 'prescreen'", text)
+    ps1 = list(re.finditer(r"(\d\d:\d\d:\d\d) pipeline\.prescreen\s+INFO\s+prescreen: (\d+)/(\d+) scored", text))
+    n["prescreen"] = (ps0.group(1), ps1[-1].group(1), int(ps1[-1].group(3))) if ps0 and ps1 else None
     n["final"] = asm[1]
     n["minutes"] = asm[0]
     n["switches"] = len(re.findall(r"judge: switching to", text))
@@ -130,6 +139,10 @@ def durations(starts, finish):
 
 def plain_reason(r):
     r = r or ""
+    if r.startswith("PRO_UI?_"):
+        r = r[len("PRO_UI?_"):]
+    if r.startswith("GAMEPLAY"):
+        return "League gameplay"
     if r.startswith("PRO_PLAY"):
         return "Looked like a pro broadcast"
     if r.startswith("NO_GAMEPLAY"):
@@ -163,14 +176,18 @@ def export_funnel(work, night):
     scored = scored["clips"] if isinstance(scored, dict) else scored
     api = load_api(work)
     ranks = {c["clip_id"]: c["rank"] for c in load(work / "chapters.json")}
+    pre = load(work / "prescreen_v1.json") if (work / "prescreen_v1.json").exists() else {}
     clips = []
     if not DRY:
         shutil.rmtree(ASSETS / "clips", ignore_errors=True)
         (ASSETS / "clips").mkdir(parents=True)
     for i, c in enumerate(scored):
         cid = c["id"]
+        # 2 = not gameplay (local model), 3 = gameplay but not in Claude's top for Gemini,
+        # 4 = judged by Gemini but not in the video, 5 = in the video
         a = api.get(cid) if c.get("decision") == "KEEP" else None
-        stage = 4 if cid in ranks else 3 if a else 2
+        stage = (5 if cid in ranks else 4 if a else 3 if c.get("decision") == "KEEP" else 2)
+        p = pre.get(cid) or {}
         thumb = work / "thumbs" / f"{cid}.jpg"
         if thumb.exists() and not DRY:
             subprocess.run(["magick", str(thumb), "-resize", "240x135^", "-gravity", "center",
@@ -182,11 +199,14 @@ def export_funnel(work, night):
                           stage=stage, local=plain_reason(c.get("reason")), rank=ranks.get(cid),
                           ent=a and a.get("api_entertainment"), pq=a and a.get("api_play_quality"),
                           focus=a and a.get("api_focus"),
+                          claude=p.get("score"), claude_note=p.get("note"),
+                          why=a and a.get("api_what_happens", "")[:220],
+                          views=c.get("view_count"), moment=c.get("moment_size"),
                           audio=round(c.get("audio_score") or 0, 2),
                           motion=round(c.get("motion_score") or 0, 3)))
-    judged = sum(1 for c in clips if c["stage"] >= 3)
-    if judged != night["vlm_kept"]:
-        warn(f"log says {night['vlm_kept']} reached the judge, work files say {judged}")
+    judged = sum(1 for c in clips if c["stage"] >= 4)
+    if judged != night["judged"]:
+        warn(f"log says {night['judged']} reached the judge, work files say {judged}")
     return clips
 
 
@@ -267,45 +287,15 @@ def export_media(args, work, raw, night, clips, chapters, transcripts, burned, a
                                    text=True).stdout.strip() or 30)
         ff("-i", src, "-vf", f"fps=8/{dur:.3f},scale=320:180,tile=8x1:padding=6:color=white",
            "-frames:v", "1", "-q:v", "4", ASSETS / "filmstrip.jpg")
-        ff("-i", src, "-filter_complex",
-           "aformat=channel_layouts=mono,showwavespic=s=1600x200:colors=0x5ad6e6",
-           "-frames:v", "1", ASSETS / "wave.png")
     else:
         warn(f"raw clip {src.name} is gone (deleted after a day); filmstrip/wave kept")
 
-    crops = work / "crops"
-    # Crops come from the best-ranked clip where the model actually READ an announcement
-    # (the hero's own check can stop after one frame, leaving a weak example); else hero.
-    cid = next((c["clip_id"] for c in sorted(chapters, key=lambda c: c["rank"])
-                if (vlm_all.get(c["clip_id"]) or {}).get("announcements")
-                and list(crops.glob(f"{c['clip_id']}_bn_*s.jpg"))), hid)
-    info["crop_rank"] = next(c["rank"] for c in chapters if c["clip_id"] == cid)
-    # the cache doesn't say WHICH frame an announcement was read from, so only quote it
-    # when there is a single banner crop (it must be that one)
-    single = len(list(crops.glob(f"{cid}_bn_*s.jpg"))) == 1
-    info["crop_ann"] = (((vlm_all.get(cid) or {}).get("announcements") or [None])[0]
-                        if single else None)
-
-    def at(p):                                        # crop file -> its second in the clip
-        return int(re.search(r"_(\d+)s\.jpg$", p.name).group(1))
-
-    for kind, name in (("bn", "crop_banner.jpg"), ("kf", "crop_killfeed.jpg")):
-        cands = sorted(crops.glob(f"{cid}_{kind}_*s.jpg"), key=at)
-        if args.crop_time is not None:
-            cands = [p for p in cands if at(p) == args.crop_time] or cands
-        if not cands:
-            warn(f"no {kind} crops for the hero clip; {name} kept")
-            continue
-        if kind == "bn":
-            # "most detail" picks a busy teamfight over a banner. Announcements land right
-            # after the play, so take the first banner crop at/after the judge's best moment.
-            bm = (api.get(cid) or {}).get("api_best_moment_s") or 0
-            best = next((p for p in cands if at(p) >= bm), cands[-1])
-            info["crop_time"] = at(best)
-        else:
-            best = max(cands, key=detail)
-        if not DRY:
-            shutil.copy(best, ASSETS / name)
+    sheet = work / "prescreen_sheets" / f"{hid}.jpg"
+    if sheet.exists() and not DRY:
+        subprocess.run(["magick", str(sheet), "-quality", "80", str(ASSETS / "sheet.jpg")],
+                       check=True)
+    elif not sheet.exists():
+        warn("no contact sheet for the hero clip; sheet.jpg kept")
 
     for i, src in enumerate([work / "thumbnail.jpg", work / "thumbnail_2.jpg",
                              work / "thumbnail_3.jpg"], 1):
@@ -338,7 +328,10 @@ def verdict_html(v):
     """The judge's real JSON for the hero clip, syntax-coloured like the page's code blocks."""
     keys = [("clip_focus", "api_focus"), ("play_quality", "api_play_quality"),
             ("entertainment", "api_entertainment"), ("what_happens", "api_what_happens"),
-            ("best_moment_s", "api_best_moment_s")]
+            ("is_league_game", "api_is_league_game"), ("pro_broadcast", "api_pro_broadcast"),
+            ("streamer_playing", "api_streamer_playing"),
+            ("action_start_s", "api_action_start_s"), ("action_end_s", "api_action_end_s")]
+    keys = [k for k in keys if v.get(k[1]) is not None]
     lines = ["{"]
     for i, (k, src) in enumerate(keys):
         val = v.get(src)
@@ -355,6 +348,7 @@ def verdict_html(v):
             body = "\n    ".join(html.escape(w) for w in wrapped)
             val_h = f'<span class="s">"{body}"</span>'
         else:
+            val = str(val).lower() if isinstance(val, bool) else val
             val_h = f'<span class="n">{html.escape(str(val))}</span>'
         comma = "," if i < len(keys) - 1 else ""
         lines.append(f'  <span class="p">"{k}"</span>: {val_h}{comma}')
@@ -393,7 +387,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--date", required=True, help="the night's date label, e.g. 2026-09-21")
     ap.add_argument("--hero-rank", type=int, default=2, help="countdown rank featured (default 2)")
-    ap.add_argument("--crop-time", type=int, help="use the hero clip's crops at this second")
     ap.add_argument("--dry-run", action="store_true", help="parse and report, write nothing")
     args = ap.parse_args()
     DRY = args.dry_run
@@ -419,43 +412,54 @@ def main():
     media = export_media(args, work, raw, night, clips, chapters, transcripts, burned, api,
                          vlm_all)
     hero_id = next(c["clip_id"] for c in chapters if c["rank"] == media["hero_rank"])
-    ann = media.get("crop_ann")
+    hero_pre = next((c for c in clips if c["id"] == hero_id), {})
+    gameplay = sum(1 for c in clips if c["stage"] >= 3)
 
     d = Date.fromisoformat(args.date)
+    if night["prescreen"]:          # Claude runs inside the judge stage, before Gemini
+        night["starts"]["api_judge"] = night["prescreen"][1]
     st, dur = night["starts"], durations(night["starts"], night["finish"])
     vlm_min = round((secs(st["api_judge"]) - secs(st["vlm_filter"])) % 86400 / 60) \
         if "api_judge" in st and "vlm_filter" in st else 90
     f = night
+    listed = f["listed"] or f["fetched"]
+    moments = f["moments"] or f["scored"]
+    ps = f["prescreen"]
     values = {
-        "fetched": f["fetched"], "scored": f["scored"], "passed": f["passed"], "kept": f["kept"],
-        "vlm_kept": f["vlm_kept"], "final": f["final"], "minutes": f["minutes"],
+        "listed": listed, "fetched": f["fetched"], "moments": moments,
+        "passed": f["passed"], "kept": f["kept"], "gameplay": gameplay,
+        "judged": f["judged"], "final": f["final"], "minutes": f["minutes"],
+        "drop_ineligible": listed - f["fetched"] if f["listed"] else 0,
+        "drop_moment": f["fetched"] - moments, "drop_static": moments - f["passed"],
         "dropped_total": f["fetched"] - f["final"],
-        "drop_lang": f["fetched"] - f["scored"],
         "date_long": f"{d.day} {d:%B %Y}", "date_short": f"{d.day} {d:%B}",
         "finish": f["finish"], "finish_hm": f["finish"][:5], "exit": f["exit"],
-        "gemini_days": f"{words(math.ceil(f['fetched'] / 20))} days",
+        "gemini_days": f"{words(math.ceil(listed / 20))} days",
         "vlm_minutes": vlm_min,
         "judge_switch": ("" if not f["switches"] else
-                         " It switched models once that night when the first was overloaded."
+                         " It moved to the next model once that night."
                          if f["switches"] == 1 else
-                         f" It switched models {f['switches']} times that night."),
+                         f" It moved along the chain {words(f['switches'])} times that night."),
         "hero_rank": media["hero_rank"], "hero_who": media["hero_who"],
-        "crop_rank": media["crop_rank"],
+        "hero_claude": (f"{hero_pre['claude']:g}" if hero_pre.get("claude") is not None else "?"),
+        "hero_claude_note": hero_pre.get("claude_note") or "",
         # no match that night -> leave these keys out, so the page keeps the text that
         # goes with the still it keeps
         **{k: media[k] for k in ("cap_rank", "tr_rank", "tr_lang") if k in media},
-        "crop_note": (f"at {media['crop_time']} seconds: the announcement area"
-                      + (f" (it read “{ann}”)" if ann else "") + " and the kill feed"
-                      if "crop_time" in media else "the announcement area and the kill feed"),
         "verdict_html": verdict_html(api.get(hero_id, {})),
         "t_doctor": st.get("doctor", ""),
+        "t_prescreen": ps[0] if ps else "",
+        "d_prescreen": (f"{round(((secs(ps[1]) - secs(ps[0])) % 86400) / 60)} min" if ps else ""),
     }
     for s in STAGES:
         values[f"t_{s}"] = st.get(s, "")
         values[f"d_{s}"] = dur.get(s, "")
+    if ps and "vlm_filter" in st:   # the local model stops where Claude starts
+        values["d_vlm_filter"] = f"{round(((secs(ps[0]) - secs(st['vlm_filter'])) % 86400) / 60)} min"
 
     print("  " + " -> ".join(str(values[k]) for k in
-                             ("fetched", "scored", "passed", "kept", "vlm_kept", "final"))
+                             ("listed", "fetched", "moments", "passed", "kept", "gameplay",
+                              "judged", "final"))
           + f"  |  {f['minutes']} min  |  finished {f['finish']} exit {f['exit']}")
     print(f"  hero #{media['hero_rank']} {media['hero_who']}  |  caption #{values.get('cap_rank', 'kept')}"
           f"  |  translation #{values.get('tr_rank', 'kept')} ({values.get('tr_lang', '-')})")
@@ -468,8 +472,8 @@ def main():
         return
     (SITE / "index.html").write_text(page, encoding="utf-8")
     (ASSETS / "funnel.json").write_text(json.dumps(
-        {"night": {k: values[k] for k in ("fetched", "scored", "passed", "kept", "vlm_kept",
-                                           "final", "date_long")},
+        {"night": {k: values[k] for k in ("listed", "fetched", "moments", "passed", "kept",
+                                           "gameplay", "judged", "final", "date_long")},
          "clips": [{k: v for k, v in c.items() if k != "id"} for c in clips]},
         ensure_ascii=False, indent=0), encoding="utf-8")
     print("done. Now look at the page, then update docs/SITE.md (ledger + changelog).")

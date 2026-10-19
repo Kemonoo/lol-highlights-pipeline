@@ -10,80 +10,62 @@ sync without re-reading the codebase:
 - **Site work:** start here. Work through Pending, update the site and the ledger, move
   the items into the changelog, and bump "Synced with".
 
-**Synced with:** pipeline as of 2026-09-24 (commit "Thumbnails: restore the previous
-avatar sizes"). The page narrates the real run of the night of **2026-09-23** (log
-`data/logs/auto_2026-09-24.log`, work files `data/work/2026-09-23/`), the first night
-with the owner overlay's 222/22 settings and the v4 crop regions.
+**Synced with:** pipeline as of 2026-10-19 (commit "Shorts: upload copy upscaled to
+1440x2560"). The page narrates the real run of the night of **2026-10-18** (log
+`data/logs/auto_2026-10-19.log`, work files `data/work/2026-10-18/`), the first night with
+the Claude pre-screen, trimming and the 120-clip pool.
 
 ## Pending (pipeline changes the site doesn't reflect yet)
 
-- 2026-10-12 — Selection redesign: duplicate moments removed, no language ban, the
-  local vision model only checks "is this gameplay", Gemini answers hard facts (League?
-  streamer playing?), max 2 clips per streamer, ~8-minute videos instead of a fixed 22.
-  The funnel/stage texts and the "222 in, 22 out" headline need updating.
-- 2026-10-18 — Claude (subscription) pre-screens every gameplay candidate to pick the
-  judge's 50; clips are trimmed to the judge's action window; ja/zh excluded again.
-- 2026-10-18 — Weekly compilation stage ("Best League Plays of the Week #N", Sundays,
-  from the week's published clips). Affects the stage list / output rows if the site
-  lists the videos the pipeline makes.
-(none — cleared by the 09-25 export)
+(none — cleared by the 10-18 export)
 
 ## Ledger — every fact the site states, and where it comes from
 
-Numbers of the 09-25 night come from the log; rules and limits come from config/code.
+Numbers of the 10-18 night come from the log; rules and limits come from config/code.
 
 | id | Site says | Source |
 |---|---|---|
-| H1 | "222 clips in, 22 out." (hero headline) | `raw/…/clips.json` 222 (`fetch_count` 222, exact since fetch_slack); `target_clips: 22` |
+| H1 | "222 clips in, 29 out." (hero headline) | log "Eligible … 734 of 947", `twitch.fetch_count` 222 + `eligible_only`; log "Assembled … 29 clips" |
 | H2 | Runs every night at 03:00, unattended | `setup_schedule.bat` / Task Scheduler |
-| H3 | Three Shorts per night (one is a ranking Short) | `shorts.count: 3`, `ranking_shorts.replace_slots: 1` |
-| F0 | 222 fetched | `raw/2026-09-25/clips.json` |
-| F1 | 171 after language (51 dropped) | log "Prefilter … 171 scored" |
-| F2 | 126 after sound & motion (45 dropped) | log "171 scored -> 126 passed -> 52 kept" |
-| F3 | 52 best ranked (74 dropped) | `prefilter.max_keep: 52` |
-| F4 | 35 after local vision model (17 dropped) | overlay `vlm_filter.max_keep: 35`; log "Filter: 52 -> 35 kept" |
-| F5 | 22 after Gemini (13 dropped) | log "API judge: 35 -> 22 kept"; `chapters.json` |
-| S0 | Self-check, then comment feedback at 03:00:00 | `doctor.py`, `feedback/feedback.py` |
-| S1 | Midnight–midnight Amsterdam, metadata only | `ingestion/fetch.py` |
-| S2 | audio < 0.22 or motion < 0.015 dropped; title keyword skips the audio test; rank = keyword, loudness, views | `prefilter.audio_exclude`, `motion_exclude`, `filtering/prefilter.py` |
-| S2-lr | Logistic regression exists but isn't loaded | `tools/train_classifier.py` docstring |
-| S3 | Qwen3-VL 4B via Ollama; 3-frame gameplay vote, 1-frame pro check, crops every 5 s | `llm.roles.vlm`, `filtering/vlm_filter.py`, `kill_detect.py` |
-| S3-rules | The 8-line decide() order, audio ≥ 0.30 / ≥ 0.55, not for Japanese titles | `vlm_filter.decide()` |
-| S3-keep | 35 kept | overlay `vlm_filter.max_keep: 35` (default 24) |
-| S4 | Gemini watches video+sound, fixed JSON schema, missing field = no answer | `filtering/api_judge.py` (`parse_verdict`) |
-| S4-rule | keep: entertainment ≥ 6 (≥ 7 reactions) or play quality ≥ 7 | `api_judge` keep rule |
-| S4-budget | 20 requests/model/day, walks a model chain; switched once on 09-23 | `api_judge.daily_budget`, `llm.roles.judge.overflow_models`, log |
-| S4-selection | "ordered into a countdown: 22 clips, 11.0 minutes of video" | log "Assembled … (11.0 min, 22 clips)"; `video.target_clips` |
-| S5 | Whisper translates to English with word timestamps, 1 min | `transcribe`, log times |
-| S6 | Captions 1–3 words, never overlap; source-caption detection by speech-vs-silence difference | `assemble._caption_groups`, `enrichment/burned_captions.py` |
-| S6-cut | No intro; glitch / whip / pixelate cuts, random, never twice in a row (the slow-mo replay line was removed: `replay_enabled: false`) | overlay `intro_enabled: false`, `video.transitions`, `production/transitions.py` |
-| S7 | Chapters + per-streamer links; Gemini writes the hook + thumbnail words; thumbnail = best-moment frame + webcam picture-in-picture, original webcam blurred | `production/credits.py`, overlay `thumbnail.provider: clip`, `upload.title_mode: hook` |
-| S8 | Resumable upload, can't upload a day twice | `publishing/upload.py` (`state.uploaded_id`) |
-| S9 | Best clips ~30 s; local vision model finds webcam / VTuber, snapped to edges; duo = two panels; speaker-coloured captions (Gemini); zoomed when nobody; no captions over English source captions; one ranking Short (top 5 of a theme, all published clips, never reused) | `shorts.*` (overlay `facecam_method: vlm`, `speaker_colors`), `enrichment/streamer_cam.py`, `enrichment/speakers.py`, `publishing/ranking_shorts.py` |
-| S10 | Every published clip logged forever (feeds ranking Shorts); raw downloads deleted after a day; masters only after YouTube confirms | `publishing/clip_log.py`, `cleanup.keep_raw_days: 1`, `cleanup.py` |
-| T | Stage start times (first = first log line, 03:00:06) … finish 05:53:09, durations rounded to minutes | `[stage] starting` lines in the log |
-| D1 | All 222 to Gemini = twelve days of one model's allowance | 222 / 20, rounded up |
-| P1, P3, P4 | Open problems: pro-broadcast check ~2/7 right; webcam finder can still frame a sticker / crop tight; filters tuned on small samples. (P2, judge on 360p, removed: fixed 2026-09-24) | DEVLOG 2026-09-13 (P1), 2026-09-25 streamer_cam entries (P3), CLAUDE.md eval loop + review queue (P4); remove each when fixed |
+| H3 | ~10-minute countdown + three Shorts; weekly themed compilation | `video.target_minutes_ideal` 8 / `_max` 11, `shorts.count: 3`, `weekly.enabled` |
+| F0 | 222 eligible (947 listed) | log "Eligible (language / blacklist): 734 of 947 fetched", `raw/…/clips.json` |
+| F1 | 211 after one per moment (11) | log "Moments: 222 clips -> 211" |
+| F2 | 199 not static (motion + tournament) | log "Prefilter … 211 scored -> 199 passed" |
+| F3 | 120 best ranked | log "-> 120 kept", overlay `prefilter.max_keep: 120` |
+| F4 | 91 gameplay | `vlm_scored.json` KEEP count (sanity mode) |
+| F5 | 50 Claude's pick | log "API judge: 50 -> 29", overlay `vlm_filter.max_keep: 50` |
+| F6 | 29 after Gemini, 10.8 min | log "Assembled 2026-10-18.mp4 (10.8 min, 29 clips)" |
+| S1 | Midnight–midnight Amsterdam; ja/zh skipped except an allow-list; blacklist; read until 222 qualify | `ingestion/fetch.py`, overlay `exclude_languages`, `language_allow_streamers`, `eligible_only` |
+| S2 | Same stream < 90 s = one moment, shortest well-viewed clip, no repeats within two weeks; motion; ranked by clip count, self-clip, views, keyword; loudness no longer counts | `filtering/moments.py`, overlay `moment_prefer: short`, `audio_weight: 0`, `quiet_gate: false` |
+| S3 | 3-frame gameplay vote only; was 8/8 right in reviews | overlay `vlm_filter.mode: sanity`, `kill_scan: false`; DEVLOG 2026-10-12 |
+| S3b | Claude: 8-frame sheet + title, `claude -p` on a subscription, 5 per call, ~4 s a clip, reorders only | `filtering/prescreen.py`, `providers/claude_code.py`, `prescreen.batch` |
+| S4 | Fixed JSON incl. facts + action window; hard drops (not League / not playing / pro broadcast); keep ent ≥ 6 (≥ 7 reaction) or play ≥ 7; 20 req/model/day chain; fill toward 8 min, max 11 | `api_judge` SCHEMA v5, `hard_facts`, `min_entertainment*`, `min_play_quality`, `daily_budget`, `select()` |
+| S6 | Trim to the action window; 60 fps; 1440p upload copy; transitions; caption rules | `video.trim`, overlay `fps: 60`, `upload_height: 1440`, `production/transitions.py`, `burned_captions.py` |
+| S7 | Thumbnail frame vetted (no scoreboard) | overlay `thumbnail.clip_frame_check` |
+| S9 | Shorts as before + 1440×2560 upload copy | `shorts.*`, overlay `shorts.upload_height: 2560` |
+| S10 | Clip log → weekly theme (longest-unused theme with ≥ 8 strong clips) | `publishing/clip_log.py`, `publishing/weekly.py` |
+| D1 | All 947 to Gemini = 48 days of one model's allowance | 947 / 20, rounded up |
+| P1 | Cut before the judge: Claude 6+ → 56% kept, < 6 → 28%; no better than signals inside the judged 50 | DEVLOG 2026-10-18 (10-16 sample) |
+| P3, P4 | Webcam finder slips; Gemini descriptions 8/20 partly wrong | streamer_cam DEVLOG entries; owner reviews 2026-10-12 |
 
 ## Assets (`site/assets/`)
 
-From the 09-25 night unless noted. Clip thumbnails and stills show streamers' footage;
+From the 10-18 night unless noted. Clip thumbnails and stills show streamers' footage;
 the footer credits them and the video description links each channel.
 
 | file | what | made from |
 |---|---|---|
-| `hero.mp4` / `hero.jpg` / `keycap.jpg` | 9 s loop / poster / hero tile of countdown #2 (BROHAN) | output @ chapter start +1 s / +2 s |
-| `clips/NN.jpg` + `funnel.json` | 52 prefilter survivors: tile, verdicts, scores, stage reached, rank | `work/<night>/thumbs`, `vlm_scored.json`, `api_partial_v3.json`, `chapters.json` |
-| `filmstrip.jpg`, `wave.png` | 8 frames + waveform of clip #2 | raw clip |
-| `crop_banner.jpg`, `crop_killfeed.jpg` | VLM crops of #2 at 22 s — v4 regions (exporter rule: best-ranked clip with read announcements) | `work/2026-09-25/crops/` |
-| `caption_en.jpg` | #18 English caption | output @ chapter start + first 3-word phrase |
-| `caption_translate.jpg` | #19 French source caption + our English above it | output |
-| `thumb_1.jpg` | the night's uploaded thumbnail (style A); thumb_2/3 deleted with the colourways | `work/<night>/thumbnail.jpg` |
-| `short_1.jpg`, `short_2.jpg` | sharpest regular Short + the ranking Short, as uploaded | `work/<night>/shorts/*.mp4` @ 6 s (exporter picks by edge detail) |
+| `hero.mp4` / `hero.jpg` / `keycap.jpg` | 9 s loop / poster / hero tile of countdown #2 | output @ chapter start +1 s / +2 s |
+| `clips/NN.jpg` + `funnel.json` | the 120 downloaded clips: tile, verdicts, Claude score, stage reached, rank | `work/<night>/thumbs`, `vlm_scored.json`, `prescreen_v1.json`, `api_partial_v5.json`, `chapters.json` |
+| `filmstrip.jpg` | 8 frames of clip #2 | raw clip |
+| `sheet.jpg` | the contact sheet Claude scored for clip #2 | `work/<night>/prescreen_sheets/` |
+| `caption_en.jpg` / `caption_translate.jpg` | English caption / foreign source caption + ours | output |
+| `thumb_1.jpg` | the night's uploaded thumbnail | `work/<night>/thumbnail.jpg` |
+| `short_1.jpg`, `short_2.jpg` | sharpest regular Short + the ranking Short | `work/<night>/shorts/*.mp4` @ 6 s |
 | `intro.jpg` | brand intro frame (currently unused) | 09-21 output @ 1.2 s |
 
-funnel.json `stage`: 2 = dropped by the VLM,
-3 = dropped by Gemini, 4 = in the video.
+funnel.json `stage`: 2 = not gameplay, 3 = not picked by Claude, 4 = dropped by Gemini,
+5 = in the video.
 
 ### Regenerating assets for a new night
 
@@ -147,3 +129,11 @@ Built with Anthropic's `frontend-design` plugin guidance.
   transitions, no slow-mo replay (off in config), style A thumbnail + Gemini hook, Shorts via
   the vision model / duo panels / speaker colours / ranking Short, clip log. Open problem P2
   removed, P3 rewritten. Exporter: Short stills = sharpest regular + ranking. README shot refreshed.
+- 2026-10-20 — Exported the 10-18 night (947 listed → 222 eligible → 29 out, 10.8 min) and
+  rewrote the funnel and stage texts for the 10-12+ pipeline: 7 steps (one per moment, not
+  static, ranked, gameplay, Claude's pick, Gemini), a Claude stage with its contact sheet,
+  Gemini's hard facts + action window, trimming, 60 fps / 1440p, weekly compilations.
+  Removed the VLM crop and waveform figures (kill scan and loudness are off). Open problems:
+  P1 pro-broadcast check (no longer a gate) replaced by the cut before the judge; Gemini
+  descriptions added. Exporter: new log lines, prescreen timing inside the judge stage,
+  `sheet.jpg`. README shot refreshed.

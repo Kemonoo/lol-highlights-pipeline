@@ -2,7 +2,7 @@
 
 ### ▶ [See how it works — one real night, stage by stage](https://kemonoo.github.io/lol-highlights-pipeline/)
 
-[![The project page: 219 clips in, 22 out](docs/images/site.jpg)](https://kemonoo.github.io/lol-highlights-pipeline/)
+[![The project page: 222 clips in, 29 out](docs/images/site.jpg)](https://kemonoo.github.io/lol-highlights-pipeline/)
 
 Turns each day's top Twitch clips into a finished, uploadable YouTube video — fetch,
 filter with AI, edit, thumbnail, publish — plus vertical Shorts. One command in, one
@@ -23,20 +23,25 @@ and runs on free local models by default — no API key or billing required.
 
 ## Features
 
-- **Three-layer AI filtering** — free local scoring, then a local vision model, then
-  (optionally) an LLM that watches each survivor as video and grades the play.
-- **FFmpeg-only editing** — branded intro, countdown badges, animated streamer
-  nameplates, slow-mo replays, music outro, loudness mastering.
+- **Layered AI filtering** — free local signals (one clip per moment: viewers who clip the
+  same play are merged, and nothing published in the last two weeks repeats), then a local
+  vision model, then (optionally) Claude ranking every candidate from its frames, then an
+  LLM that watches the best as video with sound and grades the play.
+- **FFmpeg-only editing** — countdown badges, animated streamer nameplates, glitch / whip /
+  pixelate transitions, clips trimmed to the action the judge saw, music outro, loudness
+  mastering. Optional 1440p upload copy, which YouTube encodes far better than 1080p.
 - **Speech captions in any language** — faster-whisper detects the language and
   translates to English; the text is burned onto every clip, so the video works muted.
 - **Publishing** — title, chapters, per-streamer credits, thumbnail, resumable YouTube
   upload, and 3 derived vertical Shorts — optionally one of them a "TOP 5" ranking
-  (pentakills, outplays, champion plays) built from every clip published so far.
+  (pentakills, outplays, champion plays) built from every clip published so far — and an
+  optional weekly themed compilation ("Top 10 Pentakills of the Week") from the same log.
 - **Cached and resumable** — interrupt any run and re-run; it picks up where it stopped.
 - **Auditable** — every run writes `data/work/<date>/report.html`, a visual record of
   every keep/reject decision with thumbnails, scores, and reasons.
 - **Bring your own models** — every model call goes through a role you can point at
-  Gemini, Ollama, Anthropic, or any OpenAI-compatible endpoint.
+  Gemini, Ollama, Anthropic, the Claude Code CLI (a Claude subscription, no API key), or any
+  OpenAI-compatible endpoint.
 - **Degrades instead of failing** — no API key, no GPU, no billing: still a video.
 
 ## Quickstart
@@ -108,15 +113,16 @@ the .bat, or another terminal.
 | Stage | What it does |
 |---|---|
 | `fetch` | Top clips for the day via the Twitch Helix API (metadata; downloads are lazy) |
-| `prefilter` | Local scoring: title keywords, audio hype, motion, language, blacklist |
-| `vlm_filter` | Local vision model, one simple question per crop: real gameplay? esports? kills in the feed? |
-| `api_judge` | An LLM watches each survivor *as video* and grades play quality + entertainment |
+| `prefilter` | Local signals: one clip per moment, no repeats of recent videos, motion, language, blacklist, ranking by how many viewers clipped it |
+| `vlm_filter` | Local vision model, one simple question per image: real gameplay? (optionally esports? kills in the feed?) |
+| `api_judge` | *(optional)* Claude ranks every candidate from an 8-frame sheet; then an LLM watches the best *as video* and grades play quality + entertainment, plus where the action starts and ends |
 | `transcribe` | faster-whisper detects the language and translates speech → English |
 | `commentary` · `tts` | *(optional)* grounded caster lines + neural voiceover |
-| `assemble` | FFmpeg: intro, countdown badges, nameplates, captions, replays, outro, mastering |
+| `assemble` | FFmpeg: clips cut to the action, countdown badges, nameplates, captions, transitions, outro, mastering |
 | `credits` | Title, chapters, per-streamer credit links, music attribution |
 | `thumbnail` | Free local composite, or an AI reaction thumbnail |
 | `upload` · `shorts` | Resumable YouTube upload + 3 vertical Shorts (webcam found anywhere in frame → gameplay above, streamer below) |
+| `clip_log` · `weekly` | Every published clip logged; *(optional)* a weekly themed compilation built from it |
 
 Two modes, both config toggles: **lean** (default — curated clips, transitions, brand,
 no narration) and **produced** (AI commentary + voiceover + music bed).
