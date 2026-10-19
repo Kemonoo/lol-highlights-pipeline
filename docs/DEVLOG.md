@@ -1579,3 +1579,12 @@ clips >= `weekly.theme_fill_score` (6) toward `theme_target_minutes` (8), up to 
 Week ending 10-17: Pentakills, 10 clips / 5.6 min -> 15 clips / 8.5 min.
 Night of 10-18 (first run with prescreen + trim): clean, 89/89 clips pre-screened by Claude
 in 6.5 min on the subscription, 5 clips trimmed, 22 clips / 10.9 min uploaded.
+
+## 2026-10-19 — 60 fps + 1440p upload (owner: "quality seems low")
+
+Downloads were already Twitch's best (1080p60, 3-4.5 Mbps). Loss was ours + YouTube's:
+`video.fps: 30` halved the frame rate, and YouTube gives 1080p uploads its weakest encode.
+Owner overlay now `fps: 60` and `video.upload_height: 1440` - `assemble.master()` upscales
+the finished video once (lanczos, same encoder helper); everything before stays 1080p, so
+overlay geometry is untouched (0 = stream copy, the default). Test (3 clips, 1.5 min):
+155 s render, 1440p60 at ~35 Mbps -> expect ~2.5 GB / ~30-40 min upload per daily video.

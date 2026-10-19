@@ -525,7 +525,19 @@ def master(concat_mp4: Path, out: Path, v: dict) -> None:
                  "-map", "0:v", "-map", "[a]"]
     else:
         args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-map", "0:v", "-map", "0:a"]
-    args += ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+    # `video.upload_height` (owner 2026-10-19): YouTube gives 1080p uploads its weakest
+    # encode and switches to a better codec at 1440p, so the finished 1080p video is
+    # upscaled once here. Everything before stays at the composition size (overlay
+    # geometry is in 1080p pixels); 0 = stream copy as before.
+    up = int(v.get("upload_height", 0) or 0)
+    if up > int(v["height"]):
+        from ..hardware import encoder_args
+        uw = int(round(v["width"] * up / v["height"] / 2)) * 2
+        args += ["-vf", f"scale={uw}:{up}:flags=lanczos",
+                 *encoder_args(v, int(v.get("_cpu_threads", 0))), "-pix_fmt", "yuv420p"]
+    else:
+        args += ["-c:v", "copy"]
+    args += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000",
              "-movflags", "+faststart", str(out)]
     _ff(args)
 

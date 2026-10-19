@@ -307,7 +307,9 @@ tts:
 video:
   width: 1920
   height: 1080
-  fps: 30
+  fps: 30                     # 60 = Twitch clips' own rate (owner overlay)
+  upload_height: 0            # >height = upscale the finished video once (1440: YouTube's
+                              # better codec); 0 = keep the composition size
   preset: veryfast            # x264 encode speed/quality tradeoff (software encoding only)
   encoder: auto               # auto | libx264 | h264_nvenc | h264_qsv | h264_videotoolbox
                               # `auto` probes `ffmpeg -encoders` and picks hardware encoding

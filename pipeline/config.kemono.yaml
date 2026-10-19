@@ -25,6 +25,8 @@ twitch:
                                  # max_fetch = fetch_count keeps expansion off, as upstream.
 
 video:
+  fps: 60                        # owner 2026-10-19: Twitch clips are 1080p60; 30 halved it
+  upload_height: 1440            # YouTube encodes 1440p uploads far better than 1080p
   target_clips: 0                # owner 2026-10-12: quality first, aim for ~8 min - the
   target_minutes_ideal: 8        # duration rule fills toward 8 min with fillers that pass
   target_minutes_max: 11         # the raised bar, and publishes shorter rather than pad
