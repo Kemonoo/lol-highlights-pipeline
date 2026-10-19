@@ -444,10 +444,35 @@ def _write_title(cfg: dict, prompt: str) -> str:
 
 # ── upload ────────────────────────────────────────────────────────────────────
 
+def upscale(mp4: Path, cfg: dict) -> Path:
+    """`shorts.upload_height` (owner 2026-10-19): the upload copy is upscaled once, as
+    the long-form is (assemble.master) - YouTube encodes >1080p uploads with a better
+    codec. Renders stay 1080x1920 (all overlay geometry is in those pixels). Returns the
+    file to upload; the original on any failure or when off (0, the default)."""
+    h = int((cfg.get("shorts", {}) or {}).get("upload_height", 0) or 0)
+    if h <= TARGET_H:
+        return mp4
+    out = mp4.with_name(mp4.stem + f"_{h}p.mp4")
+    if out.exists():
+        return out
+    w = int(round(TARGET_W * h / TARGET_H / 2)) * 2
+    r = subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-vf",
+                        f"scale={w}:{h}:flags=lanczos", *_shorts_enc(cfg),
+                        "-pix_fmt", "yuv420p", "-c:a", "copy", str(out)],
+                       capture_output=True)
+    if r.returncode != 0 or not out.exists():
+        log.warning("  shorts: upscale failed, uploading 1080p: %s",
+                    r.stderr[-200:].decode(errors="replace"))
+        return mp4
+    return out
+
+
 def _upload(mp4: Path, title: str, description: str, tags: list,
-            privacy: str, data: Path, publish_at=None) -> str | None:
+            privacy: str, data: Path, publish_at=None, cfg: dict | None = None) -> str | None:
     """`publish_at`: the date's main video is scheduled (a catch-up night, see
     upload.publish_slot) - the Shorts go public with it, not before."""
+    if cfg is not None:
+        mp4 = upscale(mp4, cfg)
     try:
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
@@ -642,7 +667,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
             )
             tags = ["league of legends", "lol", "shorts", "twitch clips",
                     "lol highlights", streamer.lower()]
-            vid_id = _upload(v_final, title, description, tags, privacy, data, publish_at)
+            vid_id = _upload(v_final, title, description, tags, privacy, data, publish_at,
+                             cfg=cfg)
             if vid_id:
                 url = f"https://youtube.com/shorts/{vid_id}"
                 log.info("  uploaded: %s", url)
@@ -657,7 +683,7 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if rk.get("enabled", False) and "ranking" not in done:
         from . import ranking_shorts
         up = ((lambda mp4, title, desc, tags: _upload(mp4, title, desc, tags, privacy, data,
-                                                      publish_at))
+                                                      publish_at, cfg=cfg))
               if sh.get("upload", True) else None)
         try:
             entry = ranking_shorts.make(cfg, state, date_label, up)

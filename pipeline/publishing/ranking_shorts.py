@@ -235,7 +235,8 @@ def _segment(cfg: dict, row: dict, src: Path, rank: int, title: tuple, names: di
                   f"box=1:boxcolor=0x6441A5@0.85:boxborderw=14:x=30:y=h-th-44")
     out = seg_dir / f"seg_{rank}.mp4"
     r = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(layout), "-vf", ",".join(vf) + ",fps=30",
+        ["ffmpeg", "-y", "-i", str(layout), "-vf",
+         ",".join(vf) + f",fps={int(cfg.get('video', {}).get('fps', 30))}",
          *S._shorts_enc(cfg), "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
          str(out)], capture_output=True)
     if r.returncode != 0 or not out.exists():

@@ -1588,3 +1588,7 @@ Owner overlay now `fps: 60` and `video.upload_height: 1440` - `assemble.master()
 the finished video once (lanczos, same encoder helper); everything before stays 1080p, so
 overlay geometry is untouched (0 = stream copy, the default). Test (3 clips, 1.5 min):
 155 s render, 1440p60 at ~35 Mbps -> expect ~2.5 GB / ~30-40 min upload per daily video.
+Same day, owner: Shorts too. `shorts.upload_height: 2560` (overlay) upscales the UPLOAD
+copy (`shorts.upscale`, called from `_upload`, so ranking Shorts get it too); renders stay
+1080x1920. Shorts were already 60 fps from source; ranking Shorts were forced to fps=30 and
+now follow `video.fps`.

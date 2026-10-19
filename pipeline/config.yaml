@@ -597,6 +597,8 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
 
 shorts:
   enabled: true
+  upload_height: 0            # >1920 = upscale the UPLOAD copy once (2560: YouTube's better
+                              # codec, as video.upload_height); renders stay 1080x1920
   count: 3                    # how many shorts to render per day (top clips by rank score)
   upload: false               # SAFE BY DEFAULT (see upload.enabled). true = auto-upload after
                               # render; shares the main upload OAuth token.

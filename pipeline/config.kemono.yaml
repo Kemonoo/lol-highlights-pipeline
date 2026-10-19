@@ -81,6 +81,7 @@ upload:
 
 shorts:
   upload: true
+  upload_height: 2560           # owner 2026-10-19: 1440x2560 upload copy, like the long-form
   privacy: public
   speaker_colors: true           # owner 2026-09-25: colour-code captions by speaker
   facecam_avatar_motion: [15, 40]   # owner: 2D avatars / VTubers count as the streamer
