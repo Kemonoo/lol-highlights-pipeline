@@ -157,6 +157,7 @@ def build(cfg: dict, rank: int) -> Path | None:
         ).hexdigest()[:16]
         out = out_dir / f"{key}.mov"
         if out.exists():
+            out.touch()                    # cleanup.cache_max_age_days prunes by mtime
             return out
 
         with tempfile.TemporaryDirectory() as td:

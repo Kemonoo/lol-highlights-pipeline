@@ -15,9 +15,15 @@ Deletes (for days older than keep_output_days, when set):
 Deletes (for days older than keep_raw_days):
   - data/raw/<date>/*.mp4  + lq/   (raw clips, large; also raw/weekly_<date>/, the
                                     weekly compilation's re-downloads)
-  - data/work/<date>/api_tmp/       (re-encoded judge clips, large)
-  - data/work/<date>/segments/      (assembled segment renders, large)
-  - data/work/<date>/shorts/        (short renders, large — already uploaded)
+  - data/work/<date>/<MEDIA_DIRS>    (renders and re-downloads, large: judge re-encodes,
+                                    segments, trimmed sources, Shorts, ranking-Short and
+                                    weekly re-downloads, Claude's contact sheets, crops)
+  The record of every published clip is data/clip_log.jsonl (Twitch link, scores,
+  transcript) plus the work JSONs - everything a themed compilation needs is metadata;
+  the clips themselves are re-downloaded from Twitch when one is built.
+
+Deletes (`cache_max_age_days`, when set): cached nameplate / countdown animations not used
+for that long (regenerated on demand; ~10-40 MB each at 60 fps).
 
 Never blocks the pipeline.
 """
@@ -27,6 +33,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("pipeline.cleanup")
+
+# media under work/<date>/ that only matters until that night's uploads are done
+MEDIA_DIRS = ("api_tmp", "segments", "segments_np", "shorts", "trimmed", "ranking", "src",
+              "prescreen_sheets", "crops")
 
 
 def _dir_date(name: str) -> datetime:
@@ -121,15 +131,33 @@ def _run(cfg: dict, cl: dict, date_label: str, state=None) -> None:
         if dir_date >= current:
             continue  # keep today's work intact
 
-        for subdir in ("api_tmp", "segments", "shorts"):
+        for subdir in MEDIA_DIRS:
             d = date_dir / subdir
             if d.exists():
                 freed += _dir_size(d)
                 shutil.rmtree(d)
 
     freed += _prune_outputs(data, cl, current, state)
+    freed += _prune_cache(data, int(cl.get("cache_max_age_days", 0) or 0))
 
     log.info("cleanup: freed %.1f MB", freed / 1_048_576)
+
+
+def _prune_cache(data: Path, days: int) -> int:
+    """Delete rendered animation caches unused for `days` (0 = off). Returns bytes."""
+    if days <= 0:
+        return 0
+    import time
+    cutoff = time.time() - days * 86400
+    freed = 0
+    for sub in ("nameplates", "countdown"):
+        for f in (data / "cache" / sub).glob("*") if (data / "cache" / sub).exists() else []:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                freed += f.stat().st_size
+                f.unlink()
+    if freed:
+        log.info("cleanup: pruned %.0f MB of unused nameplate/countdown cache", freed / 1_048_576)
+    return freed
 
 
 def _dir_size(path: Path) -> int:

@@ -721,6 +721,8 @@ cleanup:
                               # keeps its video regardless of age. <date>.meta.json is
                               # never pruned: it is the record of who was credited.
                               # At ~550-850 MB per video this is ~200 GB/year if left off.
+  cache_max_age_days: 0       # delete cached nameplate/countdown animations unused this long
+                              # (0 = never; they regenerate on demand)
 
 permissions:
   require_permission: false   # when true, only broadcasters approved in state.json are used

@@ -189,7 +189,9 @@ relative to `pipeline/`).
     (work/, raw/, output/weekly_<date>.mp4; date-dir scanners skip `weekly_*`). Ledger
     `data/weekly.json` (used ids, #N) written on upload; `weekly.upload` gates publishing.
     CLI: `python -m pipeline.publishing.weekly --week-ending <date> [--no-upload]`
-15. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, and
+15. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, every
+    render/re-download dir under work/<date>/ (`MEDIA_DIRS`) once that night is over,
+    nameplate/countdown caches unused for `cleanup.cache_max_age_days`, and
     published masters older than `cleanup.keep_output_days` (0 = keep forever, the
     default; a master is only ever deleted when state.json holds a confirmed YouTube
     id for that date, so an un-uploaded video is never touched. meta.json always stays)

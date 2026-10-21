@@ -322,6 +322,7 @@ def build(cfg, clip):
             .encode()).hexdigest()[:16]
         out = np_dir / f"{key}.mov"
         if out.exists():
+            out.touch()                    # cleanup.cache_max_age_days prunes by mtime
             return out
 
         pfp = _twitch_pfp(bid, cache_dir) if bid else None

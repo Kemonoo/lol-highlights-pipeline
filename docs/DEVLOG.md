@@ -1612,3 +1612,22 @@ Shipped (owner overlay on, defaults off):
 - `shorts.hook_text`: A/B test - half the Shorts (md5 of clip id) get 2-4 ALL-CAPS words over
   the first 2.5 s, written in the same call as the title. done.json records `hook_arm` /
   `hook_text`; compare arms in yt_analytics after ~2 weeks (views, % viewed, SHORTS feed).
+
+### Same day: text jobs on Claude; data/ was 32 GB
+
+Owner: use Claude rather than Gemini where possible. Owner overlay routes the `commentary`
+role (video title hook + thumbnail words, Shorts title + hook text) and `feedback` (comment
+classification) to `claude_code` (sonnet, subscription), with Gemini flash-lite as the
+commentary role's `fallback` (`providers.complete_json_chain` now ends on the role's
+fallback block). Gemini keeps only what Claude can't do: the judge (video WITH sound) and
+speaker labels (audio).
+data/ was 32 GB: output 13 GB (7 days of masters, now ~3 GB each at 1440p60), work 11 GB
+(cleanup only knew api_tmp/segments/shorts - ranking-Short re-downloads 4 GB, weekly src
+2.5 GB, trimmed, crops and Claude sheets were never removed), nameplate cache 4 GB (one
+qtrle animation per streamer ever seen, never pruned), raw 3.5 GB (expected: 2 days).
+Now: `cleanup.MEDIA_DIRS` covers every render/download dir; `cleanup.cache_max_age_days`
+(overlay 14) prunes unused nameplate/countdown animations (reuse touches the file);
+overlay `keep_output_days` 7 -> 2. One pass freed 15.7 GB; steady state ~12 GB. What is kept
+for good: data/clip_log.jsonl (every published clip: Twitch link, scores, transcript - the
+source for themed compilations, which re-download clips from Twitch), work/*.json,
+output/*.meta.json, thumbnails.

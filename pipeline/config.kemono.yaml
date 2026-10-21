@@ -118,10 +118,11 @@ thumbnail:
     enabled: true                  # owner 2026-10-07: alternate pip / big face, cycle 5 palettes
 
 cleanup:
-  keep_output_days: 7             # this channel uploads publicly, so YouTube holds the
-                                  # canonical copy; a week is enough to catch a bad render
-                                  # and re-cut it. Masters are ~550-850 MB each, i.e. about
-                                  # 200 GB/year of local disk if never pruned.
+  keep_output_days: 2             # owner 2026-10-21: keep metadata, not videos. YouTube holds
+                                  # the canonical copy; 2 days is enough to catch a bad render.
+                                  # Masters are ~2.5-3 GB each since 60 fps / 1440p.
+                                  # (tools/stream.py streams these, so it gets fewer to loop.)
+  cache_max_age_days: 14          # nameplate cache was 4 GB: one animation per streamer ever seen
 
 prefilter:                       # owner 2026-10-12, after two outside reviews + his notes
   # ja/zh excluded again (owner, same day, after 93 reviews: 3 of 26 ja/zh clips good or
@@ -163,3 +164,22 @@ vlm_filter:
                                  # cap IS the choice (10-11's replay lost Burrito ent 8 and
                                  # slimeIRL ent 7 below a cap of 35). 60 = 3 full Flash models'
                                  # free allowance (3.6, 3.8, 3-preview at 20/day each).
+
+llm:
+  roles:
+    # owner 2026-10-21: text jobs go to Claude on the subscription (`claude -p`), Gemini only
+    # where Claude can't (the judge watches video WITH SOUND; speakers listen to audio).
+    # Gemini stays as the fallback when Claude is out of usage or logged out.
+    commentary:                  # titles, thumbnail words, Shorts titles + hook text
+      provider: claude_code
+      model: sonnet
+      timeout_s: 180
+      overflow_models: []        # the base list holds Gemini ids
+      fallback:
+        provider: gemini
+        model: gemini-3.1-flash-lite
+        api_key: ${GEMINI_API_KEY}
+    feedback:                    # viewer-comment classification
+      provider: claude_code
+      model: sonnet
+      timeout_s: 180

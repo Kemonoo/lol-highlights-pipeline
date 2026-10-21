@@ -125,7 +125,8 @@ def get_provider_chain(cfg: dict, role: str, *, vision: bool = False) -> list[Pr
 def complete_json_chain(cfg: dict, role: str, prompt: str, *, schema: dict | None = None,
                         retries: int = 2, **kw) -> dict | None:
     """complete_json on the role's chain: a busy (503) or spent model moves on to the next
-    `overflow_models` id after `retries` attempts instead of the full retry ladder. Short
+    `overflow_models` id after `retries` attempts instead of the full retry ladder, then
+    to the role's `fallback` block. Short
     text jobs (titles, hooks) use it so one overloaded model doesn't cost the title.
     Raises the last error when every model failed; ProviderUnavailable when none can run."""
     from dataclasses import replace
@@ -139,6 +140,12 @@ def complete_json_chain(cfg: dict, role: str, prompt: str, *, schema: dict | Non
         except ProviderError as e:
             last = e
             log.info("role '%s': %s failed (%s) - next model", role, p.rc.model, e.status)
+    fb = get_fallback(cfg, role)          # e.g. Claude primary, Gemini as the fallback
+    if fb is not None:
+        try:
+            return fb.complete_json(prompt, schema=schema, **kw)
+        except ProviderError as e:
+            last = e
     if last:
         raise last
     return None
