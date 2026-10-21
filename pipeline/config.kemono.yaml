@@ -77,10 +77,14 @@ upload:
   enabled: true
   privacy: public                # goes live on the channel as soon as it finishes
   allow_reupload: false          # idempotency: a crash-retry must not double-post
+  title_names: true             # owner 2026-10-21: search traffic is streamer names
   title_mode: hook               # owner pick 2026-09-25: "<Gemini hook>... LoL Daily Clips #N"
 
 shorts:
   upload: true
+  title_names: true              # owner 2026-10-21
+  hook_text:
+    enabled: true                # owner 2026-10-21: A/B test, half the Shorts get it
   upload_height: 2560           # owner 2026-10-19: 1440x2560 upload copy, like the long-form
   privacy: public
   speaker_colors: true           # owner 2026-09-25: colour-code captions by speaker

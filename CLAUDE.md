@@ -133,7 +133,9 @@ relative to `pipeline/`).
    attribution → `data/output/<date>.meta.json`. `upload.title_mode: styles` = rotating
    templates; `hook` = "<LLM hook>... LoL Daily Clips #N" (owner-approved 2026-09-25; the
    `commentary` role writes hook + 1-3 word thumbnail text once per date →
-   `work/<date>/title_hook.json`, keyword fallback uncached)
+   `work/<date>/title_hook.json`, keyword fallback uncached). `upload.title_names`: hook
+   starts with a listed streamer name (`name_first`), description + tags lead with streamer
+   and champion names (search traffic is names, DEVLOG 2026-10-21)
 10. `production/thumbnail.py` — 1280×720 thumbnail, three providers (`thumbnail.provider`,
     defaulting to `local` so a fresh clone needs no billing). `clip` (style A, owner-approved
     2026-09-25, `compose_clip`): sharp best-moment gameplay zoomed toward the fight, the
@@ -164,7 +166,9 @@ relative to `pipeline/`).
     audio + English speech captions (drawtext, `_caption_filters`, layout-aware height via
     `caption_split_gap`/`caption_margin_v` — fontfile, no fontconfig). English title from
     the summary + speech (NEVER the raw native Twitch title). Shares the main upload OAuth →
-    `work/<date>/shorts/`. Where the streamer is: `enrichment/streamer_cam.py` (`vlm`
+    `work/<date>/shorts/`. `shorts.title_names` = title opens with the streamer; `shorts.hook_text` =
+    A/B test, 2-4 caps words over the first seconds for half the Shorts (`hook_arm` in
+    done.json). Where the streamer is: `enrichment/streamer_cam.py` (`vlm`
     role locates webcam/VTuber overlays, up to 2 for duo streams, snapped to the overlay's
     edges; Haar = model-confirmed fallback; `shorts.facecam_method`). One daily slot
     (`ranking_shorts.replace_slots`) goes to `publishing/ranking_shorts.py`: a TOP 5 of one

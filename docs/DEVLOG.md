@@ -1592,3 +1592,23 @@ Same day, owner: Shorts too. `shorts.upload_height: 2560` (overlay) upscales the
 copy (`shorts.upscale`, called from `_upload`, so ranking Shorts get it too); renders stay
 1080x1920. Shorts were already 60 fps from source; ranking Shorts were forced to fps=30 and
 now follow `video.fps`.
+
+## 2026-10-21 — Channel analytics review; names in titles; Shorts hook-text A/B
+
+Analytics 08-01..10-20 (API; impressions/CTR are Studio-only, Chrome was not connected):
+14,860 views, but 11,829 are "SUBSCRIBER" traffic on a 4-subscriber channel, mostly the
+two spike videos (5.2k / 3.7k, 2-3 likes each) - not organic. Real: ~3,000 views over 362
+videos. The only organic engine is SEARCH, and it is names: "taylor fritz league of legends"
+228 (best real video: that Short, 435 views, 85% viewed, most likes), katevolved 52,
+doxamid, theoddone, diamondprox; "lol moments" 8. Browse (home) = 0, Shorts feed = 71,
+suggested ~1.3k mostly from our own videos. Retention is fine (37% avg on long videos,
+42-59% still watching at the end; Shorts 75-85%), so distribution is the bottleneck.
+Shipped (owner overlay on, defaults off):
+- `upload.title_names`: the hook prompt sees each clip's streamer and must start with one
+  (`credits.name_first` guarantees a LISTED name, prefixing the best clip's when missing);
+  description opens "Featuring <top streamers> - <champions>"; tags lead with every
+  streamer + champions from the judge's descriptions, capped at YouTube's 500 chars.
+- `shorts.title_names`: Shorts titles start with the streamer's name.
+- `shorts.hook_text`: A/B test - half the Shorts (md5 of clip id) get 2-4 ALL-CAPS words over
+  the first 2.5 s, written in the same call as the title. done.json records `hook_arm` /
+  `hook_text`; compare arms in yt_analytics after ~2 weeks (views, % viewed, SHORTS feed).

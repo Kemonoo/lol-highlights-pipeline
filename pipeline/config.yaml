@@ -72,6 +72,9 @@ llm:
       provider: auto          # auto = gemini if GEMINI_API_KEY is set, else ollama
       model: gemini-3.1-flash-lite
       api_key: ${GEMINI_API_KEY}
+      overflow_models:        # titles/hooks walk these when the model is busy (2026-10-21:
+        - gemini-3.5-flash-lite   # 3.1-flash-lite 503'd every title; providers.complete_json_chain)
+        - gemini-flash-lite-latest
       fallback:               # used when provider: auto finds no API key
         provider: ollama
         model: qwen2.5:7b     # MUST be installed (`ollama list`)
@@ -524,6 +527,8 @@ upload:
   # ("episodes" map) — stable across reruns/retries of the same date.
   title_date: true            # append " | <n>" as the daily-series marker
   title_mode: styles          # styles = the rotating templates below (default)
+  title_names: false          # streamer name in the title hook; names + champions lead the
+                              # description and tags (search traffic is names - owner 2026-10-21)
                               # hook   = "<day-specific hook>... <title_series> #<episode>",
                               # hook written by the `commentary` role from the judge's
                               # descriptions of the top clips (+ the 1-3 word thumbnail text),
@@ -597,6 +602,12 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
 
 shorts:
   enabled: true
+  title_names: false          # Shorts titles start with the streamer's name
+  hook_text:                  # A/B test: 2-4 big words over the first seconds of a Short
+    enabled: false
+    share: 0.5                # fraction of Shorts in the "hook" arm (stable per clip id);
+    seconds: 2.5              # done.json records hook_arm so analytics can compare arms
+    y: 210
   upload_height: 0            # >1920 = upscale the UPLOAD copy once (2560: YouTube's better
                               # codec, as video.upload_height); renders stay 1080x1920
   count: 3                    # how many shorts to render per day (top clips by rank score)

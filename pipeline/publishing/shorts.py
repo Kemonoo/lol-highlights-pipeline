@@ -37,11 +37,16 @@ MAX_SHORT_S = 55  # under YouTube's 60 s limit with buffer
 
 _TITLE_PROMPT = """Write a punchy ENGLISH YouTube Shorts title for a League of Legends clip.
 <= 70 characters. English ONLY (never the streamer's native language). Clickbait but honest,
-references what happens. No hashtags, no quotes, no emoji.
+references what happens. No hashtags, no quotes, no emoji.{name_rule}
+Also write HOOK: 2-4 words in ALL CAPS shown big over the first seconds of the video, so a
+scrolling viewer knows why to stay (e.g. "WATCH THE FLASH", "1V3 IN BASE", "HE CALLED IT").
 Streamer: {streamer}
 What happens (English): {summary}
 What the streamer said (English, may be empty): {speech}
-Answer ONLY JSON: {{"title": "..."}}"""
+Answer ONLY JSON: {{"title": "...", "hook": "..."}}"""
+
+# owner 2026-10-21: Shorts search traffic is streamer names, so the title opens with one
+_NAME_RULE = "\nSTART the title with the streamer's name exactly as given."
 
 
 # ── name helper ───────────────────────────────────────────────────────────────
@@ -354,7 +359,7 @@ def _shorts_enc(cfg: dict) -> list[str]:
 def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
                   caption_words: list[dict], cap_mv: int, game_h: int,
                   cfg: dict, total_h: int = TARGET_H,
-                  speakers: list | None = None) -> None:
+                  speakers: list | None = None, hook: str = "") -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
     (no voiceover, no music).
@@ -404,6 +409,21 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
             parts.append(f"[{cur}]{dt}[cap]")
             cur = "cap"
 
+    if hook:
+        # first-seconds hook (shorts.hook_text): big text over the top of the frame, gone
+        # before the play, so a scrolling viewer knows why to stay
+        from ..production.assemble import _esc, _font
+        hk = cfg.get("shorts", {}).get("hook_text", {}) or {}
+        secs = float(hk.get("seconds", 2.5))
+        txt = _esc(hook)
+        fs = int(min(104, 1000 / max(0.62 * len(txt), 1)))
+        parts.append(
+            f"[{cur}]drawtext=fontfile='{_font(txt, cfg.get('video', {}))}':text='{txt}':"
+            f"fontsize={fs}:fontcolor=white:borderw=6:bordercolor=black:box=1:"
+            f"boxcolor=black@0.45:boxborderw=22:x=(w-text_w)/2:y={int(hk.get('y', 210))}:"
+            f"enable='lt(t,{secs:.2f})'[hook]")
+        cur = "hook"
+
     cmd = [
         "ffmpeg", "-y", "-i", str(mp4),
         "-filter_complex", ";".join(parts),
@@ -422,24 +442,36 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
 
 # ── title generation ──────────────────────────────────────────────────────────
 
-_TITLE_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}}
+_TITLE_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"},
+                                                 "hook": {"type": "string"}}}
 
 
-def _write_title(cfg: dict, prompt: str) -> str:
-    """English Shorts title via the `commentary` role. '' on any failure - the caller
-    has a template fallback, and a missing title must never block an upload."""
-    from ..providers import ProviderUnavailable, get_provider
+def hook_variant(clip_id: str, share: float) -> bool:
+    """A/B arm for the first-seconds hook text, stable per clip. Pure."""
+    import hashlib
+    return int(hashlib.md5(clip_id.encode("utf-8")).hexdigest()[:8], 16) / 0xFFFFFFFF < share
+
+
+def clean_hook_text(text: str) -> str:
+    """2-4 ASCII words, upper case, short enough for one line; '' if unusable. Pure."""
+    t = re.sub(r"[^A-Z0-9 ?!'.-]", "", (text or "").upper())
+    t = re.sub(r"\s+", " ", t).strip()
+    return t if t and len(t.split()) <= 4 and len(t) <= 22 else ""
+
+
+def _write_title(cfg: dict, prompt: str) -> tuple[str, str]:
+    """(title, hook) via the `commentary` role. ('', '') on any failure - the caller has
+    a template fallback, and a missing title must never block an upload."""
+    from ..providers import ProviderUnavailable, complete_json_chain
     try:
-        provider = get_provider(cfg, "commentary")
+        r = complete_json_chain(cfg, "commentary", prompt, schema=_TITLE_SCHEMA) or {}
+        return r.get("title", "") or "", clean_hook_text(r.get("hook", ""))
     except ProviderUnavailable as e:
         log.info("  no title provider (%s) - using the template title", e)
-        return ""
-    try:
-        r = provider.complete_json(prompt, schema=_TITLE_SCHEMA)
-        return (r or {}).get("title", "") or ""
+        return "", ""
     except Exception as e:
         log.warning("  title generation failed: %s", e)
-        return ""
+        return "", ""
 
 
 # ── upload ────────────────────────────────────────────────────────────────────
@@ -631,11 +663,24 @@ def run(cfg: dict, state, date_label: str) -> Path:
         if speech_words:
             log.info("  captions: %d words @ %dpx from bottom", len(speech_words), cap_mv)
 
-        # 4. Single-pass render (clip audio only, drawtext captions, no VO/music)
+        # 4. Title + hook text first: the hook (A/B arm, shorts.hook_text) is burned in.
+        #    English title from the (English) summary + translated speech - NEVER the raw
+        #    Twitch clip title, which is often the streamer's own language.
+        title_en, hook_en = _write_title(cfg, _TITLE_PROMPT.format(
+            streamer=streamer, summary=summary[:120],
+            speech=speech_text[:200] or "(none)",
+            name_rule=_NAME_RULE if sh.get("title_names", False) else ""))
+        hk = sh.get("hook_text", {}) or {}
+        arm = bool(hk.get("enabled", False)) and hook_variant(clip_id, float(hk.get("share", 0.5)))
+        hook_used = hook_en if arm else ""
+        if arm:
+            log.info("  hook text (test arm): %s", hook_used or "(none written)")
+
+        # 5. Single-pass render (clip audio only, drawtext captions, no VO/music)
         v_final = out_dir / f"{clip_id}.mp4"
         try:
             _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h, cfg,
-                          speakers=speakers)
+                          speakers=speakers, hook=hook_used)
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or b"").decode(errors="replace")[-500:]
             log.warning("  render failed for %s:\n%s", clip_id, stderr)
@@ -647,14 +692,12 @@ def run(cfg: dict, state, date_label: str) -> Path:
 
         log.info("  rendered -> %s", v_final.name)
 
-        # 5. Upload
+        # 6. Upload
+        # a hook-arm Short whose hook could not be written is a control in effect
+        ab = {"hook_text": hook_used or None,
+              "hook_arm": "hook" if hook_used else "control"} if hk.get("enabled") else {}
         if sh.get("upload", True):
             broadcaster_url = f"https://twitch.tv/{streamer.lower()}"
-            # English title generated from the (English) summary + translated speech —
-            # NEVER the raw Twitch clip title, which is often the streamer's own language.
-            title_en = _write_title(cfg, _TITLE_PROMPT.format(
-                streamer=streamer, summary=summary[:120],
-                speech=speech_text[:200] or "(none)"))
             title_en = re.sub(r"[^\x00-\x7F]", "", title_en).strip().strip('"')
             if not title_en:
                 title_en = f"{streamer} had to make this work"
@@ -672,11 +715,11 @@ def run(cfg: dict, state, date_label: str) -> Path:
             if vid_id:
                 url = f"https://youtube.com/shorts/{vid_id}"
                 log.info("  uploaded: %s", url)
-                done[clip_id] = {"youtube_id": vid_id, "url": url, "format": "clip"}
+                done[clip_id] = {"youtube_id": vid_id, "url": url, "format": "clip", **ab}
             else:
-                done[clip_id] = {"rendered": str(v_final), "format": "clip"}
+                done[clip_id] = {"rendered": str(v_final), "format": "clip", **ab}
         else:
-            done[clip_id] = {"rendered": str(v_final), "format": "clip"}
+            done[clip_id] = {"rendered": str(v_final), "format": "clip", **ab}
 
     # The ranking Short (publishing/ranking_shorts): TOP N of one category from every
     # clip ever published. Its own state file makes it once-per-date.

@@ -80,8 +80,16 @@ DEFAULT_TITLE_STYLES = [
 HOOK_CACHE = "title_hook.json"
 
 _HOOK_SCHEMA = {"type": "object",
-                "properties": {"hook": {"type": "string"}, "thumb": {"type": "string"}},
+                "properties": {"hook": {"type": "string"}, "thumb": {"type": "string"},
+                               "streamer": {"type": "string"}},
                 "required": ["hook", "thumb"]}
+
+# `upload.title_names` (owner 2026-10-21): search is the channel's only organic traffic and
+# it is almost all streamer names ("taylor fritz league of legends" 228 views, katevolved,
+# doxamid, theoddone, diamondprox; generic "lol moments" ~0), so the hook names the streamer.
+_NAME_RULE = """- START with the streamer's name of the clip you write about, exactly as written in
+  the list (e.g. "Thebausffs Called the Penta... Then DID IT"). Also return it as STREAMER."""
+_NO_NAME_RULE = "No streamer names, "
 
 _HOOK_PROMPT = """You write YouTube titles for a daily League of Legends Twitch-clips compilation.
 Write the HOOK: the part before "... {series} #N". It sells the day's best moment.
@@ -97,9 +105,9 @@ Rules:
   "The Most DISRESPECTFUL Flash", "Teemo Should NOT Win This".
 - Never use flat verbs: secures, achieves, gets, performs, executes, demonstrates.
 - Only facts stated in the descriptions (champion names, multikills, what happened).
-  Never invent names, numbers or events. No streamer names, no emojis, no hashtags,
+  Never invent names, numbers or events. {no_name}no emojis, no hashtags,
   no trailing punctuation.
-{avoid}
+{name_rule}{avoid}
 Also write THUMB: 1-3 word ALL-CAPS thumbnail text for the same moment, clickbait allowed,
 usually ending "?!" (e.g. "PENTA STOLEN?!", "200 IQ", "ONE SHOT", "1V5?!", "HE CALLED IT").
 Don't just repeat the hook's CAPS word.
@@ -133,22 +141,26 @@ def clean_thumb(text: str) -> str:
 def write_hook(cfg: dict, clips: list[dict], series: str,
                recent_titles: list | None = None, recent_thumb: str = "") -> dict:
     """{'hook','thumb'} from the `commentary` role; {} on any failure (never raises)."""
-    from ..providers import ProviderUnavailable, get_provider
+    from ..providers import ProviderUnavailable, complete_json_chain
     top = _top_clips(clips)
     if not top:
         return {}
     lines = []
     for i, c in enumerate(top, 1):
         desc = c.get("api_what_happens") or c.get("vlm_summary") or ""
-        lines.append(f"{i}. Twitch title: {c.get('title', '')!r}. What happens: {desc}")
+        lines.append(f"{i}. Streamer: {c.get('broadcaster_name', '')}. "
+                     f"Twitch title: {c.get('title', '')!r}. What happens: {desc}")
     avoid = ""
     if recent_titles:
         avoid = f"- Yesterday's title was {recent_titles[0]!r}: open with a different word."
     if recent_thumb:
         avoid += f"\n- Yesterday's THUMB was {recent_thumb!r}: use different words."
-    prompt = _HOOK_PROMPT.format(series=series, avoid=avoid, clips="\n".join(lines))
+    names = bool(cfg.get("upload", {}).get("title_names", False))
+    prompt = _HOOK_PROMPT.format(series=series, avoid=avoid, clips="\n".join(lines),
+                                 no_name="" if names else _NO_NAME_RULE,
+                                 name_rule=(_NAME_RULE + "\n") if names else "")
     try:
-        r = get_provider(cfg, "commentary").complete_json(prompt, schema=_HOOK_SCHEMA) or {}
+        r = complete_json_chain(cfg, "commentary", prompt, schema=_HOOK_SCHEMA) or {}
     except ProviderUnavailable as e:
         log.info("  no title-hook provider (%s) - keyword hook", e)
         return {}
@@ -156,7 +168,42 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
         log.warning("  title hook failed (%s) - keyword hook", e)
         return {}
     out = {"hook": clean_hook(r.get("hook", "")), "thumb": clean_thumb(r.get("thumb", ""))}
+    if names and out["hook"]:
+        out["hook"] = name_first(out["hook"], str(r.get("streamer", "")),
+                                 [c.get("broadcaster_name", "") for c in top])
     return {k: v for k, v in out.items() if v}
+
+
+def name_first(hook: str, streamer: str, allowed: list[str]) -> str:
+    """Make sure the hook carries a streamer name. Pure. The model's STREAMER must be one
+    of the listed names (never an invented one); without a name in the hook it is put in
+    front ("Thebausffs: ..."); a hook that already names a listed streamer is kept."""
+    low = hook.lower()
+    if any(a and a.lower() in low for a in allowed):
+        return hook
+    pick = next((a for a in allowed if a and a.lower() == streamer.strip().lower()),
+                allowed[0] if allowed else "")
+    return clean_hook(f"{pick}: {hook}") or hook if pick else hook
+
+
+def champions_in(clips: list[dict], known: set) -> list[str]:
+    """Champion names the judge mentions, most frequent first. Pure."""
+    from collections import Counter
+    n = Counter()
+    for c in clips:
+        text = (c.get("api_what_happens") or "").lower()
+        for name in known:
+            if re.search(rf"\b{re.escape(name)}\b", text):
+                n[name] += 1
+    return [k for k, _ in n.most_common()]
+
+
+def _known_champions(cfg: dict) -> set:
+    try:
+        p = Path(cfg["paths"]["data_abs"]) / "cache" / "ddragon_champions.json"
+        return {k.lower() for k in json.loads(p.read_text(encoding="utf-8")) if len(k) > 2}
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
 
 
 def _previous_thumb(work: Path) -> str:
@@ -204,7 +251,10 @@ def day_hook(cfg: dict, work: Path, clips: list[dict], date_label: str,
             pass
         return got
     kw = _hook(clips, date_label)
-    return {"hook": kw.title() if len(kw.split()) > 1 else kw, "thumb": "", "fallback": True}
+    hook = kw.title() if len(kw.split()) > 1 else kw
+    if cfg.get("upload", {}).get("title_names", False):
+        hook = name_first(hook, "", [c.get("broadcaster_name", "") for c in _top_clips(clips)])
+    return {"hook": hook, "thumb": "", "fallback": True}
 
 
 def _ts(seconds: float) -> str:
@@ -300,7 +350,18 @@ def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
              else "ranked and counted down")
 
     # CTA + keywords front-loaded (first ~150 chars show in search/feed)
-    lines = [f"{emoji} The best League of Legends plays of the day, {blurb}. "
+    names = bool(up.get("title_names", False))
+    streamers = sorted({ch["broadcaster"] for ch in chapters if ch["broadcaster"]})
+    champs = champions_in(clips, _known_champions(cfg)) if names else []
+    # the first ~150 characters show in search: lead with who and what is in it
+    featuring = ""
+    if names:
+        top = [c.get("broadcaster_name", "") for c in _top_clips(clips, 5)]
+        who = list(dict.fromkeys(n for n in top if n))[:5]
+        featuring = (f"Featuring {', '.join(who)}" if who else "") + (
+            f" — {', '.join(x.title() for x in champs[:5])}" if champs else "")
+    lines = ([featuring, ""] if featuring else []) + [
+             f"{emoji} The best League of Legends plays of the day, {blurb}. "
              f"Which clip was your favorite? Drop the number in the comments 👇 — and "
              f"SUBSCRIBE for daily LoL highlights!",
              "", "⏱ Chapters & streamers (go follow them):"]
@@ -326,11 +387,26 @@ def build_metadata(cfg: dict, date_label: str, chapters: list[dict],
                       "Riot Games does not endorse or sponsor this project."]
     lines += ["", "#LeagueOfLegends #LoL #lolhighlights #lolbestmoments"]
 
-    streamers = sorted({ch["broadcaster"] for ch in chapters if ch["broadcaster"]})
     tags = ["league of legends", "lol", "lol highlights", "lol best moments",
             "league of legends highlights", "lol plays", "outplays", "lol montage",
             "twitch highlights", "lol funny moments", *[s.lower() for s in streamers[:15]]]
-    return {"title": title, "description": "\n".join(lines), "tags": tags[:30]}
+    if names:
+        # names first: YouTube caps tags at 500 characters, generic ones matter least
+        tags = ([s.lower() for s in streamers] + champs[:10]
+                + ["league of legends", "lol highlights", "lol best moments"])
+    return {"title": title, "description": "\n".join(lines), "tags": _cap_tags(tags)}
+
+
+def _cap_tags(tags: list[str], limit: int = 480) -> list[str]:
+    """Deduplicated tags within YouTube's 500-character total. Pure."""
+    out, n = [], 0
+    for t in dict.fromkeys(t.strip() for t in tags if t and t.strip()):
+        cost = len(t) + (2 if " " in t else 0) + 1     # quotes for multi-word, comma
+        if n + cost > limit:
+            break
+        out.append(t)
+        n += cost
+    return out
 
 
 def run(cfg: dict, state, date_label: str) -> Path:
