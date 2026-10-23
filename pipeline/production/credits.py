@@ -89,6 +89,13 @@ _HOOK_SCHEMA = {"type": "object",
 # doxamid, theoddone, diamondprox; generic "lol moments" ~0), so the hook names the streamer.
 _NAME_RULE = """- START with the streamer's name of the clip you write about, exactly as written in
   the list (e.g. "Thebausffs Called the Penta... Then DID IT"). Also return it as STREAMER."""
+# with `video.fame.enabled` (owner 2026-10-23): only a FAMOUS name sells a click; an unknown
+# one is said in words anyone understands, and its name goes in the description and tags
+_FAME_RULE = """- Each streamer is marked FAMOUS or not famous. If the clip you write about is by a
+  FAMOUS streamer, START with their name exactly as written (e.g. "Thebausffs Called the
+  Penta... Then DID IT"). If not, do NOT use the name: say who they are in words anyone
+  understands ("This Streamer", "A Silver Player", "This Jungler", "A Twitch Streamer").
+  Return the streamer of the clip you wrote about as STREAMER."""
 _NO_NAME_RULE = "No streamer names, "
 
 _HOOK_PROMPT = """You write YouTube titles for a daily League of Legends Twitch-clips compilation.
@@ -145,10 +152,15 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
     top = _top_clips(clips)
     if not top:
         return {}
+    from ..enrichment import fame as _fame
+    fame = _fame.followers(cfg, top)
+    use_fame = bool((cfg.get("video", {}).get("fame", {}) or {}).get("enabled", False))
     lines = []
     for i, c in enumerate(top, 1):
         desc = c.get("api_what_happens") or c.get("vlm_summary") or ""
-        lines.append(f"{i}. Streamer: {c.get('broadcaster_name', '')}. "
+        who = (_fame.describe(c.get("broadcaster_name", ""), fame, cfg) if use_fame
+               else c.get("broadcaster_name", ""))
+        lines.append(f"{i}. Streamer: {who}. "
                      f"Twitch title: {c.get('title', '')!r}. What happens: {desc}")
     avoid = ""
     if recent_titles:
@@ -158,7 +170,8 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
     names = bool(cfg.get("upload", {}).get("title_names", False))
     prompt = _HOOK_PROMPT.format(series=series, avoid=avoid, clips="\n".join(lines),
                                  no_name="" if names else _NO_NAME_RULE,
-                                 name_rule=(_NAME_RULE + "\n") if names else "")
+                                 name_rule=((_FAME_RULE if use_fame else _NAME_RULE) + "\n")
+                                 if names else "")
     try:
         r = complete_json_chain(cfg, "commentary", prompt, schema=_HOOK_SCHEMA) or {}
     except ProviderUnavailable as e:
@@ -169,8 +182,12 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
         return {}
     out = {"hook": clean_hook(r.get("hook", "")), "thumb": clean_thumb(r.get("thumb", ""))}
     if names and out["hook"]:
-        out["hook"] = name_first(out["hook"], str(r.get("streamer", "")),
-                                 [c.get("broadcaster_name", "") for c in top])
+        # only famous names are forced in front; unknown ones may stay a descriptor
+        allowed = [c.get("broadcaster_name", "") for c in top
+                   if not use_fame or _fame.is_famous(c.get("broadcaster_name", ""), fame, cfg)]
+        pick = str(r.get("streamer", ""))
+        if not use_fame or pick.lower() in {a.lower() for a in allowed}:
+            out["hook"] = name_first(out["hook"], pick, allowed)
     return {k: v for k, v in out.items() if v}
 
 
@@ -253,7 +270,13 @@ def day_hook(cfg: dict, work: Path, clips: list[dict], date_label: str,
     kw = _hook(clips, date_label)
     hook = kw.title() if len(kw.split()) > 1 else kw
     if cfg.get("upload", {}).get("title_names", False):
-        hook = name_first(hook, "", [c.get("broadcaster_name", "") for c in _top_clips(clips)])
+        from ..enrichment import fame as _fame
+        top = _top_clips(clips)
+        fame = _fame.followers(cfg, top)
+        use_fame = bool((cfg.get("video", {}).get("fame", {}) or {}).get("enabled", False))
+        allowed = [c.get("broadcaster_name", "") for c in top
+                   if not use_fame or _fame.is_famous(c.get("broadcaster_name", ""), fame, cfg)]
+        hook = name_first(hook, "", allowed)
     return {"hook": hook, "thumb": "", "fallback": True}
 
 

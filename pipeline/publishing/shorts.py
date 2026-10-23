@@ -47,6 +47,21 @@ Answer ONLY JSON: {{"title": "...", "hook": "..."}}"""
 
 # owner 2026-10-21: Shorts search traffic is streamer names, so the title opens with one
 _NAME_RULE = "\nSTART the title with the streamer's name exactly as given."
+# `video.fame` (owner 2026-10-23): famous names lead; unknown streamers are described in
+# words anyone gets and their name is appended (" | name") for search
+_FAMOUS_RULE = ("\nThe streamer is FAMOUS: START the title with their name exactly as given, "
+                "and the HOOK may use it too (e.g. \"BAUS 1V3 IN BASE\").")
+_UNKNOWN_RULE = ("\nThe streamer is not famous: do NOT use their name in the title or HOOK. "
+                 "Say who they are in words anyone understands (\"This Streamer\", "
+                 "\"A Silver Player\", \"This Jungler\"). Keep the title under 50 characters.")
+
+
+def name_suffix(title: str, name: str, limit: int = 80) -> str:
+    """Append ' | name' for search unless the title already has it. Pure."""
+    if not name or name.lower() in title.lower():
+        return title[:limit]
+    tail = f" | {name}"
+    return title[:limit - len(tail)].rstrip() + tail
 
 
 # ── name helper ───────────────────────────────────────────────────────────────
@@ -359,7 +374,8 @@ def _shorts_enc(cfg: dict) -> list[str]:
 def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
                   caption_words: list[dict], cap_mv: int, game_h: int,
                   cfg: dict, total_h: int = TARGET_H,
-                  speakers: list | None = None, hook: str = "") -> None:
+                  speakers: list | None = None, hook: str = "",
+                  name_tag: str = "") -> None:
     """Render the final Short in ONE ffmpeg pass: a 1080x1920 vertical transform
     (blur-bg or split) + drawtext speech captions. Audio is the clip's own audio
     (no voiceover, no music).
@@ -408,6 +424,18 @@ def _render_short(mp4: Path, out: Path, facecam: "tuple | list | None",
         if dt:
             parts.append(f"[{cur}]{dt}[cap]")
             cur = "cap"
+
+    if name_tag:
+        # `shorts.name_tag` (owner 2026-10-23): who this is, on screen the whole Short -
+        # the same Twitch-purple tag the ranking Shorts put on the webcam panel
+        from ..production.assemble import _font
+        tag = _clean_overlay(name_tag)[:22]
+        if tag:
+            parts.append(
+                f"[{cur}]drawtext=fontfile='{_font(tag, cfg.get('video', {}))}':text='{tag}':"
+                f"fontsize=46:fontcolor=white:box=1:boxcolor=0x6441A5@0.85:boxborderw=14:"
+                f"x=30:y=h-th-44[tag]")
+            cur = "tag"
 
     if hook:
         # first-seconds hook (shorts.hook_text): big text over the top of the frame, gone
@@ -587,6 +615,10 @@ def run(cfg: dict, state, date_label: str) -> Path:
     if done_f.exists():
         done = json.loads(done_f.read_text(encoding="utf-8"))
 
+    from ..enrichment import fame as _fame
+    fame = _fame.followers(cfg, candidates)
+    use_fame = bool((cfg.get("video", {}).get("fame", {}) or {}).get("enabled", False))
+
     for c in candidates:
         clip_id  = c["id"]
         if done.get(clip_id):
@@ -663,13 +695,19 @@ def run(cfg: dict, state, date_label: str) -> Path:
         if speech_words:
             log.info("  captions: %d words @ %dpx from bottom", len(speech_words), cap_mv)
 
+        famous = _fame.is_famous(c.get("broadcaster_name", ""), fame, cfg)
+        name_rule = ""
+        if sh.get("title_names", False):
+            name_rule = (_NAME_RULE if not use_fame else
+                         _FAMOUS_RULE if famous else _UNKNOWN_RULE)
+
         # 4. Title + hook text first: the hook (A/B arm, shorts.hook_text) is burned in.
         #    English title from the (English) summary + translated speech - NEVER the raw
         #    Twitch clip title, which is often the streamer's own language.
         title_en, hook_en = _write_title(cfg, _TITLE_PROMPT.format(
             streamer=streamer, summary=summary[:120],
             speech=speech_text[:200] or "(none)",
-            name_rule=_NAME_RULE if sh.get("title_names", False) else ""))
+            name_rule=name_rule))
         hk = sh.get("hook_text", {}) or {}
         arm = bool(hk.get("enabled", False)) and hook_variant(clip_id, float(hk.get("share", 0.5)))
         hook_used = hook_en if arm else ""
@@ -680,7 +718,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
         v_final = out_dir / f"{clip_id}.mp4"
         try:
             _render_short(clip_src, v_final, facecam, speech_words, cap_mv, game_h, cfg,
-                          speakers=speakers, hook=hook_used)
+                          speakers=speakers, hook=hook_used,
+                          name_tag=streamer if sh.get("name_tag", False) else "")
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or b"").decode(errors="replace")[-500:]
             log.warning("  render failed for %s:\n%s", clip_id, stderr)
@@ -701,6 +740,8 @@ def run(cfg: dict, state, date_label: str) -> Path:
             title_en = re.sub(r"[^\x00-\x7F]", "", title_en).strip().strip('"')
             if not title_en:
                 title_en = f"{streamer} had to make this work"
+            if use_fame and sh.get("title_names", False) and not famous:
+                title_en = name_suffix(title_en, streamer, 80)   # name kept for search
             title = f"{title_en[:80]} #Shorts"
             description = (
                 f"{title_en}\n\n"

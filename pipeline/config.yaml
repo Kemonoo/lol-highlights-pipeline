@@ -322,6 +322,12 @@ video:
                               # hardware. Pin a value if autodetect picks badly.
   font: null                  # null = auto (Arial Bold on Windows, CJK fallback for JP/KR/CN names)
   intro_enabled: true
+  fame:                       # who counts as famous enough to NAME in titles/hooks
+    enabled: false            # (enrichment/fame.py: Twitch follower counts, cached)
+    famous_followers: 250000  # >= this = famous: the name leads the title. Below it the hook
+                              # says "This Streamer" and the name goes after / in tags
+    always: []                # always famous (prefilter.boost_streamers counts too)
+    cache_days: 30
   trim:                       # cut each clip to the judge's action window (action_start_s /
     enabled: false            # action_end_s) when that saves real dead time: a 54 s Baus
     pad_before_s: 3.0         # clip on 10-12 had its play at 8-18 s (owner, 2026-10-18)
@@ -603,6 +609,7 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
 shorts:
   enabled: true
   title_names: false          # Shorts titles start with the streamer's name
+  name_tag: false             # streamer's name on screen for the whole Short (purple tag)
   hook_text:                  # A/B test: 2-4 big words over the first seconds of a Short
     enabled: false
     share: 0.5                # fraction of Shorts in the "hook" arm (stable per clip id);

@@ -39,3 +39,22 @@ def test_hook_text_is_short_caps_ascii():
     assert clean_hook_text("1v3 in base!") == "1V3 IN BASE!"
     assert clean_hook_text("this is far too many words here") == ""
     assert clean_hook_text("") == ""
+
+
+def test_fame_tiers_and_owner_picks():
+    from pipeline.enrichment.fame import is_famous, tier
+    cfg = {"video": {"fame": {"famous_followers": 250_000}},
+           "prefilter": {"boost_streamers": {"thebausffs": 0.3}}}
+    fame = {"katevolved": 446_209, "doxamid": 4057, "raikokatarina": 16_935}
+    assert tier(446_209, 250_000) == "famous" and tier(16_935, 250_000) == "known"
+    assert tier(4057, 250_000) == "small" and tier(None, 250_000) == "unknown"
+    assert is_famous("KatEvolved", fame, cfg)
+    assert is_famous("Thebausffs", {}, cfg)            # boost list = always famous
+    assert not is_famous("doxamid", fame, cfg)
+
+
+def test_unknown_streamer_name_is_appended_for_search():
+    from pipeline.publishing.shorts import name_suffix
+    assert name_suffix("This Streamer 1v3s In Base", "doxamid") == "This Streamer 1v3s In Base | doxamid"
+    assert name_suffix("doxamid 1v3s", "doxamid") == "doxamid 1v3s"
+    assert len(name_suffix("x" * 100, "doxamid", 80)) == 80

@@ -1631,3 +1631,19 @@ overlay `keep_output_days` 7 -> 2. One pass freed 15.7 GB; steady state ~12 GB. 
 for good: data/clip_log.jsonl (every published clip: Twitch link, scores, transcript - the
 source for themed compilations, which re-download clips from Twitch), work/*.json,
 output/*.meta.json, thumbnails.
+
+## 2026-10-23 — Fame-aware naming; name tag on every Short
+
+Owner: a small streamer commented on their Short, glad to be featured - featuring
+not-so-famous streamers is the niche. Ludwig-style naming: a FAMOUS name sells the click
+("Tyler1 challenged me"), an unknown one doesn't ("I hosted the Streamer Olympics").
+`enrichment/fame.py`: Helix /channels/followers totals (app token works), cached 30 days.
+`video.fame.famous_followers` 250k (+ boost_streamers = always famous). Measured: Baus
+1.64M, KeshaEuw 653k, PinkWardlol 583k, KatEvolved 446k, raikokatarina 17k, doxamid 4k,
+ASHURAgg 1k. Long title: the hook leads with a FAMOUS streamer's name, else a descriptor
+("This Streamer"); names stay in description + tags. Shorts: famous -> name first (hook
+may name them, "DOUBLELIFT CALLS IT"); unknown -> descriptor + " | name" appended for
+search. `shorts.name_tag`: the streamer's name in the ranking Shorts' purple tag,
+bottom-left, the whole Short. Studied AgriciDaniel/claude-youtube (Shorts: swipe-away rate
+and completion are the signals, ~40 title chars visible, freshness decay after ~28 days;
+long-form: titles < 50 chars, never repeat thumbnail text in the title).
