@@ -459,6 +459,8 @@ video:
   max_per_streamer: 0         # at most this many clips of one streamer per video (0 = no cap)
   clip_loudnorm: false        # level each clip's loudness before the master (EBU R128)
   caption_mask_words: []      # words drawn as f*** in burned captions (slurs, ...)
+  caption_censor: ""          # also mask swearing + self-harm wording: stars = "****",
+                              # initial = "F***" (production/safe_text.py); "" = off
   music_enabled: false         # LEAN MODE: no background music (Synapse-style — the clip's own
                                # crowd/streamer audio carries it). true = loop a music_track bed.
   music_path: ""               # overridden by random pick from music_tracks; set directly to
@@ -540,7 +542,7 @@ upload:
                               # descriptions of the top clips (+ the 1-3 word thumbnail text),
                               # cached per date in work/<date>/title_hook.json; keyword
                               # hook when no model is reachable. Drops the clip count.
-  title_series: LoL Daily Clips   # series name used by title_mode: hook
+  title_series: LoL Daily Clips   # series name used by title_mode: hook ("" = just "#N")
   title_styles:
     - "{hook}?! {emoji} League of Legends Best Moments"
     - "He Really Did THAT… {emoji} LoL Plays of the Day"

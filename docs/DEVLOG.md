@@ -1647,3 +1647,16 @@ search. `shorts.name_tag`: the streamer's name in the ranking Shorts' purple tag
 bottom-left, the whole Short. Studied AgriciDaniel/claude-youtube (Shorts: swipe-away rate
 and completion are the signals, ~40 title chars visible, freshness decay after ~28 days;
 long-form: titles < 50 chars, never repeat thumbnail text in the title).
+
+### Same day: family-friendly text, censored captions, "#N" titles, comment replies
+
+Owner: a hook said "Made K'Sante Kill HIMSELF" - self-harm wording and swearing in titles /
+thumbnails risk limited ads. `production/safe_text.py`: the hook and Shorts prompts ask
+for clean text, and `mask()` guarantees it (self-harm -> "K*ll himself", swearing ->
+"f***"; stems like fuck/shit, whole words like ass so "class"/"pass" survive; game
+violence untouched). Captions: `video.caption_censor: stars` (owner overlay) draws curse
+words as "****" in long-video and Shorts captions (no audio beep - owner: optional).
+Titles: overlay `upload.title_series: ""` -> "<hook> #60" (live: "PinkWardlol Tricked
+K'Sante With a CLONE #60"). `tools/comments.py --list / --reply`: replies are drafted for the
+owner and posted only after he approves each one (upload token has youtube.force-ssl).
+The one real fan comment (@tiagobarradas2372, 10-18) found the Short by googling his own name.

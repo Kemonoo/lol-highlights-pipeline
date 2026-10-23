@@ -58,3 +58,25 @@ def test_unknown_streamer_name_is_appended_for_search():
     assert name_suffix("This Streamer 1v3s In Base", "doxamid") == "This Streamer 1v3s In Base | doxamid"
     assert name_suffix("doxamid 1v3s", "doxamid") == "doxamid 1v3s"
     assert len(name_suffix("x" * 100, "doxamid", 80)) == 80
+
+
+def test_family_friendly_titles_and_captions():
+    from pipeline.production.safe_text import mask
+    assert mask("PinkWardlol Made K'Sante Kill HIMSELF") == "PinkWardlol Made K'Sante K*ll HIMSELF"
+    assert mask("what the fuck was that") == "what the f*** was that"
+    assert mask("holy shit, motherfucker", style="stars") == "holy ****, ****"
+    assert mask("pass the class, pentakill kills") == "pass the class, pentakill kills"
+    assert mask("he is an ass", style="stars") == "he is an ****"
+
+
+def test_title_without_series_name():
+    from pipeline.production.credits import hook_title
+    assert hook_title("Baus Called the PENTA", "", 60) == "Baus Called the PENTA #60"
+    assert hook_title("Baus Called the PENTA", "LoL Daily Clips", 60) \
+        == "Baus Called the PENTA... LoL Daily Clips #60"
+
+
+def test_caption_censor_in_groups():
+    from pipeline.production.assemble import mask_text
+    assert mask_text("fucking insane", (), "stars") == "**** insane"
+    assert mask_text("fucking insane") == "fucking insane"          # off by default

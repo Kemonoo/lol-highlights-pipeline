@@ -114,7 +114,8 @@ Rules:
 - Only facts stated in the descriptions (champion names, multikills, what happened).
   Never invent names, numbers or events. {no_name}no emojis, no hashtags,
   no trailing punctuation.
-{name_rule}{avoid}
+{name_rule}{safe_rule}
+{avoid}
 Also write THUMB: 1-3 word ALL-CAPS thumbnail text for the same moment, clickbait allowed,
 usually ending "?!" (e.g. "PENTA STOLEN?!", "200 IQ", "ONE SHOT", "1V5?!", "HE CALLED IT").
 Don't just repeat the hook's CAPS word.
@@ -139,7 +140,7 @@ def clean_hook(text: str) -> str:
 
 def clean_thumb(text: str) -> str:
     t = re.sub(r"\s+", " ", (text or "")).strip().strip("\"'").upper()
-    t = re.sub(r"[^A-Z0-9 ?!'.-]", "", t).strip()
+    t = re.sub(r"[^A-Z0-9 ?!'.*-]", "", t).strip()      # * = masked word (safe_text)
     if not t or len(t.split()) > 3 or len(t) > 20:
         return ""
     return t
@@ -168,7 +169,9 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
     if recent_thumb:
         avoid += f"\n- Yesterday's THUMB was {recent_thumb!r}: use different words."
     names = bool(cfg.get("upload", {}).get("title_names", False))
+    from .safe_text import PROMPT_RULE
     prompt = _HOOK_PROMPT.format(series=series, avoid=avoid, clips="\n".join(lines),
+                                 safe_rule=PROMPT_RULE,
                                  no_name="" if names else _NO_NAME_RULE,
                                  name_rule=((_FAME_RULE if use_fame else _NAME_RULE) + "\n")
                                  if names else "")
@@ -180,7 +183,9 @@ def write_hook(cfg: dict, clips: list[dict], series: str,
     except Exception as e:
         log.warning("  title hook failed (%s) - keyword hook", e)
         return {}
-    out = {"hook": clean_hook(r.get("hook", "")), "thumb": clean_thumb(r.get("thumb", ""))}
+    from .safe_text import mask as _safe        # the prompt asks; this guarantees
+    out = {"hook": clean_hook(_safe(r.get("hook", ""))),
+           "thumb": clean_thumb(_safe(r.get("thumb", "")))}
     if names and out["hook"]:
         # only famous names are forced in front; unknown ones may stay a descriptor
         allowed = [c.get("broadcaster_name", "") for c in top
@@ -237,11 +242,13 @@ def _previous_thumb(work: Path) -> str:
 
 
 def hook_title(hook: str, series: str, episode: int) -> str:
+    """"<hook>... <series> #N", or "<hook> #N" with an empty series (owner 2026-10-23:
+    the series name used ~16 of the ~50 characters a title shows)."""
     # the model sometimes writes the whole title ("... LoL Daily Clips 29") into the hook
-    i = hook.lower().find(series.lower())
+    i = hook.lower().find(series.lower()) if series else -1
     if i >= 0:
         hook = clean_hook(hook[:i]) or hook[:i].strip()
-    tail = f"... {series} #{episode}"
+    tail = f"... {series} #{episode}" if series else f" #{episode}"
     return (hook[:100 - len(tail)].rstrip() + tail).strip()
 
 

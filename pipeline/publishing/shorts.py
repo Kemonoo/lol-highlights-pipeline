@@ -37,7 +37,8 @@ MAX_SHORT_S = 55  # under YouTube's 60 s limit with buffer
 
 _TITLE_PROMPT = """Write a punchy ENGLISH YouTube Shorts title for a League of Legends clip.
 <= 70 characters. English ONLY (never the streamer's native language). Clickbait but honest,
-references what happens. No hashtags, no quotes, no emoji.{name_rule}
+references what happens. No hashtags, no quotes, no emoji. Family friendly (YouTube ad
+guidelines): no swearing, no "kill himself"/suicide wording; game violence is fine.{name_rule}
 Also write HOOK: 2-4 words in ALL CAPS shown big over the first seconds of the video, so a
 scrolling viewer knows why to stay (e.g. "WATCH THE FLASH", "1V3 IN BASE", "HE CALLED IT").
 Streamer: {streamer}
@@ -298,7 +299,8 @@ def caption_groups(words: list[dict], v: dict | None = None) -> list[dict]:
                            max_gap=float(v.get("caption_group_gap", 0.65)),
                            max_seconds=float(v.get("caption_max_seconds", 1.9)),
                            min_seconds=float(v.get("caption_min_seconds", 0.62)),
-                           mask=v.get("caption_mask_words") or ())
+                           mask=v.get("caption_mask_words") or (),
+                           censor=str(v.get("caption_censor", "") or ""))
 
 
 def caption_style(who: str | None, n_panels: int, cap_mv: int, fontsize: int) -> tuple:
@@ -482,7 +484,7 @@ def hook_variant(clip_id: str, share: float) -> bool:
 
 def clean_hook_text(text: str) -> str:
     """2-4 ASCII words, upper case, short enough for one line; '' if unusable. Pure."""
-    t = re.sub(r"[^A-Z0-9 ?!'.-]", "", (text or "").upper())
+    t = re.sub(r"[^A-Z0-9 ?!'.*-]", "", (text or "").upper())
     t = re.sub(r"\s+", " ", t).strip()
     return t if t and len(t.split()) <= 4 and len(t) <= 22 else ""
 
@@ -493,7 +495,9 @@ def _write_title(cfg: dict, prompt: str) -> tuple[str, str]:
     from ..providers import ProviderUnavailable, complete_json_chain
     try:
         r = complete_json_chain(cfg, "commentary", prompt, schema=_TITLE_SCHEMA) or {}
-        return r.get("title", "") or "", clean_hook_text(r.get("hook", ""))
+        from ..production.safe_text import mask as _safe
+        return (_safe(r.get("title", "") or ""),
+                clean_hook_text(_safe(r.get("hook", "") or "")))
     except ProviderUnavailable as e:
         log.info("  no title provider (%s) - using the template title", e)
         return "", ""
