@@ -33,3 +33,13 @@ def test_cover_crop_keeps_the_face_inside():
     assert k * 210 >= 538 and k * 281 >= 720
     assert top == int(k * 281 - 720)                          # clamped to the bottom edge
     assert cover_crop(100, 100, 50, 50, 0.0, 0.0)[1:] == (0, 0)
+
+
+def test_big_face_only_when_reacting():
+    th = {"clip_rotation": {"enabled": True, "layout_by_emotion": True,
+                            "layouts": ["pip", "bigface"],
+                            "palettes": [{"name": "a", "border": "#000"}]}}
+    assert rotated_opts(th, "2026-10-07", True, reacting=True)[0] == "bigface"
+    assert rotated_opts(th, "2026-10-07", True, reacting=False)[0] == "pip"
+    assert rotated_opts(th, "2026-10-07", True, reacting=None)[0] == "pip"
+    assert rotated_opts(th, "2026-10-07", False, reacting=True)[0] == "pip"   # no webcam

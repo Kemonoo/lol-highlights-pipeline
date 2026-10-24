@@ -1397,9 +1397,27 @@ def compose_bigface(frame: "Image.Image", box: tuple, text: str, opts: dict) -> 
     return img
 
 
-def rotated_opts(th: dict, date_label: str, has_cam: bool) -> tuple[str, dict, dict]:
+REACTION_PROMPT = ("This is a streamer's webcam. Is the person showing a STRONG emotion right "
+                   "now: shocked, screaming, laughing hard, mouth wide open, hands on head? "
+                   "A neutral or calm face is false. Answer JSON {\"reacting\": true|false}.")
+
+
+def face_reacting(provider, frame: "Image.Image", box: tuple) -> bool | None:
+    """Does the webcam in `box` show a strong reaction? None = could not tell."""
+    if provider is None or not box:
+        return None
+    x, y, w, h = (int(v) for v in box)          # streamer_cam boxes are (x, y, w, h)
+    if w < 40 or h < 40:
+        return None
+    return _vlm_yes(provider, frame.crop((x, y, x + w, y + h)), REACTION_PROMPT, "reacting")
+
+
+def rotated_opts(th: dict, date_label: str, has_cam: bool,
+                 reacting: bool | None = None) -> tuple[str, dict, dict]:
     """-> (layout, compose opts, record for thumbnail_style.json). Pure (tested).
-    Without rotation, or without a webcam for the big-face layout, it is plain style A."""
+    Without rotation, or without a webcam for the big-face layout, it is plain style A.
+    `clip_rotation.layout_by_emotion` (owner 2026-10-24): big face only when the face shows a
+    strong reaction (a neutral face does worse than none); the palette still rotates."""
     rot = th.get("clip_rotation") or {}
     if not rot.get("enabled", False):
         return "pip", th, {"layout": "pip", "palette": None}
@@ -1407,6 +1425,8 @@ def rotated_opts(th: dict, date_label: str, has_cam: bool) -> tuple[str, dict, d
     pals = rot.get("palettes") or []
     li, pi = rotation_pick(date_label, len(layouts), len(pals))
     layout = layouts[li]
+    if rot.get("layout_by_emotion", False):
+        layout = "bigface" if (reacting and "bigface" in layouts) else "pip"
     if layout == "bigface" and not has_cam:
         layout = "pip"
     opts = dict(th)
@@ -1417,7 +1437,7 @@ def rotated_opts(th: dict, date_label: str, has_cam: bool) -> tuple[str, dict, d
         opts.update({k: p[v] for k, v in (("clip_border_color", "border"),
                                           ("clip_text_color", "text"),
                                           ("clip_cam_color", "frame")) if v in p})
-    return layout, opts, {"layout": layout, "palette": name}
+    return layout, opts, {"layout": layout, "palette": name, "reacting": reacting}
 
 
 def thumb_text(work: Path, clips: list, date_label: str) -> str:
@@ -1480,7 +1500,16 @@ def generate_clip(cfg: dict, date_label: str) -> Path | None:
     except Exception as e:
         log.info("  thumbnail: no webcam box (%s)", e)
     text = thumb_text(work, clips, date_label)
-    layout, opts, style = rotated_opts(cfg.get("thumbnail", {}), date_label, bool(box))
+    reacting = None
+    if box and ((th.get("clip_rotation") or {}).get("layout_by_emotion", False)):
+        try:
+            from ..providers import get_provider
+            reacting = face_reacting(get_provider(cfg, "vlm", vision=True), frame, box)
+        except Exception as e:
+            log.info("  thumbnail: no reaction check (%s)", e)
+        log.info("  thumbnail: webcam reaction = %s", reacting)
+    layout, opts, style = rotated_opts(cfg.get("thumbnail", {}), date_label, bool(box),
+                                       reacting)
     img = (compose_bigface(frame, box, text, opts) if layout == "bigface"
            else compose_clip(frame, box, text, opts))
     out = work / "thumbnail.jpg"

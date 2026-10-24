@@ -120,6 +120,7 @@ thumbnail:
                                    # gemini would need a BILLED key (free image quota is 0,
                                    # verified 2026-08-23); local = the old splash+avatar design.
   clip_rotation:
+    layout_by_emotion: true        # owner 2026-10-24: big face only when it is reacting
     enabled: true                  # owner 2026-10-07: alternate pip / big face, cycle 5 palettes
 
 cleanup:

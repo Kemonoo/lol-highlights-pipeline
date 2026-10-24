@@ -588,6 +588,8 @@ thumbnail:                    # image model lives in llm.roles.thumbnail_image
       - {name: purple-white, border: "#9146FF", text: "#FFFFFF", frame: "#9146FF"}
       - {name: orange-white, border: "#FF7A00", text: "#FFFFFF", frame: "#FF7A00"}
       - {name: lime-white, border: "#7CFF00", text: "#FFFFFF", frame: "#7CFF00"}
+    layout_by_emotion: false  # true = big face only when the vlm sees a strong reaction on the
+                              # webcam (a neutral face does worse than none); else pip
   face_search_top: 6          # scan this many top-ranked clips for a usable facecam (the "face we recognize")
   variants: 3                 # local-provider CTR variants (thumbnail.jpg = primary; rest for A/B)
   background_blur: 2          # px blur on the gameplay-frame background. A raw frame carries
