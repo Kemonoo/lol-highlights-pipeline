@@ -1672,3 +1672,13 @@ impressions at 0.6-2.4% CTR. Bottleneck = click-through (browse benchmark ~3.5%,
 fix), not reach or retention. Shorts: 79.9% stayed to watch (good), but traffic is 72%
 YouTube search and only 4.9% Shorts feed. First reply posted (owner-approved) to
 @tiagobarradas2372.
+
+### Same day: thumbnail tests (CTR 2.3% is the bottleneck)
+
+`thumbnail.clip_rotation.layout_by_emotion` (owner overlay on): the big-face layout only when
+the `vlm` role says the webcam shows a STRONG reaction (`face_reacting`; a neutral face is
+said to do worse than none); otherwise pip. Palette keeps rotating by date.
+thumbnail_style.json now records `reacting`. NB streamer_cam boxes are (x, y, w, h).
+`tools/thumb_ctr.py <studio_export.csv>`: impression-weighted CTR per layout / palette /
+reacting, from a Studio Advanced-mode export (impressions/CTR are not in the API).
+Check ~2026-11-07 together with the Shorts hook-text arms.

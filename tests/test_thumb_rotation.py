@@ -43,3 +43,13 @@ def test_big_face_only_when_reacting():
     assert rotated_opts(th, "2026-10-07", True, reacting=False)[0] == "pip"
     assert rotated_opts(th, "2026-10-07", True, reacting=None)[0] == "pip"
     assert rotated_opts(th, "2026-10-07", False, reacting=True)[0] == "pip"   # no webcam
+
+
+def test_ctr_grouped_by_style_weighted_by_impressions():
+    from pipeline.tools.thumb_ctr import group
+    styles = {"a": {"layout": "pip", "palette": "red"}, "b": {"layout": "bigface", "palette": "red",
+              "reacting": True}, "c": {"layout": "pip", "palette": "cyan"}}
+    g = group(styles, {"a": (1000, 2.0), "b": (1000, 4.0), "c": (3000, 1.0)})
+    imp, clicks, n = g[("pip", "*")]
+    assert n == 2 and imp == 4000 and round(100 * clicks / imp, 2) == 1.25
+    assert g[("*", "red")][2] == 2 and g[("reacting", "*")][2] == 1
