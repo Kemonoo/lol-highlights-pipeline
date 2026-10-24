@@ -95,6 +95,11 @@ for %%d in (!DATES!) do (
 )
 echo ==== run finished %DATE% %TIME% (exit !EXITCODE!) ==== >> "%LOG%"
 
+REM ---- health report (pipeline\tools\health.py) ------------------------------
+REM data\logs\health_%TODAY%.md, plus a toast that waits in the Notification Center
+REM when something needs a look (health.notify). Never changes the exit code.
+"%~dp0venv\Scripts\python.exe" -m pipeline.tools.health --date %TODAY% %CFGARG% >> "%LOG%" 2>&1
+
 if "%SLEEP_AFTER%"=="1" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\sleep_prompt.ps1" ^
         -Seconds %SLEEP_PROMPT_SECONDS% -IdleMinutes %SLEEP_IDLE_MINUTES% >> "%LOG%" 2>&1

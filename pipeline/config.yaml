@@ -735,6 +735,13 @@ cleanup:
   cache_max_age_days: 0       # delete cached nameplate/countdown animations unused this long
                               # (0 = never; they regenerate on demand)
 
+health:                       # tools/health.py: plain-code report after every nightly run
+  enabled: true               # -> data/logs/health_<date>.md (run_daily_auto.bat / run_daily.sh)
+  notify: false               # Windows toast when a flag fires (scripts/health_toast.ps1)
+  max_hours: 4                # flag a run longer than this
+  min_minutes: 6              # flag a daily video shorter than this
+  history_days: 14            # flag a warning TYPE not seen in this many previous logs
+
 permissions:
   require_permission: false   # when true, only broadcasters approved in state.json are used
 

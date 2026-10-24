@@ -189,3 +189,6 @@ llm:
       provider: claude_code
       model: sonnet
       timeout_s: 180
+
+health:
+  notify: true                   # owner 2026-10-24: toast in the morning when a night needs a look

@@ -1690,3 +1690,24 @@ is cp1252 on Windows, so a Japanese word ('ギ') raised UnicodeEncodeError and t
 went uncaptioned. RESULT is now ASCII-escaped JSON (the parent's json.loads restores it).
 Also seen: Shorts speaker colours fail with 429 once the judge has used the Gemini Flash
 allowance (cosmetic - captions stay one colour).
+
+### Same day: automatic post-run health check
+
+Problems were only noticed when someone read the log (the cp1252 caption loss above). Now
+run_daily_auto.bat / run_daily.sh call `python -m pipeline.tools.health` after the date loop:
+plain code, no LLM. It parses the last run block of auto_<date>.log and writes
+data/logs/health_<date>.md (exit, duration, video link + title, Shorts, clips/min, warnings
+grouped by TYPE = clip ids / urls / numbers stripped). Flags (`health:` config): no "run
+finished" / non-zero exit, a date without an upload, fewer Shorts than shorts.count, run >
+max_hours (4), video < min_minutes (6), transcribe failures, local_judge fallback, and any
+warning type absent from the previous history_days (14) auto_*.log files (the logs, not the
+health files, so it works from night one). `health.notify` (owner overlay on) shows a WinRT
+toast via scripts/health_toast.ps1 - no BurntToast; PowerShell's own app id, scenario
+"reminder" so it stays on screen until dismissed and in the Notification Center through
+SLEEP_AFTER; msg.exe fallback. Works because the task runs in the user's logged-on session.
+Backtest 10-18..10-24 (would have toasted 4 of 7 nights): 10-18 new type (vlm "detection
+failed ... no usable answer"), 10-19 + 10-20 a clip each lost captions to `'utf-8' codec
+can't decode byte 0xe3/0xe9` - the same cp1252-child-stdout bug as 10-24, unnoticed until
+now, and fixed by the ASCII-safe RESULT protocol - and 10-24 the UnicodeEncodeError. The
+speakers 429 and judge "switching to" lines are routine (seen within 14 days, not flagged).
+`--print` backtests a date without writing or notifying.

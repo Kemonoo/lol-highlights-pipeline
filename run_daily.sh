@@ -78,6 +78,10 @@ EXTRA=("$@")
     echo "==== run finished $(date) (exit $EXITCODE) ===="
 } >> "$LOG" 2>&1
 
+# Health report: data/logs/health_<date>.md (pipeline/tools/health.py). The toast is
+# Windows-only; here the flags are just printed into the log.
+"$PYTHON" -m pipeline.tools.health --date "$(date +%F)" ${ARGS[@]+"${ARGS[@]}"} >> "$LOG" 2>&1 || true
+
 if [ "$SLEEP_AFTER" = "1" ]; then
     # No GUI prompt here — a terminal countdown that any keypress cancels. On a
     # headless box nobody is watching, which is the same as not answering: it sleeps.
