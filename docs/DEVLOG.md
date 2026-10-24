@@ -1660,3 +1660,15 @@ Titles: overlay `upload.title_series: ""` -> "<hook> #60" (live: "PinkWardlol Tr
 K'Sante With a CLONE #60"). `tools/comments.py --list / --reply`: replies are drafted for the
 owner and posted only after he approves each one (upload token has youtube.force-ssl).
 The one real fan comment (@tiagobarradas2372, 10-18) found the Short by googling his own name.
+
+## 2026-10-24 — CORRECTION: the 5.2k / 3.7k views were real (YouTube Studio, 25 Sep - 22 Oct)
+
+The API's insightTrafficSourceType `SUBSCRIBER` is Studio's "Browse features" (home feed +
+subscriptions), not subscribers - the 2026-10-18/10-21 entries calling those views
+inorganic were wrong. Studio, long videos: 62.2k thumbnail impressions, CTR 2.3%,
+AVD 3:39, 91% of views from Browse. The two spikes were home-feed tests (20.6k impressions
+at 2.7% CTR; 13.1k at 2.9%) that YouTube stopped; most other uploads got 200-1.5k
+impressions at 0.6-2.4% CTR. Bottleneck = click-through (browse benchmark ~3.5%, < 3% =
+fix), not reach or retention. Shorts: 79.9% stayed to watch (good), but traffic is 72%
+YouTube search and only 4.9% Shorts feed. First reply posted (owner-approved) to
+@tiagobarradas2372.
