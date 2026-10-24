@@ -232,9 +232,11 @@ def _worker(model_name: str, device: str, compute: str) -> int:
         req = json.loads(line)
         try:
             r = transcribe(Path(req["audio"]), model_name, req.get("max_s"), device, compute)
-            print("RESULT " + json.dumps(r, ensure_ascii=False), flush=True)
+            # ASCII-only on the pipe: a piped child's stdout is cp1252 on Windows, and a
+            # Japanese word (2026-10-23, 'ギ') killed that clip's captions
+            print("RESULT " + json.dumps(r), flush=True)
         except Exception as e:                      # a Python error, not a crash
-            print(f"ERROR {type(e).__name__}: {e}", flush=True)
+            print(f"ERROR {type(e).__name__}: {ascii(str(e))}", flush=True)
     return 0
 
 

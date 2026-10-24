@@ -1682,3 +1682,11 @@ thumbnail_style.json now records `reacting`. NB streamer_cam boxes are (x, y, w,
 `tools/thumb_ctr.py <studio_export.csv>`: impression-weighted CTR per layout / palette /
 reacting, from a Studio Advanced-mode export (impressions/CTR are not in the API).
 Check ~2026-11-07 together with the Shorts hook-text arms.
+
+### 2026-10-24 night: one clip lost its captions to cp1252
+
+transcribe's GPU child printed RESULT JSON with ensure_ascii=False; a piped child's stdout
+is cp1252 on Windows, so a Japanese word ('ギ') raised UnicodeEncodeError and that clip
+went uncaptioned. RESULT is now ASCII-escaped JSON (the parent's json.loads restores it).
+Also seen: Shorts speaker colours fail with 429 once the judge has used the Gemini Flash
+allowance (cosmetic - captions stay one colour).
