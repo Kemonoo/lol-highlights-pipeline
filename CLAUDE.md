@@ -191,7 +191,9 @@ relative to `pipeline/`).
     CLI: `python -m pipeline.publishing.weekly --week-ending <date> [--no-upload]`
 15. `publishing/cleanup.py` — prune raw MP4s older than `cleanup.keep_raw_days`, every
     render/re-download dir under work/<date>/ (`MEDIA_DIRS`) once that night is over,
-    nameplate/countdown caches unused for `cleanup.cache_max_age_days`, and
+    nameplate/countdown caches unused for `cleanup.cache_max_age_days`; with
+    `cleanup.purge_after_upload` (owner overlay) ALL media of every date with a confirmed
+    upload, tonight's included - only metadata is kept; and
     published masters older than `cleanup.keep_output_days` (0 = keep forever, the
     default; a master is only ever deleted when state.json holds a confirmed YouTube
     id for that date, so an un-uploaded video is never touched. meta.json always stays)

@@ -128,7 +128,10 @@ cleanup:
                                   # the canonical copy; 2 days is enough to catch a bad render.
                                   # Masters are ~2.5-3 GB each since 60 fps / 1440p.
                                   # (tools/stream.py streams these, so it gets fewer to loop.)
-  cache_max_age_days: 14          # nameplate cache was 4 GB: one animation per streamer ever seen
+  purge_after_upload: true        # owner 2026-10-28: keep metadata only - a night's media goes
+                                  # as soon as its upload is confirmed (YouTube has the video;
+                                  # compilations re-download clips from Twitch)
+  cache_max_age_days: 3           # nameplate cache: regenerated in seconds when a streamer returns
 
 prefilter:                       # owner 2026-10-12, after two outside reviews + his notes
   # ja/zh excluded again (owner, same day, after 93 reviews: 3 of 26 ja/zh clips good or

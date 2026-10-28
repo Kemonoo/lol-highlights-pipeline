@@ -1711,3 +1711,16 @@ can't decode byte 0xe3/0xe9` - the same cp1252-child-stdout bug as 10-24, unnoti
 now, and fixed by the ASCII-safe RESULT protocol - and 10-24 the UnicodeEncodeError. The
 speakers 429 and judge "switching to" lines are routine (seen within 14 days, not flagged).
 `--print` backtests a date without writing or notifying.
+
+## 2026-10-28 — Keep metadata only: purge a night's media once its upload is confirmed
+
+Owner found ~17 GB of media again: the old rules KEPT it (raw 2 days, masters 2 days,
+tonight's renders, nameplate cache 14 days). `cleanup.purge_after_upload` (overlay on): at
+the end of every run, each date with a CONFIRMED YouTube id - tonight's included - loses
+all media (raw mp4 + lq, work MEDIA_DIRS incl. vo, stray renders, the master). A failed or
+disabled upload keeps everything for the retry. Unpublished weekly renders stay 7 days for
+the owner to watch. `cache_max_age_days` 14 -> 3. First pass freed 14.4 GB; data/ now
+~3.4 GB, of which 2.5 GB is the unpublished weekly_2026-10-24 test render (goes after
+10-31). Kept for good: clips.json, work/*.json, thumbnails, meta.json, clip_log.jsonl.
+Side effects: tools/stream.py and the morning-after site export have no masters/raw clips
+to read any more; the review queue falls back to Twitch embeds (it already did after a day).

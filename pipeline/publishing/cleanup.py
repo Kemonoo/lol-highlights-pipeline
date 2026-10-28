@@ -36,7 +36,51 @@ log = logging.getLogger("pipeline.cleanup")
 
 # media under work/<date>/ that only matters until that night's uploads are done
 MEDIA_DIRS = ("api_tmp", "segments", "segments_np", "shorts", "trimmed", "ranking", "src",
-              "prescreen_sheets", "crops")
+              "prescreen_sheets", "crops", "vo")
+MEDIA_EXT = (".mp4", ".mov", ".mkv", ".webm", ".mp3", ".wav", ".m4a")
+
+
+def purge_dates(dates: list[str], current: str, uploaded) -> list[str]:
+    """Dates whose media may go under `purge_after_upload`. Pure (tested).
+    A daily date: on or before tonight's, with a CONFIRMED YouTube id. A weekly_ label: its
+    upload is confirmed, or it is more than a week old (an unpublished weekly test render
+    stays a week so the owner can watch it)."""
+    out = []
+    cur = datetime.strptime(current, "%Y-%m-%d")
+    for d in dates:
+        try:
+            when = _dir_date(d)
+        except ValueError:
+            continue
+        if when > cur:
+            continue
+        if d.startswith("weekly_"):
+            if uploaded(d) or (cur - when).days > 7:
+                out.append(d)
+        elif uploaded(d):
+            out.append(d)
+    return out
+
+
+def _purge(data: Path, label: str) -> int:
+    """Every media file of one date: raw clips (+ lq), work renders, the master. The
+    metadata stays: clips.json, work/*.json, thumbnails, meta.json, data/clip_log.jsonl."""
+    freed = 0
+    for f in [*(data / "raw" / label).glob("*.mp4"), data / "output" / f"{label}.mp4"]:
+        if f.exists():
+            freed += f.stat().st_size
+            f.unlink()
+    for d in [data / "raw" / label / "lq", *(data / "work" / label / s for s in MEDIA_DIRS)]:
+        if d.exists():
+            freed += _dir_size(d)
+            shutil.rmtree(d)
+    w = data / "work" / label
+    if w.exists():
+        for f in w.iterdir():                    # stray renders at the top of work/<date>
+            if f.is_file() and f.suffix.lower() in MEDIA_EXT:
+                freed += f.stat().st_size
+                f.unlink()
+    return freed
 
 
 def _dir_date(name: str) -> datetime:
@@ -139,6 +183,20 @@ def _run(cfg: dict, cl: dict, date_label: str, state=None) -> None:
 
     freed += _prune_outputs(data, cl, current, state)
     freed += _prune_cache(data, int(cl.get("cache_max_age_days", 0) or 0))
+
+    # `purge_after_upload` (owner 2026-10-28: "only the metadata should be kept"): once a
+    # date's video is confirmed on YouTube, ALL its media goes - tonight's included, since
+    # cleanup is the last stage and runs only after the uploads. A failed or disabled
+    # upload keeps everything, so a retry still has its files.
+    if cl.get("purge_after_upload", False) and state is not None:
+        labels = sorted({p.name for sub in ("raw", "work") for p in (data / sub).iterdir()
+                         if p.is_dir()} | {p.stem for p in (data / "output").glob("*.mp4")})
+        for label in purge_dates(labels, date_label, state.uploaded_id):
+            n = _purge(data, label)
+            if n:
+                freed += n
+                log.info("cleanup: purged %s media (%.0f MB) - metadata kept", label,
+                         n / 1_048_576)
 
     log.info("cleanup: freed %.1f MB", freed / 1_048_576)
 

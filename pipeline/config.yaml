@@ -732,6 +732,10 @@ cleanup:
                               # keeps its video regardless of age. <date>.meta.json is
                               # never pruned: it is the record of who was credited.
                               # At ~550-850 MB per video this is ~200 GB/year if left off.
+  purge_after_upload: false   # true = once a date's upload is confirmed, delete ALL its media
+                              # (raw clips, renders, the master) at the end of that run; only
+                              # metadata stays (clips.json, work/*.json, thumbnails, meta.json,
+                              # clip_log.jsonl). Unpublished weekly renders stay 7 days.
   cache_max_age_days: 0       # delete cached nameplate/countdown animations unused this long
                               # (0 = never; they regenerate on demand)
 
