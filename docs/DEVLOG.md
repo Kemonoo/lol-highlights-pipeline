@@ -1724,3 +1724,13 @@ the owner to watch. `cache_max_age_days` 14 -> 3. First pass freed 14.4 GB; data
 10-31). Kept for good: clips.json, work/*.json, thumbnails, meta.json, clip_log.jsonl.
 Side effects: tools/stream.py and the morning-after site export have no masters/raw clips
 to read any more; the review queue falls back to Twitch embeds (it already did after a day).
+
+## 2026-10-29 — PAUSED by the owner (no views)
+
+Task Scheduler task "LoL Daily Highlights" disabled (Disable-ScheduledTask) - no nightly
+runs, no uploads. Config untouched, so resuming = `Enable-ScheduledTask -TaskName "LoL Daily
+Highlights"` (or re-run setup_schedule.bat). Last state: 4 subscribers, ~375 videos; long
+videos 2.3% thumbnail CTR on 62k impressions (25 Sep-22 Oct), home-feed tests stopped after
+10-12; Shorts 80% stayed-to-watch but ~5% of their views from the Shorts feed. Open when
+resuming: thumbnail/title A/B and Shorts hook-text results (data since 10-21/10-24),
+weekly upload never enabled, review queue idle.
